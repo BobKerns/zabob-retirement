@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![A private remote for the data repo](../assets/brand/banners/guides-data-repo-remote.svg)
 
 # A private remote for the data repo
 

@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![A century of rates: what carries over from one year to the next](../assets/brand/banners/guides-century-of-rates.svg)
 
 # A century of rates: what carries over from one year to the next
 
