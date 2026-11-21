@@ -11,13 +11,15 @@ an installed program reads what shipped with it.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from zabob.retirement.checkout import is_checkout
 
 __all__ = [
-    "CHECKOUT_DIR", "NOTEBOOKS_DIR", "PACKAGE_DIR", "PROTOTYPE_DIR", "SHIPPED_DIR", "TEMPLATES_DIR",
-    "cache_dir", "shipped",
+    "CHECKOUT_DIR", "DEFAULT_DATA_REPO", "INSTALLED", "NOTEBOOKS_DIR", "PACKAGE_DIR", "PROTOTYPE_DIR",
+    "SHIPPED_DIR", "TEMPLATES_DIR", "cache_dir", "home_checkout", "program_home", "program_sim", "same_home",
+    "shipped",
 ]
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -51,3 +53,46 @@ def cache_dir(name: str) -> Path:
         return CHECKOUT_DIR / name
     base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
     return Path(base) / "zabob-retirement" / name
+
+
+# -- the program a data repo is paired with ---------------------------------
+
+INSTALLED = "installed:"
+"""How ``sim/.analysis`` (and the builder's config) names an installed
+program: this, then the folder holding its ``sim`` and ``python``."""
+
+DEFAULT_DATA_REPO = Path("~/zabob-retirement")
+"""Where an installed program's ``sim init`` makes the data repo when given
+no folder: a checkout's goes in its ``data/private`` instead."""
+
+
+def program_home() -> str:
+    """What a data repo's ``sim/.analysis`` records for this program: the
+    checkout's path, or, installed, ``installed:`` and the folder of the
+    Python running it (a ``uv tool install``'s own environment, which
+    ``uv tool upgrade`` upgrades in place)."""
+    if CHECKOUT_DIR is not None:
+        return str(CHECKOUT_DIR)
+    return INSTALLED + str(Path(sys.executable).parent)
+
+
+def home_checkout(home: str) -> Path | None:
+    """The checkout a recorded home names; None for an installed one."""
+    return None if not home or home.startswith(INSTALLED) else Path(home)
+
+
+def program_sim(home: str) -> Path:
+    """The ``sim`` of the program a recorded home names."""
+    checkout = home_checkout(home)
+    if checkout is not None:
+        return checkout / ".venv" / "bin" / "sim"
+    return Path(home.removeprefix(INSTALLED)) / "sim"
+
+
+def same_home(a: str, b: str) -> bool:
+    """Whether two recorded homes are one program: a checkout compared as
+    the folder it is, however spelled; an installed one by its folder."""
+    if a.startswith(INSTALLED) or b.startswith(INSTALLED):
+        return a.startswith(INSTALLED) and b.startswith(INSTALLED) and \
+            Path(a.removeprefix(INSTALLED)).resolve() == Path(b.removeprefix(INSTALLED)).resolve()
+    return bool(a) and bool(b) and Path(a).resolve() == Path(b).resolve()

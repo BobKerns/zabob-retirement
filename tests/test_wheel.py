@@ -62,3 +62,25 @@ def test_installed_program_runs_without_a_checkout(
                           cwd=tmp_path, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "scenario(s) ok" in done.stdout
+
+
+def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_path: Path) -> None:
+    """The whole first session of a `uv tool install` user, on the example data."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ANALYSIS_NO_BUILDER": "1",
+           "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
+           **{f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER")
+              for what, value in (("NAME", "t"), ("EMAIL", "t@t"))}}
+    init = subprocess.run([installed_wheel / "sim", "init", "--example"], cwd=tmp_path, env=env,
+                          capture_output=True, text=True)
+    assert init.returncode == 0, init.stdout + init.stderr
+    root = home / "zabob-retirement"
+    assert (root / "sim" / ".analysis").read_text() == f"installed:{installed_wheel}\n"
+    assert (root / "notebooks" / "net_worth.ipynb").is_file()
+    done = subprocess.run(
+        ["bash", "-c", f"source {root / 'sim' / 'activate-analysis'} && sim switch && sim check base"],
+        cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "Current scenario: base" in done.stdout and "ok" in done.stdout

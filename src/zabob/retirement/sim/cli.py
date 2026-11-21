@@ -5189,9 +5189,12 @@ def commit_command(
 @click.option("--no-builder", is_flag=True,
               help="Don't turn on background builds (for scripts and tests); "
                    "ANALYSIS_NO_BUILDER=1 does the same.")
+@click.option("--example", is_flag=True,
+              help="Make a data repo of the prototype household, Alice and Bill, to try things on, "
+                   "instead of your own.")
 def init_command(
     directory: Path | None, person_id: str | None, display: str | None, birthdate: str | None,
-    sex: str | None, filing_status: str | None, no_commit: bool, no_builder: bool,
+    sex: str | None, filing_status: str | None, no_commit: bool, no_builder: bool, example: bool,
 ) -> None:
     """Start a new data repo (#289), asking for what the options leave
     out: you (the operator, its first primary person) and the household's
@@ -5222,6 +5225,15 @@ def init_command(
     which is where one was asked for.
     --no-commit skips the builder, which needs a git repository.
 
+    Installed (`uv tool install zabob-retirement`, #662), there is no
+    checkout: with no DIR the data repo is made at ~/zabob-retirement, it
+    is linked nowhere, and its notebooks/ gets the notebooks (`sim
+    notebooks copy` refreshes them).
+
+    --example makes a data repo of the prototype household, Alice and
+    Bill, instead, asking nothing: somewhere to try commands before
+    entering your own.
+
     Refuses a DIR that already holds a data repo, and with no DIR a
     data/private that is already there.
     """
@@ -5237,16 +5249,23 @@ def init_command(
     # The checkout this is run in is the one the data repo is for (#654):
     # activate-analysis activates the code its data repo was made by, so a
     # `sim` from another worktree's venv would pair it with the wrong code.
+    code = data_repo.CODE_REPO_DIR
     here = checkout_of(Path.cwd())
-    if here is not None and here.resolve() != data_repo.CODE_REPO_DIR.resolve() \
+    # An installed program has no checkout to pair with, so whatever folder
+    # it is run in, the data repo is its own (#662).
+    if code is not None and here is not None and here.resolve() != code.resolve() \
             and not os.environ.get(_INIT_AGAIN):
-        _init_in_checkout(here, [
+        _init_in_checkout(code, here, [
             *([str(directory)] if directory is not None else []),
             *(arg for option, value in (
                 ("--id", person_id), ("--display", display), ("--birthdate", birthdate), ("--sex", sex),
                 ("--filing-status", filing_status)) if value is not None for arg in (option, value)),
-            *(["--no-commit"] if no_commit else []), *(["--no-builder"] if no_builder else [])])
-    code = data_repo.CODE_REPO_DIR
+            *(["--no-commit"] if no_commit else []), *(["--no-builder"] if no_builder else []),
+            *(["--example"] if example else [])])
+    if code is None:
+        _init_installed(directory, person_id, display, birthdate, sex, filing_status,
+                        no_commit=no_commit, no_builder=no_builder, example=example)
+        return
     private = code / "data" / "private"
     if directory is None:
         # The usual step: the data repo is the checkout's own data/private.
@@ -5258,33 +5277,8 @@ def init_command(
                 "repo elsewhere, give its DIR; to start over here, remove it first.")
         directory = private
     root = directory.expanduser().resolve()
-    if data_repo.is_data_repo(root):
-        raise click.ClickException(f"{root} already holds a data repo")
-    if person_id is None:
-        person_id = _ask_new_name("your id in persons.csv (one word, e.g. alice)")
-    person_id = person_id.strip()
-    if not person_id or any(c.isspace() or c == "," for c in person_id):
-        raise click.ClickException(f"an id is one word, without commas: {person_id!r}")
-    fields = _person_fields(
-        {}, [], guided=display is None or birthdate is None,
-        display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
-    )
-    if filing_status is None:
-        filing_status = click.prompt("filing status", default="MFJ",
-                                     type=click.Choice(registries.FILING_STATUSES))
-    try:
-        failed = data_repo.create_data_repo(
-            root, {"id": person_id, **fields}, filing_status, commit=not no_commit)
-    except data_repo.InitError as exc:
-        raise click.ClickException(str(exc)) from None
-    sim = root / "sim"
-    click.echo(f"created a data repo in {_shown(root)}; its data dir is {_shown(sim)}")
-    if failed:
-        click.echo(f"  warning: not committed: {failed}", err=True)
-    elif not no_commit:
-        click.echo("  committed the new files")
-    click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
-    _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
+    sim, failed = _create_data_repo(root, person_id, display, birthdate, sex, filing_status,
+                                    no_commit=no_commit, example=example, notebooks=False)
     # The data repo is always found at the checkout's data/private, so one
     # made elsewhere is linked there. Not for a script or a recording
     # (--no-builder), which must leave the checkout it runs from alone.
@@ -5307,6 +5301,27 @@ def init_command(
         _init_builder(sim)
     activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
         else _shown(sim / "activate-analysis")
+    _next_steps(activate)
+
+
+def _init_installed(
+    directory: Path | None, person_id: str | None, display: str | None, birthdate: str | None,
+    sex: str | None, filing_status: str | None, *, no_commit: bool, no_builder: bool, example: bool,
+) -> None:
+    """`sim init` for an installed program (#662): the data repo stands on
+    its own, at DIR or ~/zabob-retirement, with the notebooks in it."""
+    from zabob.retirement.resources import DEFAULT_DATA_REPO
+
+    root = (directory if directory is not None else DEFAULT_DATA_REPO).expanduser().resolve()
+    sim, failed = _create_data_repo(root, person_id, display, birthdate, sex, filing_status,
+                                    no_commit=no_commit, example=example, notebooks=True)
+    click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: analysis jupyter")
+    if not no_builder and not no_commit and not failed:
+        _init_builder(sim)
+    _next_steps(_shown(sim / "activate-analysis"))
+
+
+def _next_steps(activate: str) -> None:
     # Set apart and in bold: without it no later command finds the data
     # repo, and after the lines above it was easy to miss.
     click.echo()
@@ -5318,17 +5333,92 @@ def init_command(
                "scenario with `sim account add`.")
 
 
+def _create_data_repo(
+    root: Path, person_id: str | None, display: str | None, birthdate: str | None,
+    sex: str | None, filing_status: str | None, *, no_commit: bool, example: bool, notebooks: bool,
+) -> tuple[Path, str | None]:
+    """Make the data repo at ``root``, asking for what the options leave
+    out, and check its first scenario. Returns its data dir and git's
+    complaint when the first commit failed."""
+    from zabob.retirement.sim import data_repo
+
+    if data_repo.is_data_repo(root):
+        raise click.ClickException(f"{root} already holds a data repo")
+    if example:
+        try:
+            _operator, failed = data_repo.create_example_repo(root, commit=not no_commit, notebooks=notebooks)
+        except data_repo.InitError as exc:
+            raise click.ClickException(str(exc)) from None
+        return _report_created(root, failed, no_commit=no_commit, what="an example data repo (Alice and Bill)"), failed
+    if person_id is None:
+        person_id = _ask_new_name("your id in persons.csv (one word, e.g. alice)")
+    person_id = person_id.strip()
+    if not person_id or any(c.isspace() or c == "," for c in person_id):
+        raise click.ClickException(f"an id is one word, without commas: {person_id!r}")
+    fields = _person_fields(
+        {}, [], guided=display is None or birthdate is None,
+        display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
+    )
+    if filing_status is None:
+        filing_status = click.prompt("filing status", default="MFJ",
+                                     type=click.Choice(registries.FILING_STATUSES))
+    try:
+        failed = data_repo.create_data_repo(
+            root, {"id": person_id, **fields}, filing_status, commit=not no_commit, notebooks=notebooks)
+    except data_repo.InitError as exc:
+        raise click.ClickException(str(exc)) from None
+    return _report_created(root, failed, no_commit=no_commit, what="a data repo"), failed
+
+
+def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: str) -> Path:
+    from zabob.retirement.sim import data_repo
+
+    sim = root / "sim"
+    click.echo(f"created {what} in {_shown(root)}; its data dir is {_shown(sim)}")
+    if failed:
+        click.echo(f"  warning: not committed: {failed}", err=True)
+    elif not no_commit:
+        click.echo("  committed the new files")
+    click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
+    _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
+    return sim
+
+
+@sim_group_command.group("notebooks")
+def notebooks_group() -> None:
+    """The notebooks, for an installed program (#662)."""
+
+
+@notebooks_group.command("copy")
+@click.argument("directory", required=False, metavar="DIR",
+                type=click.Path(file_okay=False, path_type=Path))
+@click.option("--replace", is_flag=True, help="Replace notebooks already there (your changes to them are lost).")
+@click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
+def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path | None) -> None:
+    """Copy this program's notebooks into DIR, by default the data repo's
+    notebooks/, where `sim init` put them for an installed program. A
+    notebook already there is kept unless --replace: after an upgrade,
+    --replace brings the new ones."""
+    from zabob.retirement.sim import data_repo
+
+    folder = directory if directory is not None else _resolve_data_dir(data_dir).parent / "notebooks"
+    written, kept = data_repo.copy_notebooks(folder.expanduser(), replace=replace)
+    click.echo(f"copied {len(written)} file(s) to {_shown(folder.expanduser())}")
+    if kept:
+        click.echo(f"kept {len(kept)} already there (--replace to replace them)")
+
+
 # Set for the `sim init` that one run from another checkout's venv starts,
 # so that a checkout whose `sim` is somehow another's can't start a third.
 _INIT_AGAIN = "ANALYSIS_INIT_AGAIN"
 
 
-def _init_in_checkout(checkout: Path, args: list[str]) -> NoReturn:
-    """Run `sim init` with ``args`` again as ``checkout``'s own ``sim``,
+def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
+    """Run `sim init` with ``args`` again as ``checkout``'s own ``sim``
+    (this one is ``this`` checkout's),
     making its venv first if it has none, and end with its result."""
-    from zabob.retirement.sim import data_repo
 
-    click.echo(f"this sim is {_shown(data_repo.CODE_REPO_DIR)}'s, and you are in {_shown(checkout)}: "
+    click.echo(f"this sim is {_shown(this)}'s, and you are in {_shown(checkout)}: "
                "running that checkout's sim init, so the data repo is paired with it")
     # Another venv's VIRTUAL_ENV would have uv sync into that one.
     env = {name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"} | {_INIT_AGAIN: "1"}
@@ -5356,13 +5446,13 @@ def _init_builder(sim: Path) -> None:
     since the data repo itself is ready."""
     from zabob.retirement.sim import builder, data_repo
 
-    private = data_repo.CODE_REPO_DIR / "data" / "private"
+    code = data_repo.CODE_REPO_DIR
     try:
         done = builder.install(sim)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         click.echo(f"  warning: background builds not turned on: {exc}", err=True)
-        click.echo(f"  once {private} leads to {sim.parent}: sim builder install --data-dir {sim}",
-                   err=True)
+        once = f"once {code / 'data' / 'private'} leads to {sim.parent}: " if code is not None else "to retry: "
+        click.echo(f"  {once}sim builder install --data-dir {sim}", err=True)
         return
     for line in done:
         click.echo(line)
@@ -21569,8 +21659,10 @@ def _builder_sim(data_dir: Path) -> Path:
     """The ``sim`` a timer runs: the pair's code worktree's, else this one."""
     from zabob.retirement.sim import builder
 
+    from zabob.retirement.resources import program_sim
+
     code = (builder.read_config(builder.BuilderPaths.for_data(data_dir)) or {}).get("code_dir")
-    sim = Path(code) / ".venv" / "bin" / "sim" if code else None
+    sim = program_sim(code) if code else None
     return sim if sim is not None and sim.exists() else Path(sys.executable).parent / "sim"
 
 
@@ -21859,12 +21951,14 @@ def builder_status(data_dir: Path | None) -> None:
     if builder.switched_off():
         click.echo("background builds are off here (ANALYSIS_BUILDER=off)")
     config = builder.read_config(paths) or {}
-    code = config.get("code_dir")
-    trees, reason = builder.main_check(builder.config_branch(config), Path(code) if code else None)
+    from zabob.retirement.resources import home_checkout
+
+    code = home_checkout(config.get("code_dir") or "")
+    trees, reason = builder.main_check(builder.config_branch(config), code)
     if trees is None:
         click.echo(f"disabled: {reason}")
     # Said whether or not it is on: pulling is what brings the newer code (#306).
-    if behind := builder.behind_upstream(builder.config_branch(config), Path(code) if code else None):
+    if behind := builder.behind_upstream(builder.config_branch(config), code):
         click.echo(f"behind: {behind.describe()} (git pull, on {behind.branch}, to build with it)")
     status = builder.read_status(paths)
     alive = builder.daemon_alive(paths)

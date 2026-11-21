@@ -1836,6 +1836,43 @@ def installed_build(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None], C
 
 
 @pytest.fixture(scope="function")
+def installed_program(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """This process seen as an installed program (#662): no checkout, its
+    commands in a folder of their own (a stand-in for a `uv tool install`'s,
+    whose ``sim`` records each call in ``calls`` beside it), a home folder
+    of its own, and git that commits without the machine's settings.
+    Returns the program's folder."""
+    from zabob.retirement import resources
+    from zabob.retirement.sim import builder, data_repo
+
+    program = tmp_path / "tool" / "bin"
+    program.mkdir(parents=True)
+    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n')
+    (program / "python").write_text("#!/bin/sh\nexit 1\n")
+    for name in ("sim", "python"):
+        (program / name).chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+    for who in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{who}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{who}_EMAIL", "t@t")
+    monkeypatch.delenv("ANALYSIS_NO_BUILDER", raising=False)
+    named = resources.INSTALLED + str(program)
+    monkeypatch.setattr(resources, "CHECKOUT_DIR", None)
+    monkeypatch.setattr(data_repo, "CODE_REPO_DIR", None)
+    monkeypatch.setattr(data_repo, "program_home", lambda: named)
+    monkeypatch.setattr(builder, "CHECKOUT_DIR", None)
+    monkeypatch.setattr(builder, "program_home", lambda: named)
+    monkeypatch.setattr(builder, "code_dir", lambda: None)
+    monkeypatch.chdir(tmp_path)
+    return program
+
+
+@pytest.fixture(scope="function")
 def pool_scenarios(test_data_dir: Path) -> str:
     """Pool ``mix`` (ADR-009) in the private data copy, created but not run:
     ``e_a`` 25% (a four-member ensemble over retire_alice, seed 7, with a

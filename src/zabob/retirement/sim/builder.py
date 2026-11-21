@@ -66,6 +66,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.resources import CHECKOUT_DIR, INSTALLED, home_checkout, program_home, program_sim, same_home
 from zabob.retirement.sim import builder_log
 from zabob.retirement.sim.lineage import is_pool
 from zabob.retirement.sim.loader import (
@@ -325,6 +326,34 @@ def code_dir() -> Path | None:
     return Path(repo.working_tree_dir).resolve()
 
 
+def this_home() -> str:
+    """How the pair's config and ``sim/.analysis`` name the program running
+    now: its code worktree, or an installed program (#662); empty for a
+    checkout outside git, which can't be paired."""
+    code = code_dir()
+    if code is not None:
+        return str(code)
+    return program_home() if CHECKOUT_DIR is None else ""
+
+
+def installed_pair_problems(data_dir: Path) -> list[str]:
+    """Why an installed program (#662) and ``data_dir`` aren't a pair: it has
+    no checkout to link the data repo, so ``data_dir/.analysis`` alone must
+    name it."""
+    data_dir = data_dir.resolve()
+    problems = []
+    pointer = data_dir / ".analysis"
+    try:
+        named = pointer.read_text().strip()
+    except OSError:
+        named = ""
+    if not same_home(named, program_home()):
+        problems.append(f"{pointer} doesn't name {program_home()}")
+    if not (data_dir.parent / ".git").exists():
+        problems.append(f"{data_dir.parent} isn't a git repo")
+    return problems
+
+
 def pair_problems(code: Path | None, data_dir: Path) -> list[str]:
     """Why ``code`` and ``data_dir`` aren't a 1:1 workspace pair: the code
     worktree's ``data/private`` must be the data repo holding ``data_dir``,
@@ -364,6 +393,11 @@ def main_check(
 
     code = code_tree() if repo_dir is None else code_tree_of(_open_repo(repo_dir))
     paths = ", ".join(CODE_PATHS)
+    if code.repo is None and repo_dir is None and CHECKOUT_DIR is None:
+        # Installed (#662): no branch to match; the build's version is the code.
+        if code.version is None:
+            return None, "the installed program was built from uncommitted code"
+        return (code.version,), None
     if code.repo is None:
         return None, "the code isn't in a git repo"
     if code.trees is None:
@@ -451,9 +485,8 @@ def note_behind(state_dir: Path, echo: Callable[[str], None] | None = None) -> N
     if config is None:
         return
     _noted_behind.add(paths.state_dir)
-    code = config.get("code_dir")
     branch = config_branch(config)
-    repo_dir = Path(code) if code else None
+    repo_dir = home_checkout(config.get("code_dir") or "")
     if main_check(branch, repo_dir)[0] is None:
         return  # the builder is off; `sim builder status` says why
     behind = behind_upstream(branch, repo_dir)
@@ -505,7 +538,7 @@ def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
     # The pair's own code, whichever checkout asked (a reader, a hook in
     # another worktree linking the same data).
     code = (read_config(paths) or {}).get("code_dir")
-    sim = Path(code) / ".venv" / "bin" / "sim" if code else None
+    sim = program_sim(code) if code else None
     command = [str(sim)] if sim is not None and sim.exists() else _sim_executable()
     # The daemon writes its log itself; only what it can't (a traceback) goes
     # to stderr, kept in the log unindented, so shown without -v.
@@ -1079,8 +1112,8 @@ class _Daemon:
             return 0  # one is already running; it has the request
         self.prune_logs()
         configured = (read_config(self.paths) or {}).get("code_dir")
-        if configured and code_dir() != Path(configured).resolve():
-            self.log(f"not started: this is {code_dir()}, but the pair's code is {configured}")
+        if configured and not same_home(this_home(), configured):
+            self.log(f"not started: this is {this_home() or 'code outside git'}, but the pair's code is {configured}")
             os.close(lock)
             return 1
         # This process and its builds must never wait on the builder itself.
@@ -1206,7 +1239,7 @@ def _signature(paths: BuilderPaths, config: dict[str, Any]) -> tuple[int, ...]:
     dirs = _git_dirs.get((paths.state_dir, pair))
     if dirs is None:
         dirs = []
-        for top in (config.get("code_dir"), Path(config["data_dir"]).parent):
+        for top in (home_checkout(config.get("code_dir") or ""), Path(config["data_dir"]).parent):
             if not top:
                 continue
             out = subprocess.run(["git", "-C", str(top), "rev-parse", "--absolute-git-dir"],
@@ -1305,8 +1338,7 @@ def _pending(
     from zabob.retirement.sim.provenance import data_stamps
 
     config = read_config(paths) or {}
-    code = config.get("code_dir")
-    trees, _reason = main_check(config_branch(config), Path(code) if code else None)
+    trees, _reason = main_check(config_branch(config), home_checkout(config.get("code_dir") or ""))
     if trees is None or scenario not in list_scenario_names(data_dir):
         return []
     if scenario in read_disabled_scenarios(data_dir):
@@ -1421,15 +1453,20 @@ DATA_HOOK = f"""#!/bin/sh
 {HOOK_MARKER}
 # Runs the hook this one displaced ($0{CHAINED_SUFFIX}), if any, with its
 # arguments and input, and exits with its status. Then tells this data
-# worktree's paired code worktree (named in sim/.analysis) to look for
-# scenarios to rebuild, without blocking or failing the git command.
+# worktree's paired code worktree, or installed program (#662), named in
+# sim/.analysis, to look for scenarios to rebuild, without blocking or
+# failing the git command.
 status=0
 if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
 [ -f "$top/state/builder/config.json" ] || exit $status
 code="$(cat "$top/sim/.analysis" 2>/dev/null)" || exit $status
-[ -x "$code/.venv/bin/sim" ] || exit $status
-"$code/.venv/bin/sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
+case "$code" in
+    {INSTALLED}*) sim="${{code#{INSTALLED}}}/sim" ;;
+    *) sim="$code/.venv/bin/sim" ;;
+esac
+[ -x "$sim" ] || exit $status
+"$sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
 exit $status
 """
 
@@ -1457,7 +1494,8 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         roll_window = f"{start:%H:%M}-{end:%H:%M}"
     data_dir = data_dir.resolve()
     code = code_dir()
-    problems = pair_problems(code, data_dir)
+    installed = code is None and CHECKOUT_DIR is None
+    problems = installed_pair_problems(data_dir) if installed else pair_problems(code, data_dir)
     if problems:
         raise ValueError("; ".join(problems))
     hooks = _data_hooks_dir(data_dir.parent)
@@ -1481,7 +1519,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     # it (#644); kept from before when this shell can't find it.
     claude = find_claude(before.get("claude"))
     _write_json(paths.config, {
-        "data_dir": str(data_dir), "code_dir": str(code), "branch": branch,
+        "data_dir": str(data_dir), "code_dir": this_home(), "branch": branch,
         "prices": prices, "roll": roll, "roll_window": roll_window, "research": research,
         "claude": claude, "installed": time.time(),
     })

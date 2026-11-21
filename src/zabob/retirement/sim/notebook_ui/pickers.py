@@ -518,9 +518,13 @@ def find_data_dir(data_dir: Path | str | None = None) -> Path:
 
 def _checkout_data_dir() -> Path:
     """The data dir linked into this checkout, found from the working
-    directory (a notebook runs in notebooks/). One function so the tests
-    can point it away from a developer's real data repo."""
+    directory (a notebook runs in notebooks/); or, for the notebooks an
+    installed program's `sim init` copied into a data repo (#662), that
+    data repo's. One function so the tests can point it away from a
+    developer's real data repo."""
     repo = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
+    if (repo / "sim" / "persons.csv").exists():
+        return repo / "sim"
     return repo / "data" / "private" / "sim"
 
 
