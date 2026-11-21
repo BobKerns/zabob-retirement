@@ -74,6 +74,22 @@ def test_uncommitted_code_always_reruns(
     assert _skipped(sim_all()) == []
 
 
+def test_installed_from_a_wheel_an_upgrade_reruns(
+    sim_all: Callable[..., str], installed_build: Callable[[str | None], Callable[[Path], None]],
+    runs_dir: Path,
+) -> None:
+    """#662: with no code repo, the build's version stands for the code trees."""
+    stamp = installed_build("1.0.0b1+g0123456789ab")
+    sim_all()
+    stamp(runs_dir)
+    assert _skipped(sim_all()) == ["base", "retire_alice"]
+    stamp = installed_build("1.0.0b2+g0123456789ab")
+    assert _skipped(sim_all()) == []
+    stamp(runs_dir)
+    installed_build(None)  # built from dirty code: never trusted
+    assert _skipped(sim_all()) == []
+
+
 def test_a_data_change_reruns_only_the_scenarios_that_read_it(
     commit_files: Callable[..., str],
     sim_all: Callable[..., str], code_repo: git.Repo, stamp_runs: Callable[[Path], None],

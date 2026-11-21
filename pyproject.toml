@@ -52,6 +52,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/zabob"]
 
+# hatch_build.py ships templates/, notebooks/ and prototype_data/ in the wheel
+# and stamps the commit it was built from (#662).
+[tool.hatch.build.hooks.custom]
+
+# What the wheel is built from: uv build makes the wheel out of the sdist.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "templates", "notebooks", "prototype_data", "hatch_build.py", "README.md", "LICENSE"]
+
 # Every Python process in the venv (JupyterLab server, kernels, CLI runs, and
 # libraries that bring their own certifi contexts) verifies TLS with the OS
 # trust store (#86). A .pth line runs at interpreter startup, so the injection

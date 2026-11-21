@@ -71,11 +71,12 @@ import numpy as np
 import pandas as pd
 
 from zabob.retirement.frames import datetime_index, index_months, index_years
+from zabob.retirement.resources import cache_dir
 from zabob.retirement.tls import ssl_context, verify_reason
 
-# The committed data beside the source tree; an editable install (uv sync)
-# finds it, while a wheel installed elsewhere has none and needs --cache.
-DEFAULT_CACHE = Path(__file__).resolve().parents[4] / "historical_data"
+# The committed data beside the source tree in a checkout; installed from a
+# wheel, which doesn't ship it, a download cache in the user's cache folder.
+DEFAULT_CACHE = cache_dir("historical_data")
 
 BLS_BASE = "https://download.bls.gov/pub/time.series"
 RCPIE_URL = "https://www.bls.gov/cpi/research-series/r-cpi-e-data.xlsx"

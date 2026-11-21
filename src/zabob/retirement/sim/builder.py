@@ -317,10 +317,9 @@ def daemon_alive(paths: BuilderPaths) -> bool:
 
 def code_dir() -> Path | None:
     """The working tree of the code repo this package runs from."""
-    import zabob.retirement
-    from zabob.retirement.sim.provenance import _open_repo
+    from zabob.retirement.sim.provenance import code_repo
 
-    repo = _open_repo(Path(zabob.retirement.__file__).parent)
+    repo = code_repo()
     if repo is None or repo.working_tree_dir is None:
         return None
     return Path(repo.working_tree_dir).resolve()
