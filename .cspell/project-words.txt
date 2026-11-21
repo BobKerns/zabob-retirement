@@ -459,6 +459,7 @@ tctronics
 Termius
 Testland
 testpaths
+testpypi
 textconv
 textcoords
 TIOCGWINSZ

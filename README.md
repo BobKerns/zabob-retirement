@@ -167,7 +167,17 @@ an issue to close, or a row you write yourself.
 This repository is a single top-level Python project. There are no nested repos or subprojects.
 
 ## Setup
-To install without git knowledge, paste this into a terminal:
+To use the simulator, install it from PyPI with [uv](https://docs.astral.sh/uv/):
+```sh
+uv tool install zabob-retirement
+sim init --example     # Alice and Bill's household, to try things on
+sim init               # or your own data repo, in ~/zabob-retirement
+source ~/zabob-retirement/sim/activate-analysis
+```
+Upgrade with `uv tool upgrade zabob-retirement`. See
+[docs/SETUP.md](./docs/SETUP.md#install-the-program) for more.
+
+To work on the code too, without git knowledge, paste this into a terminal:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/BobKerns/zabob-retirement/main/scripts/install.sh | sh
 ```
@@ -395,3 +405,6 @@ Spell checking is handled by cspell (see `cspell.json` and `.cspell/project-word
 **Tabs are forbidden in all text files.**
 
 Use spaces for all indentation and alignment. Hard tab characters (\t) are not allowed anywhere in the repository, including code, markdown, and documentation. This prevents formatting issues and ensures consistency across all editors and platforms.
+
+## Releasing
+Publishing to PyPI is described in [docs/releasing.md](./docs/releasing.md).
