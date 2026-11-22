@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Importing your data](../assets/brand/banners/guides-importing-data.svg)
 
 # Importing your data
 

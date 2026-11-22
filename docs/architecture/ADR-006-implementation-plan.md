@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-006(ADR-006-ensemble-scenarios.md) implementation plan: ensemble scenarios](../assets/brand/banners/architecture-adr-006-implementation-plan.svg)
 
 # [ADR-006](ADR-006-ensemble-scenarios.md) implementation plan: ensemble scenarios
 

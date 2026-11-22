@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Ensembles: ranges of outcomes, not one number](../assets/brand/banners/guides-ensembles.svg)
 
 # Ensembles: ranges of outcomes, not one number
 

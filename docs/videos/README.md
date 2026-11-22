@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Instructional videos](../assets/brand/banners/videos-readme.svg)
 
 # Instructional videos
 

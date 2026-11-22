@@ -145,6 +145,7 @@ execv
 extrasaction
 facecolor
 faststart
+favicons
 FDCAX
 Fenwick
 ffprobe
@@ -185,6 +186,7 @@ Heygotrade
 HIFO
 Hiragino
 HISTFILE
+hmtx
 htmlcov
 huggingface
 hyperscaler
@@ -240,6 +242,7 @@ libedit
 libx
 lifetable
 linalg
+linecap
 linespacing
 linestyle
 linthresh
@@ -295,6 +298,7 @@ nonqualified
 NOPASSWD
 NOSYSTEM
 noto
+ntos
 nunique
 OBBBA
 OFXHEADER
@@ -381,6 +385,7 @@ Roths
 roundtrips
 rowhouse
 RRGGBB
+rsms
 rtol
 runfile
 sandboxed

@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-003: Rule registry, event-kind registry, subkind vocabulary, and CSV schemas](../assets/brand/banners/architecture-adr-003-registries-and-csv-schemas.svg)
 
 # ADR-003: Rule registry, event-kind registry, subkind vocabulary, and CSV schemas
 

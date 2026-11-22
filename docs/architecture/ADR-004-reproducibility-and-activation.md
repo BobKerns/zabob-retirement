@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-004: Reproducibility, activation contract, and gating](../assets/brand/banners/architecture-adr-004-reproducibility-and-activation.svg)
 
 # ADR-004: Reproducibility, activation contract, and gating
 

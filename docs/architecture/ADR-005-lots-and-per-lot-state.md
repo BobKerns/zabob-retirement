@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-005: Lots and per-lot state](../assets/brand/banners/architecture-adr-005-lots-and-per-lot-state.svg)
 
 # ADR-005: Lots and per-lot state
 

@@ -1,4 +1,4 @@
-![Zabob Retirement](assets/brand/banner.jpg)
+![Setting up Zabob Retirement](assets/brand/banners/setup.svg)
 
 # Setting up Zabob Retirement
 

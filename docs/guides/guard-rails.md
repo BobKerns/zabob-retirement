@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Guard rails: is the plan spending more than it should?](../assets/brand/banners/guides-guard-rails.svg)
 
 # Guard rails: is the plan spending more than it should?
 
