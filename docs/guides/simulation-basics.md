@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![How the simulator draws random futures](../assets/brand/banners/guides-simulation-basics.svg)
 
 # How the simulator draws random futures
 

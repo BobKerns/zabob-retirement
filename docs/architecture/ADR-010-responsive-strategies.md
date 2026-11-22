@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-010: Responsive strategies](../assets/brand/banners/architecture-adr-010-responsive-strategies.svg)
 
 # ADR-010: Responsive strategies
 

@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Finance research: tear sheets with Claude](../assets/brand/banners/guides-finance-research.svg)
 
 # Finance research: tear sheets with Claude
 

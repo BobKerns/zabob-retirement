@@ -1,4 +1,4 @@
-![Zabob Retirement](../docs/assets/brand/banner.jpg)
+![Notebooks](../docs/assets/brand/banners/notebooks-readme.svg)
 
 # Notebooks
 

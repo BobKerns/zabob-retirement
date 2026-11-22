@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-002: Storage schema for the finance simulator](../assets/brand/banners/architecture-adr-002-storage-schema.svg)
 
 # ADR-002: Storage schema for the finance simulator
 
