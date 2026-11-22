@@ -12,8 +12,11 @@
 # start over. scripts/start-container.sh sets the code repo's URL and ref
 # from the checkout it runs in.
 #
-# With RUN_SETUP=1, run scripts/setup.sh in the code repo after that. A
-# failure is reported but still leaves you in the container to look around.
+# With RUN_SETUP=1, run scripts/setup.sh in the code repo after that, and
+# with RUN_TESTS the clone's test suite in the environment setup.sh made
+# (#674): RUN_TESTS=default runs the everyday set (-m "not slow"),
+# RUN_TESTS=all every test. A failure is reported but still leaves you in
+# the container to look around.
 set -eu
 
 if [ -z "${CODE_REPO_URL:-}" ]; then
@@ -81,4 +84,10 @@ if [ "${RUN_SETUP:-}" = 1 ]; then
         echo "scripts/setup.sh failed (exit $?)." >&2
     fi
 fi
+case ${RUN_TESTS:-} in
+    '') ;;
+    default) .venv/bin/python -m pytest -q -n auto -m "not slow" || echo "The tests failed (exit $?)." >&2 ;;
+    all) .venv/bin/python -m pytest -q -n auto || echo "The tests failed (exit $?)." >&2 ;;
+    *) echo "entrypoint: RUN_TESTS is default or all, not $RUN_TESTS" >&2 ;;
+esac
 exec "$@"

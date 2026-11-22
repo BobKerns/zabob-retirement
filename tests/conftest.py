@@ -72,6 +72,7 @@ import git
 import pandas as pd
 import pytest
 
+from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
 from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
 from zabob.retirement.sim.engine import _load_aux, _tax_year, run_scenario
@@ -85,6 +86,17 @@ from zabob.retirement.sim.registries import (
     ACCOUNT_LOTS_CSV_HEADER, CALENDAR_HEADER, GUARD_RAILS_CSV_HEADER, SCENARIO_HEADER,
     RESIDENCE_CSV_HEADER, RESIDENCE_FILE, SCHEDULED_CSV_HEADER, TAX_CSV_HEADER,
 )
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Run the suite against either kind of install (#674): from a checkout
+    the ``installed`` tests skip, and against an installed wheel (the
+    install-test container) the ``checkout`` tests do."""
+    skip, why = (("installed", "needs an installed wheel, not a checkout") if CHECKOUT_DIR is not None
+                 else ("checkout", "needs the code checkout"))
+    for item in items:
+        if skip in item.keywords:
+            item.add_marker(pytest.mark.skip(reason=why))
+
 
 _ANALYSIS_ENV_VARS = (
     "ANALYSIS_DATA_DIR",

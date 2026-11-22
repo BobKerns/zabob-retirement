@@ -550,6 +550,7 @@ def test_activate_takes_the_code_of_the_checkout_it_is_sourced_through(tmp_path:
     assert same.stdout == f"worktree {worktree}\n" and "using the code" not in same.stderr
 
 
+@pytest.mark.checkout
 def test_the_script_and_the_program_agree_on_what_a_checkout_is() -> None:
     script = (data_repo.TEMPLATES_DIR / "activate-analysis").read_text(encoding="utf-8")
     body = script[script.index("_analysis_validate_repo_dir() {"):script.index("_analysis_enable_completion() {")]

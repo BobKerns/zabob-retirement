@@ -298,6 +298,7 @@ def test_status_shows_the_last_run_its_cost_and_the_next(
     assert any(line.startswith("research cost, last 30 days: $1.25 over 1 run(s)") for line in lines)
 
 
+@pytest.mark.checkout
 def test_install_records_whether_to_research(code_repo, data_repo_sim: Path, monkeypatch) -> None:
     del code_repo
     monkeypatch.setattr(builder, "pair_problems", lambda *_: [])
@@ -307,6 +308,7 @@ def test_install_records_whether_to_research(code_repo, data_repo_sim: Path, mon
     assert _config(data_repo_sim)["research"] is False
 
 
+@pytest.mark.checkout
 def test_install_records_where_claude_is_for_the_timer(
     code_repo, data_repo_sim: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
