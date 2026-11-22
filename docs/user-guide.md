@@ -1,12 +1,15 @@
+![User Guide: Building and Editing Scenarios](assets/brand/banners/user-guide.svg)
+
 # User Guide: Building and Editing Scenarios
 
 > To read a formatted `.md` file:
 > - In Jupyter: right-click on it and select `Open With / Markdown Preview`
 > - In VSCode: Command `Markdown Preview Enhanced: Open Preview` or ⌘⇧V
 
-This guide shows how to make common changes to a scenario, step by step, with
+This guide shows how to make common changes to a Zabob Retirement scenario, step by step, with
 real examples, and how to look at what a run produced. It assumes you already
-have a data repo. If you don't, start one with `sim init DIR`, which asks who you
+have a data repo. If you don't, start one with `sim init` in the code checkout
+(it is made at `data/private`; `sim init DIR` puts it elsewhere and links it there). It asks who you
 are and builds it from the code repository's templates ([templates/README.md](../templates/README.md)).
 The one-line installer ([SETUP.md](SETUP.md)) does that for you.
 
@@ -598,6 +601,16 @@ Every account is really a set of **lots**. Lots can differ in symbol, purchase
 date, and cost basis. An account you have not split has one lot, named
 `default`.
 
+**Several accounts at one institution are best kept as lots of one
+account.** Two checking accounts and a savings account at one bank, with the
+same owner, can be one `Asset_Bank` account with three lots. The account
+list stays short, reports and charts show the institution's total, and a lot
+drill-down still shows each one. Keep separate accounts where the owner or
+the kind of account differs: cash and retirement money at the same
+institution are two accounts, since an account has one owner and one
+subkind. The imports map each outside account to its lot
+([Importing data](guides/importing-data.md)).
+
 ```mermaid
 flowchart LR
     subgraph acct["Asset_Brokerage_Joint"]
@@ -879,6 +892,48 @@ taken from the decedent's account later in the year of the death still
 counts as theirs. `sim report tax --return federal` shows
 what ended as `capital_loss_lapsed` and `nol_lapsed`.
 
+#### Where the accounts go
+
+Every account names an `owner` in `accounts.csv`: a person, or `joint` for
+the household's. At the end of the owner's final month (for a `joint`
+account, the household's last death), the account goes where its optional
+`beneficiary` column says:
+
+- **Blank:** a surviving spouse takes it over. Its owner changes from the
+  next month and no money moves, so their RMDs, Roth rules and step-ups
+  follow. With no spouse alive, the scenario's estate takes it (below).
+- **A person in the household, or `joint`:** they take it over the same way.
+  A retirement account can pass only to a person.
+- **A person outside the household** (a child, a trust, a charity): the
+  money leaves the household. Add them to `persons.csv` with no role and a
+  `kind` (`sim person add dana --role '' --birthdate '' --kind person`, or
+  `--kind trust` or `--kind charity`); a row with neither stays a stand-in
+  in the household. Each such person gets an
+  account of their own, named by their id. What lands there, as a bequest
+  or as a gift you schedule while alive, is out of net worth but still
+  shown: the income report lists it as `gifts_and_bequests`, apart from
+  spending.
+- **A destination chain or another account:** the money goes there, as an
+  overflow sweep would place it. A chain names contingent beneficiaries in
+  order: a step whose owner has died is skipped. `Asset_Roth_Bill`, then
+  `dana`, leaves Alice's Roth IRA to Bill, or to Dana if Bill died first.
+
+`sim account edit Asset_Brokerage_Joint --beneficiary dana` sets one.
+
+It works the other way too. An older relative outside the household can
+leave you money: give them a `birthdate` and a `lifespan.csv` row (it can
+vary across an ensemble), start their account with what they have
+(`account_lots.csv`), and set that account's `beneficiary` to the account
+or chain it would come to (perhaps an empty placeholder account until
+then). At their death it arrives untaxed, with its basis stepped up. A
+step whose owner has died by then is skipped, as above.
+
+At the household's last death, the scenario's estate takes whatever is
+left: set `"estate": "<chain>"` in `scenario.csv` `meta_json`. List the
+debts (a mortgage) first in that chain, so they are paid before the heirs
+are. `sim explain` lists what each death did. Estate tax, a trust's own
+tax, and an heir's taxes on an inherited IRA are not modeled.
+
 In an ensemble the age can vary from member to member. Give
 `vary_distribution` (`uniform` or `triangular`) and the lowest and highest
 age, `vary_low` and `vary_high`; a triangular peaks at `vary_mode`, or at
@@ -923,9 +978,14 @@ A lifespan can read another country's table: `lifespan.csv`'s optional
 `life_table.csv`. The templates ship `jp`, Japan's 2023 table, which `sim
 person lifespan set <id> 90 --vary life_table --life-table jp` picks. It is
 per scenario, like the age, so one scenario (or a mix-in) can try another
-table and another median, to compare. `scripts/blend_life_tables.py` builds
-a table between two, such as one for someone who has lived in both
-countries. Use a country's own table rather than a later
+table and another median, to compare. `sim lifespan blend` builds a table
+between two or more, such as one for someone who has lived in both
+countries: `sim lifespan blend us_jp --table default --table jp` averages
+their yearly death rates at each age and writes `life_table__us_jp.csv` to
+the scenario's `aux/` (a mix-in's, to use it wherever the mix-in goes).
+`--table jp=3` weighs a table more; each weighs 1 by default. A name the
+scenario already reads, such as `jp`, is replaced only with `--replace`.
+Use a country's own table rather than a later
 `age_at_death` on the US one. The set-forward moves the table's median but
 keeps its spread, and the US tail is fatter: for a woman alive at 60, with
 the median put at Japan's (about 90), the shifted US table gives about a
@@ -1068,7 +1128,7 @@ are refused, since they would tax the same income twice. Each has local breaks f
 income earned there, such as the Northern Mariana Islands' rebate, which a
 household retiring from the mainland seldom has. Puerto Rico and American
 Samoa have tax codes of their own, which the simulator can't model yet
-([#570](https://github.com/BobKerns/analysis/issues/570)), so a move to
+([#570](https://github.com/BobKerns/zabob-retirement/issues/570)), so a move to
 either is refused.
 
 Any other aux table can be swapped with a calendar row, `swap_aux_table`: a
@@ -1224,7 +1284,16 @@ asked for each instead. The weights must add up to 100%; `--as-of 2027-01`
 dates a set, and adding another set with a later date follows a fund whose
 mix changes over time, such as a target-date fund. Leave out `--weight` if
 you don't know the mix yet, and add it later; an AI can look it up (below).
-To change a name or a set of weights already written, edit the file.
+
+To change one later, use `sim symbol edit ABCDX`. `--name` renames it, and
+`--weight` (all of them, adding up to 100%) corrects its latest set of
+weights, keeping that set's date; with `--as-of` it replaces that month's set
+instead, or adds a new dated set. With no options it shows what the symbol
+has and asks. `sim symbol delete ABCDX` removes a symbol added by mistake:
+its name and weights, and, if you say so (or pass `--prices`), its price
+files; `--yes` asks nothing and keeps them unless `--prices` is given. It
+refuses while a lot in any scenario still holds the symbol, and lists those
+lots.
 
 If the price provider has no prices for the symbol (a 401(k)'s collective
 trust fund often has no public ticker), the name and weights are still
@@ -1356,8 +1425,11 @@ sim symbol research ABCDX
    `research/ABCDX/<today>/`: the tabs as Markdown, the allocation export
    and a `report.html` page. A second run the same day gets its own folder.
    `research/` is outside what a run's provenance covers, so a bundle never
-   makes the data dirty; commit the bundles as the record of where a set of
-   weights came from, or list `research/` in `.gitignore`.
+   makes the data dirty. The command commits the bundle, and the weights and
+   name it writes, and nothing else, as the record of where a set of weights
+   came from: the background builder reads when a symbol was last researched
+   from those commits. Changes you had already made to `allocations.csv` or
+   `securities.csv` stay uncommitted; `--no-commit` commits nothing.
 3. It opens `report.html`: the Overview, Tear sheet, Price chart, Detail
    and Glossary as tabs, and a language switch when the tabs are also in
    another language (switching keeps the tab you're on). Links between tabs
@@ -1365,12 +1437,13 @@ sim symbol research ABCDX
 4. It shows the proposed weights beside the fund's current set, with the
    method behind them (issuer-reported, look-through, computed from
    holdings), the as-of month and any warnings, and asks before writing them
-   to `allocations.csv`. For a symbol not yet in `securities.csv` it also
-   asks for a name, offering the tear sheet's title.
+   to `allocations.csv`. For a symbol with no name yet in `securities.csv`
+   it also asks for one, offering the tear sheet's title.
 
 If the fund already has a set for the same month, answering yes replaces
 it. `--yes` writes without asking, but refuses to replace a set unless you
-add `--replace`. `--as-of 2026-10` dates the set by another month. If the
+add `--replace`, and writes nothing when every class is within 0.5
+percentage points of the fund's latest set. `--as-of 2026-10` dates the set by another month. If the
 research left part of the fund unclassified, or wrote no rows for another
 reason (its weights added up to more than 100%, say), nothing is written;
 the command prints the reason and the skill's warnings, and keeps the
@@ -1402,6 +1475,38 @@ The bundle goes under the name's words joined by `-`
 one. If the name turns out to be a fund with weights, the command asks
 which ticker to write them under (blank writes nothing); `--symbol` answers
 in advance, and with `--yes` and no `--symbol` nothing is written.
+
+#### Keeping research current
+
+With the background builder installed (`sim builder install`), research
+keeps itself current: each morning from 06:07 New York time the builder
+researches one symbol whose latest research is over a month old (or which
+has none), the oldest first, every ticker the data repo names. It writes a
+fund's weights as a new set dated the research's month only when some
+class moved more than 0.5 points from the latest set, so a fund that holds
+steady leaves `allocations.csv` alone and no run goes stale; a slow drift
+crosses the line after a few months. It commits on its own branch and
+merges into `main` when you have it checked out with no uncommitted
+changes, as the price fetch does. With more symbols than days in a month the
+cycle takes longer; research one that can't wait by hand. `sim builder
+status` shows the last symbol researched, the next one due, the month's
+cost and any that fail; `sim builder install --no-research` turns it off.
+
+The hourly timer doesn't get your shell's PATH, so `sim builder install`
+records where it finds `claude`; if research fails with "'claude' isn't on
+PATH", run `sim builder install` again from a shell where `claude` works.
+`sim builder status` shows the `claude` the research will run.
+
+A symbol nothing can price, or an obsolete one, can be marked so neither
+the price fetch nor the research takes it:
+
+```sh
+sim symbol edit XYZFD --never-fetch
+```
+
+Named on the command line (`sim prices fetch XYZFD`, `sim symbol research
+XYZFD`) it still runs, with a warning. A price fetch or research that
+finds a symbol's name fills in a missing one in `securities.csv`.
 
 ### 4.12 Make a new investment, or a Roth conversion
 
@@ -1517,7 +1622,7 @@ taxable wages. Self-employment tax on a
 business's profit counts a person's wages toward their own Social Security
 wage base, so wages entered under the wrong person, or as take-home pay with
 no tax character, make it come out wrong
-([#623](https://github.com/BobKerns/analysis/issues/623)).
+([#623](https://github.com/BobKerns/zabob-retirement/issues/623)).
 
 ### 4.14 Medicare's income surcharge (IRMAA)
 
@@ -1706,8 +1811,8 @@ a year can afford, while their own code decides which trips fit, taken whole:
 ```python
 from dataclasses import dataclass
 
-from analysis.sim.strategies import Guardrail
-from analysis.sim.strategy_api import Context, Decision, RuleView, Spend, register
+from zabob.retirement.sim.strategies import Guardrail
+from zabob.retirement.sim.strategy_api import Context, Decision, RuleView, Spend, register
 
 
 @register
@@ -2244,7 +2349,7 @@ None of them need you to write any code.
 | `accounts.ipynb` | Balance history for any account over time, account setup details, the lots and holdings inside an account, which accounts hold a symbol, the portfolio by asset class, and the stored prices: lots whose balance disagrees with quantity × price, every symbol with its name, allocation and latest price, and one symbol's price history. |
 | `net_worth.ipynb` | Net worth over time, income by category, expenses by category, realized vs. unrealized gains, economic income down to the change in net worth, tax by year with its effective rate, and where the run stands against its guard rails. |
 | `scenario_compare.ipynb` | Puts two or more scenarios side by side: what differs between them, net worth over time for each, where they cross over (break-even), gross Social Security, and tax by year. |
-| `events.ipynb` | Every dollar movement in a run, filterable by reason (which rule fired, a refill/overflow, a catch-up fact), tax character, account, and date range, with a running balance for one account and each refill linked to the debit that triggered it — good for auditing "why did this happen." |
+| `events.ipynb` | Every dollar movement in a run, filterable by reason (which rule fired, a refill/overflow, a catch-up fact), tax character, account, and date range, with a running balance for one account and each refill linked to the debit that triggered it — good for auditing "why did this happen." `sim items` shows the same table, with the same filters, at the command line. |
 | `ensemble.ipynb` | For an ensemble recipe (Part 4.10): net worth's mean/median over quintile bands shaded out to the 5th–95th percentiles, plus a year-end table of mean/median/SD and the 5th, 20th, ... 95th percentiles, and the share of members past each guard rail. |
 
 Open one with `analysis jupyter` (or the **Jupyter** VS Code task, below), or

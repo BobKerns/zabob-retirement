@@ -77,9 +77,9 @@ dollars or percents.
   are per-scenario, under `series/`; `security_price__*` is shared, under
   `prices/`.
 
-The loader (`src/analysis/sim/loader.py`) parses the filename to figure out the
+The loader (`src/zabob/retirement/sim/loader.py`) parses the filename to figure out the
 kind and series; the required columns per kind are listed in
-`src/analysis/sim/registries.py` (`AUX_KIND_COLUMNS`) and [ADR-003](../../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4.
+`src/zabob/retirement/sim/registries.py` (`AUX_KIND_COLUMNS`) and [ADR-003](../../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4.
 
 ## State deductions and credits
 
@@ -203,7 +203,7 @@ every other scenario.
 | `energy_credits.csv` | Federal energy-efficiency credit/rebate rate and cap, by category (`heat_pump`, `induction_range`, `ev_charger`, ...) and effective date. **Expiring credits need an explicit zero-rate row on their expiration date** -- the lookup takes the latest `effective_date <= month`, so an omitted row means "still in effect," not "expired." OBBBA (2025) ended 25C/25D for property placed in service after 2025-12-31 and 30C after 2026-06-30; the shipped rows reflect that. Not yet wired to a call site -- see `engine._lookup_energy_credit`. |
 | `ltcg_brackets.csv` | Federal long-term capital gain brackets — see "Long-term capital gain rates" below. |
 | `life_table.csv` | SSA's period life table: `q_female` and `q_male`, the chance of dying before the next birthday at each age 0–119. Read only by a lifespan with `vary_distribution` `life_table`, which draws the age at death from it around the median you give. Refresh it from a newer Trustees Report with `scripts/extract_ssa_life_table.py`, keeping the old rows: each vintage is dated December of its year. |
-| `life_table__<name>.csv` | Another country's life table, in the same columns, for a lifespan whose `lifespan.csv` `life_table` cell names it (blank uses `life_table.csv`), per scenario. `scripts/blend_life_tables.py` mixes two. `__jp` is Japan's 2023 table from the Human Life-Table Database, extracted with `scripts/extract_hld_life_table.py`; it ends at an open "105 and over" group, extrapolated to 108 with a death rate that keeps rising, and no one reaches 110 (the few recorded cases past it are largely record errors). Use a country's own table rather than shifting `life_table.csv` older or younger: the shift keeps the US spread, and the US tail past 95 is much fatter than Japan's. |
+| `life_table__<name>.csv` | Another country's life table, in the same columns, for a lifespan whose `lifespan.csv` `life_table` cell names it (blank uses `life_table.csv`), per scenario. `sim lifespan blend` mixes two or more into a scenario's `aux/`. `__jp` is Japan's 2023 table from the Human Life-Table Database, extracted with `scripts/extract_hld_life_table.py`; it ends at an open "105 and over" group, extrapolated to 108 with a death rate that keeps rising, and no one reaches 110 (the few recorded cases past it are largely record errors). Use a country's own table rather than shifting `life_table.csv` older or younger: the shift keeps the US spread, and the US tail past 95 is much fatter than Japan's. |
 
 ### Filing status codes
 
@@ -337,7 +337,7 @@ Authoritative sources the AI should pull from:
 2. Re-run `uv run pytest` from the repo root — there are loader tests that will
    catch missing columns, bad date formats, and unknown filing statuses.
 3. If you added a brand-new file kind (not just a new series), you also have to
-   register it in `src/analysis/sim/registries.py` (`AUX_KIND_COLUMNS`) and
+   register it in `src/zabob/retirement/sim/registries.py` (`AUX_KIND_COLUMNS`) and
    teach the loader.
 
 ## See also

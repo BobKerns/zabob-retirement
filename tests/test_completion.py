@@ -7,9 +7,9 @@ from pathlib import Path
 import click
 from click.testing import CliRunner
 
-from analysis.sim import names
-from analysis.sim.cli import sim_group_command
-from analysis.sim.completion import NameType
+from zabob.retirement.sim import names
+from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.sim.completion import NameType
 
 
 def _complete(data_dir: Path | None, line: str) -> list[str]:
@@ -191,7 +191,7 @@ _NAMING_PARAMS = {
     "refill_chain", "overflow_chain", "scheduled_name", "row", "person", "owner",
     "series", "source_series", "symbol", "symbols", "tag_token", "tag_tokens",
     "vary_correlate_with", "correlate_with", "strategy", "strategy_name", "target_set",
-    "jurisdiction",
+    "jurisdiction", "beneficiary",
 }
 # ... except where the command makes a new one (by the command's function,
 # as `sim accounts` repeats `sim account`).
@@ -231,3 +231,9 @@ def test_draws_pair_completes_each_node(data_dir: Path) -> None:
     assert _complete(data_dir, f"{line}apparel_f") == ["apparel_factor,"]
     assert _complete(data_dir, f"{line}apparel_factor,core_inf") == ["apparel_factor,core_inflation"]
     assert "apparel_factor,apparel_factor" not in _complete(data_dir, f"{line}apparel_factor,")
+
+
+def test_life_tables_complete_for_a_blend(data_dir: Path) -> None:
+    offered = _complete(data_dir, "lifespan blend mix --table j")
+    assert "jp" in offered
+    assert "default" not in offered

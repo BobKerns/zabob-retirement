@@ -1,3 +1,5 @@
+![Importing your data](../assets/brand/banners/guides-importing-data.svg)
+
 # Importing your data
 
 Balances and spending you already keep somewhere else don't have to be typed
@@ -19,7 +21,7 @@ Alice and Bill and a Quicken export:
 | Another brokerage or bank whose website downloads a table of balances | Describe its columns in a [profile](#a-source-of-your-own), then import as above |
 | A bank's or a card's transactions download | [Bank and card files](#bank-and-card-files) below; a layout not built in needs a [profile](#a-source-of-your-own) |
 | An HSA custodian with no usable download | Type the balances when `sim scenario roll` asks ([user guide](../user-guide.md), §4.21) |
-| An OFX or QFX download | Not read yet ([#618](https://github.com/BobKerns/analysis/issues/618)) |
+| An OFX or QFX download (what a bank, a card or a brokerage offers for "Quicken" or "Money") | [OFX and QFX files](#ofx-and-qfx-files) below: no profile needed, whatever the institution |
 | Nothing a program exports, or only a few accounts | Type them: `sim scenario roll` asks for each lot's balance, and `sim scheduled add` takes an estimate of spending |
 
 `sim import sources` lists what this version reads. Given files, it says
@@ -90,7 +92,8 @@ imports/
   budget_choices.csv       category -> budget or actual, where you have both
   <source>/
     profile.yaml           a source of your own (see below)
-    accounts.csv           outside account -> account and lot, or skip
+    accounts.csv           outside account -> account and lot, or skip, or split
+    lot_splits.csv         one outside number divided among an account's lots
     categories.csv         outside category -> category
     splits.csv             a category divided by the outside account that paid
     excluded_payees.csv    payees whose expenses the scenario models itself
@@ -109,13 +112,40 @@ sim import holdings net-worth.csv
 Sets each mapped lot's `opening_balance` from a snapshot of what the outside
 accounts hold. Export the snapshot as of the scenario's first day.
 
-- An account with several lots needs the lot named: the question asks for
-  it. One outside number can't fill two lots, so an outside account that
-  the scenario keeps as several lots is best answered `skip`, and its lots
-  filled from a [brokerage file](#brokerage-files) or typed.
+- **Several accounts at one bank are best kept as lots of one account**:
+  the checking and savings accounts you have there, say, as lots `checking`
+  and `savings` of one `Asset_Bank` account. Keep one account for each
+  owner and each kind of account (cash and retirement money stay apart), and
+  one lot for each outside account. The account list stays
+  short, every report shows the bank's total, and each lot still has its own
+  balance, rate and refill rules. Map each outside account to its lot.
+- The question asks for the lot too. Press Enter for an account's one lot,
+  name one of its lots, or give a new name: after a yes, the lot is added
+  to the account and takes the balance. So a bank's second account can be
+  given its own lot as it is first imported.
+- When the account's one lot is still called `default`, a new name may be
+  that same lot's, so the question says what `default` holds and asks:
+  `rename` gives the lot your name, and the rules that pay into or out of it
+  follow; `add` keeps `default` and adds your lot beside it, for a file that
+  lists only part of the account; `back` asks for the lot again.
+- One outside number can fill several lots when you know how it divides:
+  answer `split` for the lot. It then asks for a lot and its amount, one at a
+  time, until nothing is left. A new name adds a lot; `rest` for an amount
+  gives that lot whatever the others leave. In a brokerage account it also
+  asks a new lot's symbol and the day it was bought, and each part's cost
+  basis in a taxable one. A fund that isn't traded, such as a retirement
+  plan's own, can take its CUSIP or a name you make up as its symbol: one
+  that doesn't look like a ticker is confirmed first, in case it is a slip,
+  and then marked `no_fetch`, so that nothing looks for its prices. The split is saved in
+  `imports/<source>/lot_splits.csv`. The next import uses it as it is when
+  one lot takes the rest, or when the number hasn't changed. Otherwise it
+  asks again, with the last amounts as the defaults.
 - An outside account the scenario has no account for can be added from
   the question: answer with a new name, and it asks what `sim account add`
-  asks (kind, subkind, owner) and adds the account before going on. It
+  asks (kind, subkind, owner) and adds the account before going on. For an
+  outside account that is one balance it also asks what to call the
+  account's lot: Enter for `default`, or a name of your own such as
+  `checking`, which saves renaming it when the account gets a second. It
   asks first whether to add it, and takes Enter as no, since a new name
   may be a slip; `back` at the account's kind returns to the question. A dry
   run adds nothing, so it offers only the accounts there are. A name the
@@ -168,7 +198,8 @@ Things to know:
   custodian's Form 5498s add up to it.
 - **A new symbol is only a label** until the plan knows it. `sim symbol add`
   gives it a name, its asset classes and its prices; until then its lot
-  grows as its account does.
+  grows as its account does. For a made-up symbol or a CUSIP, add
+  `--never-fetch`, so that nothing looks for its prices.
 - **A lot the file doesn't mention is kept**, with a warning: it may have
   been sold. `--prune` empties every such lot (balance, shares and basis to
   zero), and `sim account lot delete` removes one for good. When two
@@ -187,7 +218,9 @@ Things to know:
   balances from the real files.
 - **The file's date should be the scenario's first day**, give or take a
   week. The balances are written as the opening ones whatever the date, so
-  an import of a file dated further away warns, naming both dates.
+  an import of a file dated further away warns, naming both dates. A bank's
+  or a card's [OFX download](#ofx-and-qfx-files) is the exception: its
+  balance is worked back to the first day from its own transactions.
 
 | Source | What to download | The account |
 | --- | --- | --- |
@@ -214,7 +247,11 @@ that it could.
 
 A download that is a plain table, one row for each holding or account, needs
 no code. Describe it in `imports/<source>/profile.yaml`, with whatever name
-you like for the source:
+you like for the source, other than `quicken` and `ofx`: those are sources
+already, and a profile in a folder of either name stops every import until
+the folder is renamed.
+
+For example:
 
 ```yaml
 description: Credit union balances
@@ -258,13 +295,15 @@ download and a detailed one with more columns.
 ## Spending: `sim import transactions`
 
 ```sh
-sim import transactions transactions.csv --from-account Asset_Checking --dry-run
-sim import transactions transactions.csv --from-account Asset_Checking
+sim import transactions transactions.csv --from Asset_Checking --dry-run
+sim import transactions transactions.csv --from Asset_Checking
 ```
 
 Turns a period's transactions into one monthly expense rule per category,
 at that category's average month, rising with inflation (`--series`).
-`--from-account` is where the money comes from.
+`--from` is where the money comes from: an account, or a chain that
+divides it between several. What a credit card paid is charged to the card
+instead; see [A card in the plan](#a-card-in-the-plan).
 
 One file is written by hand first, `imports/<source>/categories.csv`: it
 gathers the outside program's many categories into the few a plan wants.
@@ -303,8 +342,10 @@ covered, each category's total and what it comes to a month (over the
 months that had any spending, as the rules are worked out), what was left
 out and why (money in, moves between your own accounts, what the scenario
 models itself), and the outside categories that fell to `Other`. It needs
-no `--from-account` and no expense accounts yet, so it is a good first
-command with a new file. It asks nothing: a payee with no category yet is
+no `--from`, no expense accounts and no `categories.csv` yet, so it is a
+good first command with a new file: with no map, each of the outside
+program's categories is shown as itself, which is what the map is written
+from. It asks nothing: a payee with no category yet is
 counted in `Other`, with a note of the most paid, and a file that doesn't
 name its account is taken as its own name's.
 
@@ -333,7 +374,7 @@ amount), and its payee left out of the generated rules. Have both written
 for you as a script:
 
 ```sh
-sim import transactions transactions.csv --yearly-script yearly-rules.sh --from-account Asset_Checking
+sim import transactions transactions.csv --yearly-script yearly-rules.sh --from Asset_Checking
 ```
 
 `--yearly-script` implies `--summary`: it shows the same summary, writes
@@ -372,7 +413,7 @@ Then:
   amount is as it was paid, and grows with inflation from the month it was
   paid in. Where a bill was seen over several years, the latest year's
   payments are used.
-- Fill in each `EDIT_ME`: the account that pays, when `--from-account` was
+- Fill in each `EDIT_ME`: the account that pays, when `--from` was
   left out, and the expense account of a category that has none in this
   scenario (neither a row in `imports/expense_accounts.csv` that names one
   of its accounts, nor an account of its own name).
@@ -415,7 +456,7 @@ delimited) is built in (`wells_fargo`); another bank's needs a
 [profile](#a-source-of-your-own).
 
 ```sh
-sim import transactions ~/Downloads/Checking1.csv --from-account Asset_Checking --dry-run
+sim import transactions ~/Downloads/Checking1.csv --from Asset_Checking --dry-run
 ```
 
 At a terminal it asks about each payee it has no category for, the most paid
@@ -458,7 +499,7 @@ download, each card's, a Quicken export. Each file's layout is recognized by
 itself, and the rules are averaged over all of them together:
 
 ```sh
-sim import transactions Checking1.csv Card.csv --from-account Asset_Checking
+sim import transactions Checking1.csv Card.csv --from Asset_Checking
 ```
 
 A card's purchases come from the card's own file, so mark its payment
@@ -480,14 +521,199 @@ for any other source. Where the card's category isn't yours, a row of
 `imports/<source>/payees.csv` for that payee wins over it. If the file has a
 reference for each transaction, name that column too (`reference`):
 downloads that all have it may then overlap, and a transaction in two of
-them is counted once. A download without references can't be matched that
+them is counted once, by its reference alone. The import prints a note if a
+reference comes back with another day or amount, or a day and amount come
+back under another reference, since then the references may not mean what
+they should. A download without references can't be matched that
 way, so it mustn't cover the same days as another.
+
+### A card in the plan
+
+If the scenario has the card as an account (a liability of subkind
+`credit_card`), the import charges the card's spending to it, so the plan
+shows the card's balance rise with its use and fall with its payment:
+
+```sh
+sim account add Liability_Card liability credit_card --owner joint --opening-balance 1200
+sim import transactions Checking1.csv Card.csv --from Asset_Checking
+```
+
+The import needs to know which file's account is the card. At a terminal it
+asks about each account it doesn't know, until every card has its account.
+Answer with the card, or with the account it is when it is no card, and it
+isn't asked about again; the answer is saved in
+`imports/<source>/accounts.csv`, where `sim import map` shows and changes
+it. Then:
+
+- Each category the card paid for gets a rule from the card, named for it
+  (`baseline_expense_food__liability_card`), beside the category's rule
+  from `--from` for what the bank account paid directly.
+- The card gets one rule that pays it, `card_payment_liability_card`: each
+  month, from `--from`, **in full**. Its amount is blank, which means what
+  the card was owed when the month opened: last month's charges are paid
+  this month, as a statement is.
+- That payment rule is written once. Later imports leave it alone, and add
+  none if you already have a rule that pays the card, directly or through a
+  chain. It is yours to change.
+- A card charged only by yearly rules is paid too: the yearly script has a
+  `pay_card` line for it.
+
+A card that carries a balance wants two changes. Give the payment an amount
+(`sim scheduled edit card_payment_liability_card`), and add the card's
+interest:
+
+```sh
+sim scheduled add 2027-01 Liability_Card Expense_Interest_Card --kind card_interest --rate 24%
+```
+
+Each month this charges the card a month's interest on whatever the
+payments left unpaid of the balance it opened the month with. A card paid in
+full is charged nothing. It is a month's approximation: a real card works
+day by day.
+
+A file whose account isn't a card of the scenario is paid from `--from`, as
+before. So is Amazon's summary, which doesn't say what paid. With `--budget`,
+a category made from the budget is paid by whatever paid most of it in the
+transactions; in the yearly script, a bill that was always charged to one
+card is paid from that card.
+
+### OFX and QFX files
+
+Most banks, cards and brokerages offer a download "for Quicken" (`.qfx`) or
+"for Money" (`.ofx`). They are one format, and it is read whatever the
+institution: no profile is needed. A file is recognized by what is in it,
+not by its name.
+
+```sh
+sim import transactions ~/Downloads/Checking.qfx ~/Downloads/card.ofx --from-account Asset_Checking --dry-run
+sim import holdings ~/Downloads/Checking.qfx --dry-run
+```
+
+One download feeds both commands:
+
+| In the file | Becomes |
+| --- | --- |
+| A bank account's or a card's transactions, and a brokerage account's checks, card purchases and bill payments | spending, for `sim import transactions` |
+| Each transaction's own id | what lets two downloads overlap: a transaction in both is counted once |
+| The institution's name, the account's type and the account's number | the outside account, as `First Example Bank checking ...4321` (`card` or `investment` where it is one): the last four digits only |
+| The statement's balance and its date | the account's balance, for `sim import holdings` (what a card owes is a debt) |
+| A brokerage account's positions | holdings by symbol, as for [brokerage files](#brokerage-files) |
+| A brokerage account's cash that no position holds | a holding named `(cash)`, for the account's cash lot (`(margin)` for what it has borrowed) |
+
+The transactions have no categories, so they are categorized
+[by payee](#bank-and-card-files), with one map for every institution's
+file: `imports/ofx/payees.csv`. The same payee text means the same thing
+whichever bank reports it. A card paid from the bank is `transfer` there,
+as for any other bank file.
+
+The balance is what a bank's CSV download never has, so an OFX file is the
+easy way to set a checking or savings account's opening balance. The balance
+in the file is always the one on the day you download it: the range of dates
+a bank asks for only chooses which transactions the file has. So download
+with a range from the scenario's first day (or earlier) through today. The
+file then has everything posted since the scenario started, and the import
+works the balance back to that first day, saying what it did:
+
+```text
+note: First Example Bank checking ...4321: its balance of 4321.09 as of 2026-06-15 is worked back to 2026-05-01: what was posted from that day comes to -1200.00, so it opened the day with 5521.09
+```
+
+A download that doesn't reach back to the scenario's first day sets the
+balance as the file has it, with a warning that the dates differ and a note
+of the days the file covers. So does a card whose file writes what is owed
+as a positive amount, and a file with a bank's correction of a transaction.
+A brokerage's positions are never worked back, since the file can't say
+what the shares and prices were on an earlier day. With `--year-end` the
+balance is worked back to the end of the year before, from a download that
+starts on January 1 or earlier.
+
+The outside account's name is made from what the file says and nothing
+else. A file that doesn't name its institution (many banks' don't) gives
+its id, or the bank's routing number, in its place. Two accounts at one
+institution, of one type, ending in the same four digits can't be told
+apart; a file with both is refused, and from separate files they would be
+read as one account.
+
+The mappings, and the counting of a transaction once, go by that name, so
+it matters that one account keeps one name. It may not: a bank's `.qfx`
+and `.ofx` downloads can name the bank differently, and a reissued card
+has a new number. Overlapping downloads under two names are counted
+twice. The import prints a note when two outside accounts have
+transactions with the same id, day and amount; if you see it, import
+downloads that don't overlap.
+
+An id is taken at its word: a transaction with an id an earlier download
+had is that transaction, and is left out. Some institutions break that
+promise. One that numbers each download from the start again loses
+transactions this way, and one that gives a transaction a new id every
+time has them counted twice. The import can't tell which it is looking at,
+so it prints a note when an id comes back with another day or amount, or a
+day and amount come back under another id. If you see either, import
+downloads that don't overlap from that institution.
+
+The payee is the file's name for it. Some banks write only the kind of
+payment there (`POS PURCHASE`) and put the merchant in the memo, so one
+`payees.csv` row would cover every purchase. The import prints a note when
+one payee has many different memos.
+
+Nothing is converted from another currency. An account or a transaction
+that is not in US dollars is read as it is, with a note.
+
+A card's balance is what is owed, and is stored as a debt whichever sign
+the issuer writes it with: most write it negative, some positive. A
+positive one is reported as an unusual credit balance, since the file
+can't say which it is; check it against the statement.
+
+A brokerage's cash is read best effort. The file gives one figure for all
+of the account's cash, which includes a sweep or money market fund where
+that is also listed as a position. Positions priced at a dollar a share
+are taken to be that fund, and only the cash beyond them is added. Money
+borrowed on margin is taken off: the margin balance where the file gives
+one. Where that guess decided anything, a note says what was added or left
+out; check the account's total against the statement. A download that
+leaves the positions out can't tell the cash from a fund a lot already
+holds, so download the account with its positions.
+
+The cash goes to the account's cash lot (one with the symbol `CASH`), or
+to its lot with no symbol. If the account has neither, `--new-lots` adds a
+cash lot named `cash`, and at a terminal you are asked. To put it
+somewhere else, give it a row of its own in `imports/ofx/accounts.csv`,
+with `(cash)` as its `asset`; the positions keep the account's row.
+
+An OFX file has no cost basis. In a taxable brokerage account the cash
+lot's basis is its balance, and a note names the new lots that have none:
+set each with `sim account lot edit ACCOUNT LOT --opening-cost-basis
+AMOUNT` before a run draws on it. When one lot is split into a lot for
+each fund, the old lot is emptied and keeps the account's basis, for you
+to share among the new ones.
+
+Amounts are read as institutions write them, with a thousands separator or
+a decimal comma (`5,000` is five thousand dollars). An amount with a
+fraction of a cent is refused, except a position's value and a brokerage
+account's cash and margin balances, which are rounded
+to the cent. A number of shares or a position's value written like `2,500`,
+which could be 2500 or 2.5, is refused and not guessed.
+
+Files that stray from the format are read where they can be: one with no
+header, one that starts with a byte-order mark, one with an accented payee
+in the bank's own encoding, one that leaves a value empty. A payee written
+`A &amp; B` is read as `A & B`, so the same pattern in `payees.csv` matches
+it from any bank. A file that can't be read is refused without quoting it,
+since it has whole account numbers in it. So is a download that was cut
+off before its end: download it again.
+
+A bank's correction of a transaction replaces or removes the one it
+names, whether that is in the same file or in an earlier download given in
+the same run.
+
+Not read: a brokerage's investment transactions (buys, sales, dividends,
+reinvestments), which are investment activity and not spending.
 
 ## A budget: `sim import budget`
 
 ```sh
-sim import budget budget-full.csv --from-account Asset_Checking --dry-run
-sim import budget budget-full.csv --from-account Asset_Checking
+sim import budget budget-full.csv --from Asset_Checking --dry-run
+sim import budget budget-full.csv --from Asset_Checking
 ```
 
 Writes the same expense rules from what you plan to spend instead of what
@@ -536,7 +762,7 @@ income, and export the copy. Away from a terminal income is left out unless
 A budget's paycheck is usually take-home pay, with its tax already
 withheld, so income rules are written untaxed. If your budget has pay
 before tax, say so when asked, or with `--gross-income`, and the scenario
-taxes it. Income goes into `--from-account` unless `--income-to` names
+taxes it. Income goes into `--from` unless `--income-to` names
 another account, which it must when the spending comes from a chain.
 
 Treat a budget's income as a convenient start, not the finished model. It
@@ -551,7 +777,7 @@ The scenario does not work out payroll tax (Social Security and Medicare).
 Enter the pay stub's amounts for them as an expense rule of their own, taken
 from the gross pay with the other deductions. A business's profit is another
 matter: the federal return works out its self-employment tax
-([#623](https://github.com/BobKerns/analysis/issues/623)), since it depends on
+([#623](https://github.com/BobKerns/zabob-retirement/issues/623)), since it depends on
 a profit the run works out. It counts each spouse's gross wages (`ordinary`
 income out of their own `salary` account) toward their Social Security wage
 base, so gross pay matters there too.
@@ -562,7 +788,7 @@ scenario's start is warned about, since its dollars are old ones.
 ### Budget or actual, for each category
 
 ```sh
-sim import transactions transactions.csv --budget budget-full.csv --from-account Asset_Checking
+sim import transactions transactions.csv --budget budget-full.csv --from Asset_Checking
 ```
 
 Reads both, gathers each into the same categories, and shows a month of
@@ -622,7 +848,13 @@ Save two reports under *My Reports*, and export each as CSV:
 | --- | --- | --- |
 | Net worth (every account, with its balance) | `sim import holdings` | the scenario's first day; or December 31 for `--year-end` |
 | Transactions (every account, itemized, with payee and category) | `sim import transactions` | the year to average |
+| Portfolio Value & Cost Basis, one saved report for each investment account | `sim import holdings` | a range ending on the scenario's first day |
 | A budget's export, Full | `sim import budget` | the year planned |
+
+The transactions report may be the saved one, grouped under each account,
+or the "All Transactions" report exported as it stands, with one row for
+each transaction and its account in a column. A move between your own
+accounts is taken from that report's `Transfer:` category.
 
 With no file named, `sim import transactions` reads
 `quicken/Transaction Export.csv` at the data repo's top level, along with the
@@ -630,8 +862,57 @@ Amazon categorizer's monthly summaries in `state/`, which split Amazon
 orders into real categories.
 
 Quicken's net worth report has one number for a brokerage account, so it
-can't fill an account kept as several lots: import those from the
-[brokerage's own file](#brokerage-files).
+can't fill an account kept as several lots. For those, use the built-in
+**Portfolio Value & Cost Basis** report, which is the only export Quicken
+has of what an account holds. The report names no account, and one of
+several accounts adds them together, so make one for each account:
+
+1. Under *Reports*, open the built-in **Portfolio Value & Cost Basis**
+   report.
+2. In its account list, turn off every account but the one.
+3. Set its dates so that one of them is the scenario's first day (or
+   December 31 for `--year-end`). The report has numbers for several dates;
+   the import takes those of the date nearest the one the plan wants, and
+   says which.
+4. For tax lots, open each security's line (the triangle beside its name)
+   so that the purchase dates show under it in the *Security* column. Quicken
+   exports the dates only for the lines that are open. Leave a line closed
+   to import that security as one total: a money market fund, say, whose
+   every monthly dividend is a purchase of its own.
+5. Save the report under the account's name, and export it as CSV.
+
+```sh
+sim import holdings "Joint Brokerage.csv"
+```
+
+The import asks which Quicken account the file is, offering the name the
+report was saved under and the accounts the net worth report named
+(`--outside-account NAME` answers it), then sends each security to the
+account's lot of its symbol, with its value and cost basis, and the
+account's cash to its cash lot. The report has no share
+counts: at a terminal the import offers to work one out from a stored price.
+A [brokerage's own file](#brokerage-files) has the counts, and is the better
+source where you can get one.
+
+**Tax lots.** A security whose line was open comes as one row for each
+purchase date, and the import asks once for each security whether every
+one gets a lot of its own:
+
+```text
+The quicken file lists VTSAX in Asset_Brokerage_Joint by tax lot: 3 with no lot here yet, acquired 2019-03-15 to 2026-02-10.
+  A lot for each keeps its own cost basis and holding period (short or long term), named vtsax-DATE; otherwise they are added together into one lot.
+A lot for each tax lot of VTSAX? [Y/n]:
+```
+
+A yes (and `--new-lots`, which doesn't ask) makes lots named for the
+symbol and the date, such as `vtsax-2019-03-15`, each with its `acquired`
+date, value and cost basis. A later import finds each by its date, adds a
+lot for a new purchase, and with `--prune` empties one that was sold. A lot
+of the symbol with no date, from an earlier import of its total, is emptied
+too, since the dated lots now hold what it held. A no asks for one lot's
+name instead, and adds them together into it then and in later imports.
+Purchases on the same day are one lot. Where the dates listed don't come
+to the security's total, the rest gets a lot with no date.
 
 A data repo with Quicken mappings from before the `imports/` folder moves
 them with `scripts/migrate_527.py` (it reports first; `--write` does it).

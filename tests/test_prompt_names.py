@@ -13,11 +13,11 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner, Result
 
-from analysis.cli import main
-from analysis.sim import cli as sim_cli
-from analysis.sim import completion, names
-from analysis.sim.cli import sim_group_command
-from analysis.sim.loader import BATCH_MANIFEST_FILENAME, batches_dir, write_current_scenario
+from zabob.retirement.cli import main
+from zabob.retirement.sim import cli as sim_cli
+from zabob.retirement.sim import completion, names
+from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.sim.loader import BATCH_MANIFEST_FILENAME, batches_dir, write_current_scenario
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_a_name_given_on_the_line_is_not_asked(sim: Callable[..., Result], test_
 
 # Required params that aren't names a scenario defines: a date, and the
 # inputs of the importers, which are run from scripts.
-_STILL_REQUIRED = {"sim items start", "sim import holdings files", "sim import budget file",
+_STILL_REQUIRED = {"sim import holdings files", "sim import budget file",
                    "sim import budget from_account"}
 
 

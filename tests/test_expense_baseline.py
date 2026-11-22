@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from analysis.expenses.baseline import (
+from zabob.retirement.expenses.baseline import (
     BaselineResult,
     occasional_payments,
     BASELINE_GENERATED_TAG,
@@ -13,13 +13,13 @@ from analysis.expenses.baseline import (
     build_scheduled_baseline_rows,
     replace_generated_scheduled_rows,
 )
-from analysis.sim.imports.mapping import (
+from zabob.retirement.sim.imports.mapping import (
     load_category_map,
     load_category_splits,
     load_excluded_payees,
     load_expense_accounts,
 )
-from analysis.sim.imports.quicken import read_transactions
+from zabob.retirement.sim.imports.quicken import read_transactions
 
 
 def _write_export(path: Path) -> None:
@@ -388,6 +388,19 @@ def test_build_expense_baseline_does_not_default_merge_targets_to_other(tmp_path
         {"category": "Food", "amount_total": 32.0},
         {"category": "Other", "amount_total": 9.0},
     ]
+
+
+def test_scheduled_baseline_rows_round_a_category_no_card_paid_from_its_dollars() -> None:
+    """Three cents over two months is a cent a month, as before cards were told apart:
+    a run on unchanged data shows no rule as changed."""
+    months = pd.to_datetime(["2026-01-01", "2026-02-01"])
+    empty = pd.DataFrame()
+    baseline = BaselineResult(
+        empty, empty,
+        pd.DataFrame({"summary_month_start": months, "category": "Food", "amount_total": [0.01, 0.02]}),
+        pd.DataFrame({"category": ["Food"], "amount_total": [0.03]}), ())
+    rows = build_scheduled_baseline_rows(baseline, {"Food": "food"}, "2026-05-31", "Asset_Checking")
+    assert baseline.observed_months == 2 and [row["amount"] for row in rows] == ["0.01"]
 
 
 def test_scheduled_baseline_rows_are_rerunnable_and_remove_stale_rows(tmp_path: Path) -> None:

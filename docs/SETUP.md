@@ -1,4 +1,6 @@
-# Setup
+![Setting up Zabob Retirement](assets/brand/banners/setup.svg)
+
+# Setting up Zabob Retirement
 
 > To read a formatted `.md` file:
 > - In Jupyter: right-click on it and select `Open With / Markdown Preview`
@@ -11,7 +13,7 @@ If you don't have the code yet, or don't use git, paste this into a terminal
 first):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/BobKerns/analysis/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/BobKerns/zabob-retirement/main/scripts/install.sh | sh
 ```
 
 It installs git if it's missing (on macOS, Apple's command-line tools: finish
@@ -114,18 +116,27 @@ on: the simulator and notebooks don't need Node.js, only those two
 verification gates do.
 
 Last, it links the data and code repositories together. It asks for the path to
-your data repo, makes `data/shared` point to it, and asks which of the data
+your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
 to create one there with `sim init`, which asks who you are. Leave the path
-blank and it fills `data/shared` with the template data instead, used as a
+blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,
 `--new PATH` (with `sim init`'s options, if you like) or `--template`.
 Either way, this then gives you a working environment:
 
 ```sh
-source data/shared/sim/activate-analysis
+source data/private/sim/activate-analysis
 ```
+
+A checkout's data repo is always found at its `data/private`. In a checkout
+that has none yet, `sim init` with no arguments makes one right there, and
+`sim init DIR` makes it at `DIR` and links `data/private` to it. Sourced
+through `data/private`, `activate-analysis` activates the code of the checkout
+you are in, so several worktrees can share one data repo and each run its
+own code. If you run `sim init` while another checkout's venv is active, it
+runs the `sim init` of the checkout you are in instead (making its `.venv`
+first if needed), so the data repo isn't paired with the wrong code.
 
 With a data repo linked, it then turns on background scenario builds
 (`sim builder install`; [ADR-004](architecture/ADR-004-reproducibility-and-activation.md) §12):
@@ -205,7 +216,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
 6. Run `uv sync --group dev` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
-   This also puts `analysis_truststore.pth` in the venv's site-packages. It
+   This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It
    runs `truststore.inject_into_ssl()` at the start of every Python process
    there (the JupyterLab server, kernels, the CLI), so HTTPS everywhere is
    verified with the operating system's trust store and a root you've
@@ -234,15 +245,15 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     scripts/link-data.sh /path/to/data-repo   # or --template for template data
     ```
     `--new PATH` creates a data repo there with `sim init` first. With no
-    argument it asks for the path. Once `data/shared` exists, re-running
-    it leaves it alone; remove `data/shared` to link a different data repo.
+    argument it asks for the path. Once `data/private` exists, re-running
+    it leaves it alone; remove `data/private` to link a different data repo.
 10. Turn on background scenario builds, for a linked data repo:
     ```sh
-    .venv/bin/sim builder install --data-dir data/shared/sim
+    .venv/bin/sim builder install --data-dir data/private/sim
     ```
 11. Optionally, install the finance-research Claude plugin:
     ```sh
-    .venv/bin/analysis research-plugin install --data-dir data/shared/sim
+    .venv/bin/analysis research-plugin install --data-dir data/private/sim
     ```
 
 ## Blocked keywords
@@ -261,7 +272,7 @@ same format: one keyword per line, `#` comment lines and blank lines ignored.
   - the `BLOCKED_KEYWORDS_PRIVATE` environment variable, which may also
     separate keywords with commas where a value can't span lines;
   - a `blocked-keywords.txt` file at the top of the data repo, found through
-    `$ANALYSIS_DATA_DIR`, or else through `data/shared` in the main checkout
+    `$ANALYSIS_DATA_DIR`, or else through `data/private` in the main checkout
     (so worktrees and hooks run from an editor find it too).
 
 Set the private list once in each place it is needed:

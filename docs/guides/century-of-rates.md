@@ -1,3 +1,5 @@
+![A century of rates: what carries over from one year to the next](../assets/brand/banners/guides-century-of-rates.svg)
+
 # A century of rates: what carries over from one year to the next
 
 When prices jump or the market falls, it's natural to read it as the start of

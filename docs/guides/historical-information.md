@@ -1,3 +1,5 @@
+![How much information is in the historical series?](../assets/brand/banners/guides-historical-information.svg)
+
 # How much information is in the historical series?
 
 > To read a formatted `.md` file:

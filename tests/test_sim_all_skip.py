@@ -11,8 +11,8 @@ import git
 import pytest
 from click.testing import CliRunner
 
-from analysis.cli import main
-from analysis.sim import freshness
+from zabob.retirement.cli import main
+from zabob.retirement.sim import freshness
 
 
 
@@ -71,6 +71,22 @@ def test_uncommitted_code_always_reruns(
     sim_all()
     stamp_runs(runs_dir)
     (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("edited\n")
+    assert _skipped(sim_all()) == []
+
+
+def test_installed_from_a_wheel_an_upgrade_reruns(
+    sim_all: Callable[..., str], installed_build: Callable[[str | None], Callable[[Path], None]],
+    runs_dir: Path,
+) -> None:
+    """#662: with no code repo, the build's version stands for the code trees."""
+    stamp = installed_build("1.0.0b1+g0123456789ab")
+    sim_all()
+    stamp(runs_dir)
+    assert _skipped(sim_all()) == ["base", "retire_alice"]
+    stamp = installed_build("1.0.0b2+g0123456789ab")
+    assert _skipped(sim_all()) == []
+    stamp(runs_dir)
+    installed_build(None)  # built from dirty code: never trusted
     assert _skipped(sim_all()) == []
 
 

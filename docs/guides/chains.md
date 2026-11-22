@@ -1,3 +1,5 @@
+![Chains: where money comes from, and where extra money goes](../assets/brand/banners/guides-chains.svg)
+
 # Chains: where money comes from, and where extra money goes
 
 > To read a formatted `.md` file:

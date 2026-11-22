@@ -1,3 +1,5 @@
+![Ensembles: ranges of outcomes, not one number](../assets/brand/banners/guides-ensembles.svg)
+
 # Ensembles: ranges of outcomes, not one number
 
 > To read a formatted `.md` file:

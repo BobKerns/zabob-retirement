@@ -69,3 +69,4 @@ node_modules/
 
 # Claude Code: per-person settings (the shared .claude/settings.json is tracked)
 .claude/settings.local.json
+src/zabob/retirement/_build_info.py

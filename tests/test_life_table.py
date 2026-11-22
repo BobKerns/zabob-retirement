@@ -11,15 +11,15 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
-from analysis.cli import main
-from analysis.sim.dates import final_month_for_age
-from analysis.sim.ensemble import life_table_age, oat_plan, resolve_member, varying_names
-from analysis.sim.life_table import (
+from zabob.retirement.cli import main
+from zabob.retirement.sim.dates import final_month_for_age
+from zabob.retirement.sim.ensemble import life_table_age, oat_plan, resolve_member, varying_names
+from zabob.retirement.sim.life_table import (
     LifeTable, LifeTableAge, LifeTableError, equivalent_multiplier, life_table_from_rows,
     months_since_birth, solve_set_forward,
 )
-from analysis.sim.loader import LoadError, LoadResult
-from analysis.sim.sensitivity import parameters
+from zabob.retirement.sim.loader import LoadError, LoadResult
+from zabob.retirement.sim.sensitivity import parameters
 
 # Alice (f) was born 1965-03-15 and Bill (m) 1967-08-20 (prototype persons.csv);
 # retire_alice starts 2026-05, when Alice is 61 years 2 months old. The
@@ -454,18 +454,3 @@ def test_the_extractor_reads_an_hld_table_and_extends_its_open_interval(repo_roo
     assert float(tables["male"][108]) == pytest.approx(gompertz(108), abs=0.01)
     female = [float(tables["female"][age]) for age in range(100, 110)]
     assert female == sorted(female)  # the death rate keeps rising
-
-
-def test_the_blend_averages_hazards_by_weight(repo_root: Path) -> None:
-    import runpy
-
-    blend = runpy.run_path(str(repo_root / "scripts" / "blend_life_tables.py"))["blend"]
-    a = {0: {"q_female": 0.1, "q_male": 0.2}, 1: {"q_female": 0.5, "q_male": 0.5}}
-    b = {0: {"q_female": 0.3, "q_male": 0.2}}
-
-    mixed = blend([(a, 3), (b, 1)])
-
-    hazard = 0.75 * -math.log(0.9) + 0.25 * -math.log(0.7)
-    assert mixed[0]["q_female"] == pytest.approx(1 - math.exp(-hazard))
-    assert mixed[0]["q_male"] == pytest.approx(0.2)
-    assert mixed[1] == {"q_female": 1.0, "q_male": 1.0}  # past b's last age

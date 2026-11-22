@@ -1,3 +1,5 @@
+![Historical calibration data](../docs/assets/brand/banners/historical_data-readme.svg)
+
 # Historical calibration data
 
 <!-- cspell:ignore PCEPI TB3MS -->

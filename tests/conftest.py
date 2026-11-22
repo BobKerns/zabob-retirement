@@ -63,6 +63,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
 import sys
 import warnings
 from typing import Any
@@ -71,16 +72,16 @@ import git
 import pandas as pd
 import pytest
 
-from analysis.sim import scenario
-from analysis.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
-from analysis.sim.engine import _load_aux, _tax_year, run_scenario
-from analysis.sim.ensemble import resolve_member
-from analysis.sim.schema import apply_run_schema
-from analysis.sim.tax_api import TaxYear
-from analysis.sim.loader import LoadResult, ScenarioRef, latest_run_path, load_scenario, resolve_scenario_name
-from analysis.sim.notebook_ui.pickers import MultiScenarioConnections, multi_scenario_picker
-from analysis.sim.provenance import CodeStamps
-from analysis.sim.registries import (
+from zabob.retirement.sim import scenario
+from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
+from zabob.retirement.sim.engine import _load_aux, _tax_year, run_scenario
+from zabob.retirement.sim.ensemble import resolve_member
+from zabob.retirement.sim.schema import apply_run_schema
+from zabob.retirement.sim.tax_api import TaxYear
+from zabob.retirement.sim.loader import LoadResult, ScenarioRef, latest_run_path, load_scenario, resolve_scenario_name
+from zabob.retirement.sim.notebook_ui.pickers import MultiScenarioConnections, multi_scenario_picker
+from zabob.retirement.sim.provenance import CodeStamps
+from zabob.retirement.sim.registries import (
     ACCOUNT_LOTS_CSV_HEADER, CALENDAR_HEADER, GUARD_RAILS_CSV_HEADER, SCENARIO_HEADER,
     RESIDENCE_CSV_HEADER, RESIDENCE_FILE, SCHEDULED_CSV_HEADER, TAX_CSV_HEADER,
 )
@@ -98,10 +99,10 @@ def _no_ambient_analysis_env(
     for name in _ANALYSIS_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     # Without $ANALYSIS_DATA_DIR the notebook widgets fall back to the
-    # checkout's data/shared/sim: on a dev machine, the real data repo,
+    # checkout's data/private/sim: on a dev machine, the real data repo,
     # whose disabled scenarios once hid a test's recipe (#401).
     monkeypatch.setattr(
-        "analysis.sim.notebook_ui.pickers._checkout_data_dir",
+        "zabob.retirement.sim.notebook_ui.pickers._checkout_data_dir",
         lambda: tmp_path_factory.getbasetemp() / "no-checkout-data" / "sim")
     # No test starts or waits on a background builder (#300) unless it
     # turns the builder back on itself.
@@ -112,6 +113,8 @@ def _no_ambient_analysis_env(
     monkeypatch.setenv("ANALYSIS_PRICE_FETCH", "off")
     # Nor rolls scenarios forward at night (#564).
     monkeypatch.setenv("ANALYSIS_ROLL", "off")
+    # Nor researches symbols with Claude each morning (#640).
+    monkeypatch.setenv("ANALYSIS_RESEARCH", "off")
 
 
 _STABLE_CODE_STAMPS = CodeStamps(version="0" * 40, dirty=False, repo_path="CODE_REPO")
@@ -127,7 +130,7 @@ def _stable_code_stamps() -> Generator[None]:
     Patched once per session, since nothing a test does can change the stub.
     """
     with pytest.MonkeyPatch.context() as patch:
-        for name in ("analysis.sim.runs.code_stamps", "analysis.sim.loader.code_stamps"):
+        for name in ("zabob.retirement.sim.runs.code_stamps", "zabob.retirement.sim.loader.code_stamps"):
             patch.setattr(name, lambda: _STABLE_CODE_STAMPS)
         yield
 
@@ -169,9 +172,9 @@ def _no_current_scenario_writes(
     """
     if request.node.get_closest_marker("uses_current_scenario_write"):
         return
-    monkeypatch.setattr("analysis.sim.cli.write_current_scenario", lambda *args, **kwargs: None)
+    monkeypatch.setattr("zabob.retirement.sim.cli.write_current_scenario", lambda *args, **kwargs: None)
     # And its notice, which would otherwise announce a switch that never happens.
-    monkeypatch.setattr("analysis.sim.cli._make_current", lambda *args, **kwargs: None)
+    monkeypatch.setattr("zabob.retirement.sim.cli._make_current", lambda *args, **kwargs: None)
 
 
 @pytest.fixture(autouse=True)
@@ -184,7 +187,7 @@ def _no_working_set_writes(
     ``@pytest.mark.uses_working_set_write``."""
     if request.node.get_closest_marker("uses_working_set_write"):
         return
-    monkeypatch.setattr("analysis.sim.working_set._write", lambda *args, **kwargs: None)
+    monkeypatch.setattr("zabob.retirement.sim.working_set._write", lambda *args, **kwargs: None)
 
 
 @pytest.fixture(autouse=True)
@@ -201,7 +204,7 @@ def _one_cpu_for_default_jobs(
     """
     if request.node.get_closest_marker("uses_real_cpu_count"):
         return
-    monkeypatch.setattr("analysis.sim.cli._available_cpus", lambda: 1)
+    monkeypatch.setattr("zabob.retirement.sim.cli._available_cpus", lambda: 1)
 
 
 @pytest.fixture(autouse=True)
@@ -276,7 +279,7 @@ def template_data_dir(tmp_path: Path, repo_root: Path) -> Path:
     """A private data repo built as ``scripts/link-data.sh --template``
     builds one: ``templates/`` copied whole, less its ``t_`` template
     scenarios, which the loader reads from the code repository instead."""
-    from analysis.sim.lineage import is_template_name
+    from zabob.retirement.sim.lineage import is_template_name
 
     data_dir = tmp_path / "sim"
     shutil.copytree(repo_root / "templates", data_dir,
@@ -290,7 +293,7 @@ def local_templates(test_scenarios_dir: Path) -> Path:
     """The private data copy with the code repository's template scenarios
     copied into its own ``scenarios/``, so they're ordinary, editable
     scenarios there (a data repo's folder replaces a template whole)."""
-    from analysis.sim.lineage import TEMPLATE_SCENARIOS_DIR, is_template_name
+    from zabob.retirement.sim.lineage import TEMPLATE_SCENARIOS_DIR, is_template_name
 
     for folder in TEMPLATE_SCENARIOS_DIR.iterdir():
         if folder.is_dir() and is_template_name(folder.name):
@@ -526,6 +529,31 @@ def prototype_data(repo_root: Path) -> Path:
     return repo_root / "prototype_data"
 
 
+@pytest.fixture(scope="session")
+def built_wheel(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Path:
+    """The wheel `uv build` makes of this checkout, through its sdist as a
+    release is (#662). Skips without uv."""
+    if shutil.which("uv") is None:
+        pytest.skip("needs uv")
+    out = tmp_path_factory.mktemp("dist")
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    subprocess.run(["uv", "build", "--quiet", "-o", str(out)], cwd=repo_root, env=env, check=True)
+    (wheel,) = out.glob("*.whl")
+    return wheel
+
+
+@pytest.fixture(scope="session")
+def installed_wheel(tmp_path_factory: pytest.TempPathFactory, built_wheel: Path) -> Path:
+    """A fresh venv, away from any checkout, with ``built_wheel`` installed
+    as a user's ``uv tool install`` would have it; its ``bin/``."""
+    venv = tmp_path_factory.mktemp("installed") / "venv"
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    subprocess.run(["uv", "venv", "--quiet", "-p", sys.executable, str(venv)], env=env, check=True)
+    subprocess.run(["uv", "pip", "install", "--quiet", "-p", str(venv / "bin" / "python"), str(built_wheel)],
+                   env=env, check=True)
+    return venv / "bin"
+
+
 @pytest.fixture(scope="function")
 def videos_root(tmp_path: Path, repo_root: Path) -> Path:
     """A private docs/videos: the repo's theme, assets and YouTube settings, no videos yet.
@@ -729,6 +757,19 @@ def write_lifespans(retire_alice_csv: Callable[[str], Path]) -> Callable[..., No
         if any(r.count(",") == 8 for r in rows):
             header = header.replace("\n", ",life_table\n")
         retire_alice_csv("lifespan.csv").write_text(header + "".join(f"{r}\n" for r in rows))
+    return _write
+
+
+@pytest.fixture(scope="function")
+def write_life_table(test_data_dir: Path) -> Callable[[str, str], Path]:
+    """Write a life table CSV in the private data copy, at a path relative to
+    it (``scenarios/retire_alice/aux/life_table__jp.csv``), from rows of
+    ``effective_date,age,q_female,q_male`` after the header."""
+    def _write(where: str, rows: str) -> Path:
+        path = test_data_dir / where
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("effective_date,age,q_female,q_male\n" + rows)
+        return path
     return _write
 
 
@@ -1303,6 +1344,23 @@ def update_account(retire_alice_csv: Callable[[str], Path]) -> Callable[..., Non
 
 
 @pytest.fixture(scope="function")
+def add_person(test_data_dir: Path) -> Callable[..., None]:
+    """Add a row to the private data copy's shared persons.csv (#274):
+    ``add_person("dana", kind="charity")``; with no ``role``, someone outside
+    the household (kind ``person`` unless given), who gets an account of
+    their own."""
+    def _add(person: str, **columns: str) -> None:
+        path = test_data_dir / "persons.csv"
+        persons = pd.read_csv(path, dtype=str, keep_default_na=False)
+        row = {"id": person, "display": person.title(), "birthdate": "", "sex": "",
+               "role": "", "meta_json": "{}",
+               **({"kind": "person"} if not columns.get("role") else {}), **columns}
+        pd.concat([persons, pd.DataFrame([row])], ignore_index=True).fillna("").to_csv(
+            path, index=False)
+    return _add
+
+
+@pytest.fixture(scope="function")
 def update_scheduled(retire_alice_csv: Callable[[str], Path]) -> Callable[..., None]:
     """Set columns on one existing rule of the private copy's scheduled.csv:
     ``update_scheduled("living", person="joint")``."""
@@ -1362,6 +1420,23 @@ def set_brokerage_lots(retire_alice_csv: Callable[[str], Path]) -> Callable[[lis
         pd.concat([values, rows], ignore_index=True).fillna("").to_csv(
             retire_alice_csv("account_lots.csv"), index=False)
     return _set
+
+
+@pytest.fixture(scope="function")
+def mistaken_symbol(test_data_dir: Path) -> str:
+    """A symbol, ``XOLD``, added to the private data copy and held by no lot:
+    named in securities.csv (beside ``VTI``), two sets of weights in
+    allocations.csv (beside VTI's), a shared price file and retire_alice's
+    own. For ``sim symbol delete`` (#191); hold it with
+    ``set_brokerage_lots``. Returns the symbol."""
+    (test_data_dir / "securities.csv").write_text("symbol,name\nXOLD,A mistake\nVTI,Total market\n")
+    (test_data_dir / "allocations.csv").write_text(
+        "symbol,as_of,asset_class,weight\nXOLD,,bond,100%\nXOLD,2030-01,cash,100%\nVTI,,stock_us,100%\n")
+    (test_data_dir / "prices" / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,10.00\n")
+    own = test_data_dir / "scenarios" / "retire_alice" / "prices"
+    own.mkdir(exist_ok=True)
+    (own / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,11.00\n")
+    return "XOLD"
 
 
 @pytest.fixture(scope="function")
@@ -1609,7 +1684,7 @@ def _add_varying_gift_and_retirement(append_calendar_row: Callable[..., None]) -
 def _sim(*args: str) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
+    from zabob.retirement.cli import main
 
     result = CliRunner().invoke(main, ["sim", *args])
     assert result.exit_code == 0, result.output
@@ -1716,7 +1791,7 @@ def code_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> git.Repo:
     repo.git.add(A=True)
     actor = git.Actor("t", "t@t")
     repo.index.commit("init", author=actor, committer=actor)
-    from analysis.sim import freshness
+    from zabob.retirement.sim import freshness
 
     monkeypatch.setattr(freshness, "code_tree", lambda: freshness.code_tree_of(repo))
     return repo
@@ -1738,6 +1813,63 @@ def stamp_runs(code_repo: git.Repo) -> Callable[[Path], None]:
                     con.execute("UPDATE simulation_run SET code_version = ?, code_dirty = 0",
                                 (code_repo.head.commit.hexsha,))
     return _stamp
+
+
+@pytest.fixture(scope="function")
+def installed_build(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None], Callable[[Path], None]]:
+    """Run freshness as an install from a wheel sees it (#662): no code
+    repo, only the build's version. Called with a version (None: a build
+    from dirty code), it makes that the installed one and returns a function
+    stamping every run under a runs dir as made by it, clean."""
+    from zabob.retirement.sim import freshness
+
+    def _install(version: str | None) -> Callable[[Path], None]:
+        monkeypatch.setattr(freshness, "code_tree", lambda: freshness.CodeTree(None, None, version))
+
+        def _stamp(runs_dir: Path) -> None:
+            for run_file in runs_dir.rglob("*.sqlite3"):
+                with closing(sqlite3.connect(run_file)) as con, con:
+                    if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'simulation_run'").fetchone():
+                        con.execute("UPDATE simulation_run SET code_version = ?, code_dirty = 0", (version,))
+        return _stamp
+    return _install
+
+
+@pytest.fixture(scope="function")
+def installed_program(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """This process seen as an installed program (#662): no checkout, its
+    commands in a folder of their own (a stand-in for a `uv tool install`'s,
+    whose ``sim`` records each call in ``calls`` beside it), a home folder
+    of its own, and git that commits without the machine's settings.
+    Returns the program's folder."""
+    from zabob.retirement import resources
+    from zabob.retirement.sim import builder, data_repo
+
+    program = tmp_path / "tool" / "bin"
+    program.mkdir(parents=True)
+    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n')
+    (program / "python").write_text("#!/bin/sh\nexit 1\n")
+    for name in ("sim", "python"):
+        (program / name).chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+    for who in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{who}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{who}_EMAIL", "t@t")
+    monkeypatch.delenv("ANALYSIS_NO_BUILDER", raising=False)
+    named = resources.INSTALLED + str(program)
+    monkeypatch.setattr(resources, "CHECKOUT_DIR", None)
+    monkeypatch.setattr(data_repo, "CODE_REPO_DIR", None)
+    monkeypatch.setattr(data_repo, "program_home", lambda: named)
+    monkeypatch.setattr(builder, "CHECKOUT_DIR", None)
+    monkeypatch.setattr(builder, "program_home", lambda: named)
+    monkeypatch.setattr(builder, "code_dir", lambda: None)
+    monkeypatch.chdir(tmp_path)
+    return program
 
 
 @pytest.fixture(scope="function")
@@ -1793,8 +1925,8 @@ def pool_batch(test_data_dir: Path, pool_scenarios: str, state_dir: Path) -> Pat
     its batch dir."""
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.sim.loader import latest_ensemble_batch
+    from zabob.retirement.cli import main
+    from zabob.retirement.sim.loader import latest_ensemble_batch
 
     result = CliRunner().invoke(
         main, ["sim", "run", pool_scenarios, "--data-dir", str(test_data_dir), "--allow-dirty-data"])
@@ -1812,7 +1944,7 @@ def fake_batch(tmp_path: Path) -> Callable[..., Path]:
     files and a batch manifest (``member_count`` defaults to ``members``;
     ``failures`` maps index to error; ``pool`` is a pool record), for code
     that reads only a batch's names and manifest. Returns the folder."""
-    from analysis.sim.ensemble import write_batch_manifest
+    from zabob.retirement.sim.ensemble import write_batch_manifest
 
     def make(scenario: str, *, members: int = 0, member_count: int | None = None,
              failures: dict[int, str] | None = None, pool: dict | None = None) -> Path:
@@ -1901,7 +2033,7 @@ def _load_and_run_batch(
 ) -> str:
     from click.testing import CliRunner
 
-    from analysis.cli import main
+    from zabob.retirement.cli import main
 
     runner = CliRunner()
     load = runner.invoke(main, [
@@ -1971,8 +2103,8 @@ def _built_batches(
         intent.mkdir(parents=True)
         runs.mkdir()
         with pytest.MonkeyPatch.context() as patch, warnings.catch_warnings():
-            patch.setattr("analysis.sim.cli._available_cpus", lambda: 1)
-            patch.setattr("analysis.sim.cli.write_current_scenario", lambda *args, **kwargs: None)
+            patch.setattr("zabob.retirement.sim.cli._available_cpus", lambda: 1)
+            patch.setattr("zabob.retirement.sim.cli.write_current_scenario", lambda *args, **kwargs: None)
             warnings.filterwarnings("error", category=RuntimeWarning, message=".*went negative.*")
             output = _load_and_run_batch(data, intent, runs, *run_args)
         if members is not None:
@@ -1987,7 +2119,7 @@ def _copy_batch(built_batches: Callable[[str], Path], name: str, state_dir: Path
     """Copy a shared batch's ``intent/`` and ``runs/`` into the test's own
     ``state_dir`` (where ``intent_dir`` and ``runs_dir`` point), returning the
     copied batch dir."""
-    from analysis.sim.loader import latest_ensemble_batch
+    from zabob.retirement.sim.loader import latest_ensemble_batch
 
     shutil.copytree(built_batches(name), state_dir, dirs_exist_ok=True)
     batch = latest_ensemble_batch(state_dir / "runs" / "retire_alice", mode=_SHARED_BATCHES[name][3])
@@ -2002,7 +2134,7 @@ def run_test_batch(
     """Load and run the private retire_alice copy as a batch, after a test
     has edited it: ``run_test_batch("--sensitivity")`` or
     ``run_test_batch("--ensemble-size", "8")`` (seed 7). Returns the batch dir."""
-    from analysis.sim.loader import latest_ensemble_batch
+    from zabob.retirement.sim.loader import latest_ensemble_batch
 
     def _run(*run_args: str) -> Path:
         output = _load_and_run_batch(test_data_dir, intent_dir, runs_dir, *run_args)
@@ -2075,8 +2207,8 @@ def fake_state(intent_dir: Path, runs_dir: Path) -> Callable[..., Path]:
     import os
     from datetime import UTC, datetime
 
-    from analysis.sim.ensemble import write_batch_manifest
-    from analysis.sim.loader import batches_dir
+    from zabob.retirement.sim.ensemble import write_batch_manifest
+    from zabob.retirement.sim.loader import batches_dir
 
     def _run_file(path: Path, status: str, warned: Sequence[str] | None = None) -> None:
         con = sqlite3.connect(path)
@@ -2126,7 +2258,7 @@ def without_template_aux(tmp_path_factory: pytest.TempPathFactory, monkeypatch: 
     """Hide the code repository's templates/aux/ (#317) from the loader, so a
     test that deletes one of the private copy's aux tables sees it missing
     instead of the template's copy filling in."""
-    monkeypatch.setattr("analysis.sim.loader.TEMPLATE_AUX_DIR", tmp_path_factory.mktemp("no_template_aux"))
+    monkeypatch.setattr("zabob.retirement.sim.loader.TEMPLATE_AUX_DIR", tmp_path_factory.mktemp("no_template_aux"))
 
 
 @pytest.fixture(scope="function")
@@ -2214,6 +2346,68 @@ def quicken_net_worth_export(tmp_path: Path) -> Path:
         ',"Loan",\n'
         ',"  - Liability_Mortgage","-240,000.00"\n'
         'Net Worth,,"581,234.56"\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.fixture
+def quicken_portfolio_report(tmp_path: Path) -> Path:
+    """Quicken's "Portfolio Value & Cost Basis" report of one account, as of
+    2025-12-31 and 2026-08-18: cash, a fund held on both days, one sold
+    between them, one with no known basis, and one with no symbol."""
+    path = tmp_path / "portfolio.csv"
+    dashes = ",".join(["-------------------------"] * 11)
+    path.write_text(
+        "Portfolio Value & Cost Basis\n"
+        "Last 8 Months: 12/31/2025 - 8/18/2026\n"
+        "Joint Brokerage, All Securities\n"
+        "\n"
+        '"Security",,"Symbol","12/31/25 Cost Basis","12/31/25 Gain / Loss","12/31/25 Gain / Loss (%)",'
+        '"12/31/25 Market Value","8/18/26 Cost Basis","8/18/26 Gain / Loss","8/18/26 Gain / Loss (%)",'
+        '"8/18/26 Market Value"\n'
+        f"{dashes}\n"
+        '"Cash",,"","1,000.00","0.00","0.00%","1,000.00","2,500.00","0.00","0.00%","2,500.00"\n'
+        '"Total Stock Fund",,"VTSAX","200,000.00","50,000.00","25.00%","250,000.00",'
+        '"210,000.00","90,000.00","42.86%","300,000.00"\n'
+        '"Total Bond Fund",,"VBTLX","40,000.00","-1,000.00","-2.50%","39,000.00","","","",""\n'
+        '"Employer Stock",,"ACME","--","","--","5,000.00","--","","--","7,500.00"\n'
+        '"Stable Value Trust",,"","9,000.00","","","9,000.00","9,000.00","100.00","1.11%","9,100.00"\n'
+        f"{dashes}\n"
+        '"Total",,,"250,000.00","49,000.00","19.60%","304,000.00","221,500.00","90,100.00","40.68%","319,100.00 "\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.fixture
+def quicken_tax_lot_report(tmp_path: Path) -> Path:
+    """Quicken's "Portfolio Value & Cost Basis" report of one account, saved
+    as "Joint Brokerage", with two securities' lines opened to their tax
+    lots: one fund bought on three days (the last after the first date),
+    one sold before the second date, and a stock whose line is closed."""
+    path = tmp_path / "tax_lots.csv"
+    dashes = ",".join(["-------------------------"] * 11)
+    path.write_text(
+        "Portfolio Value & Cost Basis Joint Brokerage,,,,,,,,,,\n"
+        "Last 8 Months: 12/31/2025 - 8/18/2026,,,,,,,,,,\n"
+        "1 Account, All Securities,,,,,,,,,\n"
+        ",,,,,,,,,,\n"
+        "Security,,Symbol,12/31/25 Cost Basis,12/31/25 Gain / Loss,12/31/25 Gain / Loss (%),"
+        "12/31/25 Market Value,8/18/26 Cost Basis,8/18/26 Gain / Loss,8/18/26 Gain / Loss (%),"
+        "8/18/26 Market Value\n"
+        f"{dashes}\n"
+        'Cash,,,"2,500.00",0.00,0.00%,"2,500.00","2,500.00",0.00,0.00%,"2,500.00"\n'
+        'Total Stock Fund,,VTSAX,"200,000.00","50,000.00",25.00%,"250,000.00",'
+        '"210,000.00","90,000.00",42.86%,"300,000.00"\n'
+        ',3/15/2019,,"120,000.00","50,000.00",41.67%,"170,000.00","120,000.00","75,000.00",62.50%,"195,000.00"\n'
+        ',6/1/2022,,"80,000.00",0.00,0.00%,"80,000.00","80,000.00","13,000.00",16.25%,"93,000.00"\n'
+        ',2/10/2026,,,,,,"10,000.00","2,000.00",20.00%,"12,000.00"\n'
+        'Total Bond Fund,,VBTLX,"40,000.00","-1,000.00",-2.50%,"39,000.00",,,,\n'
+        ',4/1/2020,,"40,000.00","-1,000.00",-2.50%,"39,000.00",,,,\n'
+        'Employer Stock,,ACME,--,,--,"5,000.00",--,,--,"7,500.00"\n'
+        f"{dashes}\n"
+        'Total,,,"242,500.00","49,000.00",20.21%,"296,500.00","212,500.00","90,000.00",42.35%,"310,000.00"\n',
         encoding="utf-8",
     )
     return path
@@ -2361,6 +2555,51 @@ def quicken_transaction_export(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def quicken_card_export(tmp_path: Path) -> Path:
+    """A Quicken "Transaction Export" of two accounts over two months of
+    2026: "Checking" pays for groceries (400 in all) and the card's bill;
+    "Rewards Card" is charged groceries and coffee (440) and a gift (60)."""
+    path = tmp_path / "card_export.csv"
+    path.write_text(
+        '"Account",,Date,Entered,Posted,Action,Payee,Category,Tags,Transfer,Memo/Notes,Amount\n'
+        '"Checking",,,,,,,,,,,\n'
+        ',,"2026-01-02","","","","Market","Groceries","","","","-300.00"\n'
+        ',,"2026-02-02","","","","Market","Groceries","","","","-100.00"\n'
+        ',,"2026-02-20","","","","Rewards Card","","","[Rewards Card]","","-40.00"\n'
+        '"Total Checking",,,,,,,,,,,"-440.00"\n'
+        '"Rewards Card",,,,,,,,,,,\n'
+        ',,"2026-01-09","","","","Cafe","Coffee Shops","","","","-40.00"\n'
+        ',,"2026-02-03","","","","Market","Groceries","","","","-400.00"\n'
+        ',,"2026-02-14","","","","Florist","Gifts","","","","-60.00"\n'
+        ',,"2026-02-20","","","","Checking","","","[Checking]","","40.00"\n'
+        '"Total Rewards Card",,,,,,,,,,,"-460.00"\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.fixture
+def credit_card(
+    retire_alice_csv: Callable[[str], Path], add_account_value: Callable[..., None],
+) -> str:
+    """Add ``Liability_Card`` to the private retire_alice copy: a credit card
+    owing $1,000, with ``Expense_Interest_Card`` for its interest. Returns
+    the card's name."""
+    accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
+    for name, kind, subkind in (
+        ("Liability_Card", "liability", "credit_card"),
+        ("Expense_Interest_Card", "expense", "interest_expense"),
+    ):
+        accounts.loc[len(accounts)] = {
+            **dict.fromkeys(accounts.columns, ""), "name": name, "kind": kind, "subkind": subkind,
+            "owner": "joint", "tax_treatment": "none", "meta_json": "{}",
+        }
+    accounts.to_csv(retire_alice_csv("accounts.csv"), index=False)
+    add_account_value("Liability_Card", opening_balance="1000.00")
+    return "Liability_Card"
+
+
+@pytest.fixture
 def quicken_year_export(tmp_path: Path) -> Path:
     """A Quicken "Transaction Export" of a whole year, 2026: groceries
     every month, a car insurance premium in March and September, one
@@ -2504,6 +2743,228 @@ def quicken_budget_summary_export(tmp_path: Path) -> Path:
                           [(label, [sum(amounts)] if amounts else []) for label, amounts in _BUDGET_ROWS])
 
 
+def _ofx_transactions(rows: list[tuple[str, str, str, str]], close: bool) -> str:
+    """STMTTRN elements for ``rows`` (day, amount, id, name); ``close``
+    closes each tag, as OFX 2 must and OFX 1 needn't."""
+    def tag(name: str, value: str) -> str:
+        return f"<{name}>{value}</{name}>" if close else f"<{name}>{value}"
+
+    return "\n".join(
+        "<STMTTRN>\n" + "\n".join([
+            tag("TRNTYPE", "CREDIT" if not amount.startswith("-") else "DEBIT"),
+            # Late in the institution's own evening: the next day already, in UTC.
+            tag("DTPOSTED", f"{day}210000.000[-8:PST]"), tag("TRNAMT", amount), tag("FITID", ident),
+            tag("NAME", name),
+        ]) + "\n</STMTTRN>" for day, amount, ident, name in rows)
+
+
+_OFX_BANK_ROWS = [
+    ("20260102", "-150.00", "B0001", "CITY POWER AND WATER BILL PAY 260102"),
+    ("20260115", "5000.00", "B0002", "ALICE EMPLOYER PAYROLL 260115"),
+    ("20260120", "-400.00", "B0003", "CORNER MARKET #204 OAKLAND CA"),
+    ("20260201", "-150.00", "B0004", "CITY POWER AND WATER BILL PAY 260201"),
+    ("20260205", "-1000.00", "B0005", "ONLINE TRANSFER TO SAVINGS REF #IB0XYZ12"),
+    ("20260220", "-200.00", "B0006", "CORNER MARKET #204 OAKLAND CA"),
+]
+
+
+def _ofx_bank_statement(rows: list[tuple[str, str, str, str]], number: str, kind: str) -> str:
+    """One account's statement of an OFX 1 bank file, with its ledger balance."""
+    return (
+        "<STMTTRNRS>\n<TRNUID>0\n<STATUS>\n<CODE>0\n<SEVERITY>INFO\n</STATUS>\n"
+        f"<STMTRS>\n<CURDEF>USD\n<BANKACCTFROM>\n<BANKID>121000000\n<ACCTID>{number}\n"
+        f"<ACCTTYPE>{kind}\n</BANKACCTFROM>\n<BANKTRANLIST>\n<DTSTART>20260101\n<DTEND>20260228\n"
+        + _ofx_transactions(rows, close=False)
+        + "\n</BANKTRANLIST>\n<LEDGERBAL>\n<BALAMT>4321.09\n<DTASOF>20260228210000.000[-8:PST]\n</LEDGERBAL>\n"
+        "</STMTRS>\n</STMTTRNRS>\n")
+
+
+def _ofx_bank(rows: list[tuple[str, str, str, str]],
+              accounts: tuple[tuple[str, str], ...] = (("000987654321", "CHECKING"),)) -> str:
+    """An OFX 1 (SGML) bank file with a statement of ``rows`` for each of
+    ``accounts`` (number, type): no closing tags on its values, and a tag
+    of the institution's own that the specification doesn't have."""
+    return (
+        "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\n"
+        "COMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n"
+        "<OFX>\n<SIGNONMSGSRSV1>\n<SONRS>\n<STATUS>\n<CODE>0\n<SEVERITY>INFO\n</STATUS>\n"
+        "<DTSERVER>20260228120000.000[-8:PST]\n<LANGUAGE>ENG\n<FI>\n<ORG>First Example Bank\n<FID>1234\n</FI>\n"
+        "<INTU.BID>1234\n</SONRS>\n</SIGNONMSGSRSV1>\n"
+        "<BANKMSGSRSV1>\n"
+        + "".join(_ofx_bank_statement(rows, number, kind) for number, kind in accounts)
+        + "</BANKMSGSRSV1>\n</OFX>\n")
+
+
+@pytest.fixture
+def ofx_bank_download(tmp_path: Path) -> Path:
+    """A bank's QFX download (OFX 1) of one checking account, January and
+    February 2026: groceries and the utility each month, a move to savings
+    and a paycheck, each with the bank's id, and the ledger balance as of
+    February 28. Every time is 9 p.m. in the bank's own zone."""
+    path = tmp_path / "Checking.qfx"
+    path.write_text(_ofx_bank(_OFX_BANK_ROWS), encoding="cp1252")
+    return path
+
+
+@pytest.fixture
+def ofx_bank_later_download(tmp_path: Path) -> Path:
+    """A later download of ``ofx_bank_download``'s account that overlaps
+    it: February again, and one more purchase in March."""
+    path = tmp_path / "Checking (1).qfx"
+    path.write_text(
+        _ofx_bank([*_OFX_BANK_ROWS[3:], ("20260305", "-90.00", "B0007", "CORNER MARKET #204 OAKLAND CA")]),
+        encoding="cp1252")
+    return path
+
+
+@pytest.fixture
+def ofx_bank_like_accounts_download(tmp_path: Path) -> Path:
+    """``ofx_bank_download``'s checking account with a savings account of
+    the same bank whose number ends in the same four digits, with the same
+    transactions and so the same short ids."""
+    path = tmp_path / "Accounts.qfx"
+    path.write_text(_ofx_bank(_OFX_BANK_ROWS, (("000987654321", "CHECKING"), ("000555554321", "SAVINGS"))),
+                    encoding="cp1252")
+    return path
+
+
+@pytest.fixture
+def ofx_bank_twin_accounts_download(tmp_path: Path) -> Path:
+    """Two checking accounts of one bank whose numbers end in the same
+    four digits: nothing a file shows of them tells them apart."""
+    path = tmp_path / "Twins.qfx"
+    path.write_text(_ofx_bank(_OFX_BANK_ROWS, (("000987654321", "CHECKING"), ("000555554321", "CHECKING"))),
+                    encoding="cp1252")
+    return path
+
+
+@pytest.fixture
+def rewrite_download(tmp_path: Path) -> Callable[..., Path]:
+    """A copy of a download with its bytes changed, for what one
+    institution or another writes differently:
+    ``rewrite_download(source, change, name="odd.qfx")``, where ``change``
+    takes the file's bytes and returns the copy's. Each copy is a new
+    file; ``name`` is for a test that reads the name back."""
+    made = 0
+
+    def rewrite(source: Path, change: Callable[[bytes], bytes], name: str | None = None) -> Path:
+        nonlocal made
+        made += 1
+        folder = tmp_path / f"rewritten-{made}"
+        folder.mkdir()
+        path = folder / (name or source.name)
+        path.write_bytes(change(source.read_bytes()))
+        return path
+
+    return rewrite
+
+
+@pytest.fixture
+def ofx_card_download(tmp_path: Path) -> Path:
+    """A card's OFX download (OFX 2, XML), February 2026: one purchase and
+    the payment from the bank, with what is owed as of February 28."""
+    path = tmp_path / "card.ofx"
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        '<?OFX OFXHEADER="200" VERSION="211" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>\n'
+        "<OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>"
+        "<DTSERVER>20260228120000</DTSERVER><LANGUAGE>ENG</LANGUAGE>"
+        "<FI><ORG>Example Card</ORG><FID>5678</FID></FI></SONRS></SIGNONMSGSRSV1>"
+        "<CREDITCARDMSGSRSV1><CCSTMTTRNRS><TRNUID>0</TRNUID>"
+        "<STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>"
+        "<CCSTMTRS><CURDEF>USD</CURDEF><CCACCTFROM><ACCTID>370000000001007</ACCTID></CCACCTFROM>"
+        "<BANKTRANLIST><DTSTART>20260201</DTSTART><DTEND>20260228</DTEND>\n"
+        + _ofx_transactions([("20260210", "-80.00", "C0001", "CORNER MARKET #204 OAKLAND CA"),
+                             ("20260225", "80.00", "C0002", "ONLINE PAYMENT - THANK YOU")], close=True)
+        + "\n</BANKTRANLIST><LEDGERBAL><BALAMT>-250.00</BALAMT><DTASOF>20260228</DTASOF></LEDGERBAL>"
+        "</CCSTMTRS></CCSTMTTRNRS></CREDITCARDMSGSRSV1></OFX>\n",
+        encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def ofx_card_then_bank_download(tmp_path: Path, ofx_card_download: Path) -> Path:
+    """One file with ``ofx_card_download``'s card statement and, after it,
+    a checking account's (``ofx_bank_download``'s transactions)."""
+    card = ofx_card_download.read_text(encoding="utf-8")
+    end = "</CREDITCARDMSGSRSV1>"
+    path = tmp_path / "card-then-bank.ofx"
+    path.write_text(
+        card.replace(end, end + "<BANKMSGSRSV1>\n"
+                     + _ofx_bank_statement(_OFX_BANK_ROWS, "000987654321", "CHECKING") + "</BANKMSGSRSV1>"),
+        encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def ofx_brokerage_download(tmp_path: Path) -> Path:
+    """A brokerage's OFX download (OFX 2) of one account as of 2026-01-05:
+    a stock fund and a money market fund, named by ids that its list of
+    securities gives symbols to, one purchase, which is not read, and its
+    cash, all of it in the money market fund."""
+    def position(kind: str, unique: str, units: str, price: str, value: str) -> str:
+        return (f"<{kind}><INVPOS><SECID><UNIQUEID>{unique}</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID>"
+                f"<HELDINACCT>CASH</HELDINACCT><POSTYPE>LONG</POSTYPE><UNITS>{units}</UNITS>"
+                f"<UNITPRICE>{price}</UNITPRICE><MKTVAL>{value}</MKTVAL>"
+                f"<DTPRICEASOF>20260105160000</DTPRICEASOF></INVPOS></{kind}>")
+
+    def security(unique: str, name: str, ticker: str) -> str:
+        return (f"<MFINFO><SECINFO><SECID><UNIQUEID>{unique}</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID>"
+                f"<SECNAME>{name}</SECNAME><TICKER>{ticker}</TICKER></SECINFO></MFINFO>")
+
+    path = tmp_path / "brokerage.ofx"
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        '<?OFX OFXHEADER="200" VERSION="211" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>\n'
+        "<OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>"
+        "<DTSERVER>20260105170000</DTSERVER><LANGUAGE>ENG</LANGUAGE>"
+        "<FI><ORG>Example Brokerage</ORG><FID>9012</FID></FI></SONRS></SIGNONMSGSRSV1>"
+        "<INVSTMTMSGSRSV1><INVSTMTTRNRS><TRNUID>0</TRNUID>"
+        "<STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>"
+        "<INVSTMTRS><DTASOF>20260105160000</DTASOF><CURDEF>USD</CURDEF>"
+        "<INVACCTFROM><BROKERID>example.com</BROKERID><ACCTID>12345678</ACCTID></INVACCTFROM>"
+        "<INVTRANLIST><DTSTART>20260101</DTSTART><DTEND>20260105</DTEND>"
+        "<BUYMF><INVBUY><INVTRAN><FITID>T1</FITID><DTTRADE>20260102</DTTRADE></INVTRAN>"
+        "<SECID><UNIQUEID>111111111</UNIQUEID><UNIQUEIDTYPE>CUSIP</UNIQUEIDTYPE></SECID>"
+        "<UNITS>10</UNITS><UNITPRICE>160.00</UNITPRICE><TOTAL>-1600.00</TOTAL>"
+        "<SUBACCTSEC>CASH</SUBACCTSEC><SUBACCTFUND>CASH</SUBACCTFUND></INVBUY><BUYTYPE>BUY</BUYTYPE></BUYMF>"
+        "</INVTRANLIST><INVPOSLIST>"
+        + position("POSMF", "111111111", "2500", "160.00", "400000.00")
+        + position("POSMF", "222222222", "20000", "1.00", "20000.00")
+        + "</INVPOSLIST><INVBAL><AVAILCASH>20000.00</AVAILCASH><MARGINBALANCE>0</MARGINBALANCE>"
+        "<SHORTBALANCE>0</SHORTBALANCE></INVBAL></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1>"
+        "<SECLISTMSGSRSV1><SECLIST>"
+        + security("111111111", "Total Stock Market Index", "VTSAX")
+        + security("222222222", "Federal Money Market", "VMFXX")
+        + "</SECLIST></SECLISTMSGSRSV1></OFX>\n",
+        encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def quicken_flat_transaction_report(tmp_path: Path) -> Path:
+    """Quicken's "All Transactions" report exported as it stands: one row
+    for each transaction with its account in a column, under a few lines
+    about the report. Two accounts, a move between them, and a total."""
+    path = tmp_path / "all_transactions.csv"
+    path.write_text(
+        "All Transactions Report Created: 2026-03-01 09:00:00 -0800\n"
+        ",\n"
+        "Filter Criteria:,Spending\n"
+        ",Last Year\n"
+        ",All Accounts\n"
+        ",\n"
+        ',"Split","Date","Payee/Security","Category","Tags","Amount","Account","Memo/Notes"\n'
+        ',,"02/14/2026","Florist","Gifts","Family","-60.00","Rewards Card","Flowers, a dozen"\n'
+        ',,"02/02/2026","Market","Groceries","","-1,500.00","Checking",\n'
+        ',,"01/31/2026","Dividend","Uncategorized","","2.08","Savings",\n'
+        ',,"01/15/2026","To Savings","Transfer:[Savings]","","-200.00","Checking",""\n'
+        '"Total",,,,,,"-1,757.92",,\n',
+        encoding="utf-8",
+    )
+    return path
+
+
 @pytest.fixture
 def quicken_empty_transaction_export(tmp_path: Path) -> Path:
     """A Quicken "Transaction Export" of an account with no activity."""
@@ -2539,13 +3000,14 @@ def write_import_map(test_data_dir: Path) -> Callable[[str, str], Path]:
     ``write("quicken/accounts.csv", rows)`` or
     ``write("expense_accounts.csv", rows)``. The header is the file's own;
     ``rows`` is the CSV text after it."""
-    from analysis.sim.imports import mapping
+    from zabob.retirement.sim.imports import mapping
 
     headers = {
         mapping.ACCOUNTS: mapping.ACCOUNTS_HEADER,
         mapping.BUDGET_CHOICES: mapping.BUDGET_CHOICES_HEADER,
         mapping.CATEGORIES: mapping.CATEGORIES_HEADER,
         mapping.SPLITS: mapping.SPLITS_HEADER,
+        mapping.LOT_SPLITS: mapping.LOT_SPLITS_HEADER,
         mapping.EXCLUDED_PAYEES: mapping.EXCLUDED_PAYEES_HEADER,
         mapping.INCOME_ACCOUNTS: mapping.EXPENSE_ACCOUNTS_HEADER,
         mapping.EXPENSE_ACCOUNTS: mapping.EXPENSE_ACCOUNTS_HEADER,
