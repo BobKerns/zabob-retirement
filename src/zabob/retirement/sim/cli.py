@@ -2788,6 +2788,7 @@ _ENSEMBLE_RAIL_LEGEND = (
     help="Dollars the RMS overshoot is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_guard_rails(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     rail_names: tuple[str, ...], dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2819,7 +2820,22 @@ def ensemble_guard_rails(
     store = _open_series(batch_dir)
     results = _ensemble_guard_rails(data_dir, scenario_name, store, mode, rail_names)
     if not results:
-        click.echo(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        output.note(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        return
+    if output.machine():
+        shown = [r for r in results if r.applies]
+        for r in results:
+            if not r.applies:
+                output.note(f"  {r.rail.name} covers none of these members' years")
+        tables: dict[str, output.Table] = {}
+        if shown:
+            tables["summary"] = guard_rails.ensemble_summary_frame(shown)
+        for r in shown:
+            tables[r.rail.name] = guard_rails.ensemble_rail_frame(r)
+        output.emit(tables, title=f"ensemble {scenario_name} guard rails", batch=batch_dir.name,
+                    members=len(store), dollars=mode.value, legend=list(_ENSEMBLE_RAIL_LEGEND),
+                    rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense}
+                           for r in shown])
         return
     click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
                f"guard rails, {_DOLLAR_LABELS[mode]}")
@@ -2870,6 +2886,7 @@ def ensemble_guard_rails(
               help=f"One class's drift (share less target, signed) instead of the largest either way: "
                    f"{registries.asset_class_list()}.")
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_drift(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     target_set: str | None, portfolio: str | None, asset_class: str | None, as_graph: bool,
@@ -2903,12 +2920,18 @@ def ensemble_drift(
         raise click.ClickException(f"{scenario_name}: {exc}") from None
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
     what = f"{asset_class} share less target" if asset_class else "largest drift either way"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
                f"target set {target_set} ({whose}), {what}, percentage points"
                + (f"; band ±{band:g}" if band is not None else ""))
     table = drift.ensemble_drift_table(members, band=None if asset_class else band)
     if table.empty:
-        click.echo("(no months in the members)")
+        output.note("(no months in the members)")
+        return
+    if output.machine():
+        output.emit(table, title=f"ensemble {scenario_name} drift", batch=batch_dir.name,
+                    members=len(store), target_set=target_set, portfolio=portfolio,
+                    measure=what, units="percentage points; past_band and ever_past fractions",
+                    band=band)
         return
     shares = [c for c in ("past_band", "ever_past") if c in table.columns]
     click.echo(table.to_string(formatters={
@@ -2940,6 +2963,7 @@ def ensemble_drift(
     help="Dollars the spending is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_spending(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     category: str | None, dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2973,11 +2997,17 @@ def ensemble_spending(
     # A household's partial final year counts toward cuts, not dollar figures (#377).
     partial = store.partial_last_years()
     what = f"{category} spending" if category else "spending"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
-               f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
+                f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
     table = reports.ensemble_spending_table(delivered, budgeted, partial)
     if table.empty:
-        click.echo("(no spending in the members)")
+        output.note("(no spending in the members)")
+        return
+    if output.machine():
+        output.emit(table, title=f"ensemble {scenario_name} {what} against the plan",
+                    batch=batch_dir.name, members=len(store), dollars=mode.value,
+                    summary=reports.ensemble_spending_summary(delivered, budgeted,
+                                                              store.whole_years(), partial))
         return
     shares = ("of_plan", "cut")
     click.echo(table.to_string(formatters={
