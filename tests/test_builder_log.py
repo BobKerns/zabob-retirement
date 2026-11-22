@@ -83,8 +83,10 @@ def test_unindented_lines_after_an_event_are_always_shown(
     builder_dir: Path, test_data_dir: Path,
 ) -> None:
     writer = blog.LogWriter(builder_dir / "logs")
-    writer.event("started (pid 1)", _at(1))
-    with open(blog.file_for(builder_dir / "logs", datetime.now()), "a") as f:
+    started = _at(1)
+    writer.event("started (pid 1)", started)
+    # The event's own file: near midnight, now's file is the next day's.
+    with open(blog.file_for(builder_dir / "logs", started), "a") as f:
         f.write("Traceback (most recent call last):\n  File x\nValueError: boom\n")
     assert _log(data_dir=test_data_dir)[1:] == ["Traceback (most recent call last):",
                                                "ValueError: boom"]
