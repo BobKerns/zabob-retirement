@@ -58,7 +58,7 @@ from zabob.retirement.sim import (
     scheduled_guide, sensitivity, series_files, setup_listings, shortfalls, strategy_code, strategy_files,
     strategy_guide, symbols, states, tax_code, tax_files, tax_guide, units, working_set, ytd_guide,
 )
-from zabob.retirement.sim.accounts import load_accounts_view, render_accounts_table
+from zabob.retirement.sim.accounts import AccountRow, load_accounts_view, render_accounts_table
 from zabob.retirement.sim.connection import (
     EXPENSE_CATEGORIES, open_run, open_scenario, year_end_values, Connection, RunConnection,
 )
@@ -11916,6 +11916,7 @@ def _default_tax_treatment(kind: str, subkind: str) -> str:
               help="Filter to accounts of this kind (e.g. asset, liability).")
 @click.option("--owner", type=completion.OWNER, default=None,
               help="Filter to accounts owned by this person or 'joint'.")
+@output.output_options
 def list_accounts(
     scenario: str | None,
     data_dir: Path | None,
@@ -11944,6 +11945,9 @@ def list_accounts(
     if owner:
         title += f" / owner={owner}"
     title += ")"
+    if output.machine():
+        output.emit(output.from_items(rows, AccountRow), title=title)
+        return
     Console().print(render_accounts_table(rows, title=title))
 
 
@@ -13503,6 +13507,7 @@ def lot_group_command() -> None:
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """List an account's lots, as the scenario's load order leaves them, or
     every account's without ACCOUNT. A column no listed lot uses is left out.
@@ -13510,6 +13515,8 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
     The last column says where each lot comes from: this scenario, a parent
     it inherits from, or this scenario's override of a parent's lot, and
     whether the lot is deleted (zeroed here).
+
+    --csv and --json give every value column, as account_lots.csv has it.
     """
     data_dir_p = _resolve_data_dir(data_dir)
     scenario_dir, scenario_name = _resolve_scenario_dir(data_dir_p, scenario)
@@ -13528,7 +13535,7 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
                 )
             # The loader gives an account with no account_lots.csv rows an
             # empty default lot; say so rather than list nothing.
-            click.echo(
+            output.note(
                 f"{account!r} has no lots in account_lots.csv, so it loads with an "
                 f"empty {registries.DEFAULT_LOT!r} lot"
             )
@@ -13541,6 +13548,13 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
             return f"inherited from {one.inherited_from}"
         return f"overrides {one.inherited_from}" if one.inherited_from else scenario_name
 
+    if output.machine():
+        shown = output.Rows(["account", "lot", *lot_guide.VALUE_COLUMNS, "from"])
+        for one in lots:
+            shown.add(account=one.account, lot=one.lot, **{"from": source(one)},
+                      **{column: one.row[column] or None for column in lot_guide.VALUE_COLUMNS})
+        output.emit(shown, title=f"lots ({scenario_name})", scenario=scenario_name)
+        return
     columns = [column for column in lot_guide.VALUE_COLUMNS if any(one.row[column] for one in lots)]
     header = ["account", "lot", *columns, "from"]
     table = [[one.account, one.lot, *(one.row[column] for column in columns), source(one)] for one in lots]
