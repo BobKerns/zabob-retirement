@@ -53,7 +53,7 @@ from zabob.retirement.expenses.baseline import (
 )
 from zabob.retirement.sim import (
     allocation, asset_classes, calendar_guide, chain_edit, chain_map, completion, deductions, drift, guard_rail_guide,
-    guard_rails, load_warnings, lot_guide, names, prices, readme, registries, rename, reports, research, roll,
+    guard_rails, load_warnings, lot_guide, names, output, prices, readme, registries, rename, reports, research, roll,
     scenario_guide,
     scheduled_guide, sensitivity, series_files, setup_listings, shortfalls, strategy_code, strategy_files,
     strategy_guide, symbols, states, tax_code, tax_files, tax_guide, units, working_set, ytd_guide,
@@ -4467,6 +4467,7 @@ def _echo_negative_balance_warnings(con: sqlite3.Connection) -> None:
 @_year_range_options
 @_report_graph_options
 @_run_target_options
+@output.output_options
 def networth_command(
     scenario: str | None, period: str, dollars: str, pre_tax: bool,
     first_year: int | None, last_year: int | None,
@@ -4553,6 +4554,15 @@ def _echo_pre_tax_networth(runfile: Path, period: str, dollars: str,
                 f"{rows[0][0][:4]} to {rows[-1][0][:4]}")
         rows = shown
     label = DollarMode(dollars).label
+    if output.machine():
+        when = "month" if period == "monthly" else "year"
+        shown = output.Rows([when, "net_worth"])
+        for month, cents in rows:
+            shown.add(**{when: month if period == "monthly" else int(month[:4]),
+                         "net_worth": None if cents is None else cents / 100})
+        output.emit(shown, title="net worth", dollars=DollarMode(dollars).value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"net worth, {label} dollars ({name}, run {runfile.name}):")
     for month, cents in rows:
         when = month if period == "monthly" else month[:4]
@@ -4582,6 +4592,14 @@ def _echo_after_tax_networth(rc: RunConnection, runfile: Path, period: str, mode
         table = table.groupby(index_years(table)).tail(1)
     table = _shown_years(table, years)
     label = DollarMode(mode).label
+    if output.machine():
+        if period != "monthly":
+            table = table.set_axis(pd.Index(index_years(table), name="year"))
+        else:
+            table = table.rename_axis("month")
+        output.emit(table, title="after-tax net worth", dollars=mode.value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"after-tax net worth, {label} dollars ({name}, run {runfile.name}):")
     _echo_table(
         ["month" if period == "monthly" else "year", *table.columns],
@@ -12059,7 +12077,7 @@ def _report_options(fn):
                      default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -12088,10 +12106,14 @@ def _report_run(
 
 
 def _print_report(frame: pd.DataFrame, what: str, described: str, mode: DollarMode, *,
-                  total_row: bool = False) -> None:
+                  total_row: bool = False, **meta: Any) -> None:
     """Print a report: a line saying what it shows, in which dollars and from
     which run, then the table. Not the table's own title, which would wrap
-    over a narrow table."""
+    over a narrow table. With --csv or --json, the frame's rows instead, the
+    heading's parts (and ``meta``) as JSON's fields."""
+    if output.machine():
+        output.emit(frame, title=what, dollars=mode.value, source=described, **meta)
+        return
     click.echo(f"{what}, {_DOLLAR_LABELS[mode]} ({described})")
     _print_unclipped(reports.render_report_table(frame, total_row=total_row))
 
@@ -12139,7 +12161,7 @@ def account_history_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no balances for {account} in that range ({described})")
+        output.note(f"no balances for {account} in that range ({described})")
         _graph_nothing(graph_file, "balances", "history-")
         return
     subject = f"{account}/{lot}" if lot else account
@@ -12223,8 +12245,8 @@ def _flow_report(side: reports.FlowSide, year: int | None, by: str, untagged: bo
                                              reports.CASH_FLOW, *reports.NET_WORTH_COLUMNS])
     if by.startswith("tag:") and shown.empty:
         role = by.removeprefix("tag:")
-        click.echo(f"no {side}{period} is tagged in role {role} ({described});"
-                   " --untagged shows it all")
+        output.note(f"no {side}{period} is tagged in role {role} ({described});"
+                    " --untagged shows it all")
         _graph_nothing(graph_file, f"{side} tagged in role {role}", f"{side}-")
         return
     if year is None:
@@ -12384,13 +12406,15 @@ def report_spending_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if delivered.empty and budgeted.empty:
-        click.echo(f"no spending in {described}")
+        output.note(f"no spending in {described}")
         _graph_nothing(graph_file, "spending", "spending-")
         return
     frame, summary = reports.spending_report(delivered, budgeted)
     frame = _shown_years(frame, years)
     what = f"spending against plan by {by.removeprefix('tag:')}"
-    _print_report(frame, what, described, mode)
+    _print_report(frame, what, described, mode, summary=summary)
+    if output.machine():
+        return
 
     def figure():
         from zabob.retirement.sim.spending_charts import spending_figure
@@ -12492,7 +12516,7 @@ def report_tax_command(
             _hold_tables()
             frame = _shown_years(reports.tax_return(rc, jurisdiction, mode), years)
         if frame.empty:
-            click.echo(f"no {jurisdiction} tax was computed in this run ({described})")
+            output.note(f"no {jurisdiction} tax was computed in this run ({described})")
             return
         _print_report(frame.T.rename_axis("line"), f"the {jurisdiction} return", described, mode)
         return
@@ -12502,7 +12526,7 @@ def report_tax_command(
                              else reports.tax_by_year(rc, mode), years)
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no tax was computed in this run ({described})")
+        output.note(f"no tax was computed in this run ({described})")
         _graph_nothing(graph_file, "tax", "tax-")
         return
     _print_report(frame, "tax reconciliation" if reconciliation else "tax and taxable income",
@@ -12648,8 +12672,8 @@ def report_guard_rails_command(
                     + (f"; it has {', '.join(sorted(known))}" if known else ""))
             rails = [known[n] for n in dict.fromkeys(rail_names)]
         if not rails:
-            click.echo(f"no guard rails in {rc.name!r} ({described}); "
-                       "`sim guard-rail add` adds one")
+            output.note(f"no guard rails in {rc.name!r} ({described}); "
+                        "`sim guard-rail add` adds one")
             _graph_nothing(graph_file, "guard rails", "guard-rails-")
             return
         if mode == DollarMode.CPI_CONSTANT and rc.cpi_index().isna().all():
@@ -12665,9 +12689,24 @@ def report_guard_rails_command(
     shown = [r for r in results if r.applies]
     for r in results:
         if not r.applies:
-            click.echo(f"  {r.rail.name} covers none of this run's years")
+            output.note(f"  {r.rail.name} covers none of this run's years")
     if not shown:
         _graph_nothing(graph_file, "guard rails", "guard-rails-")
+        return
+    if output.machine():
+        one = len(rail_names) == 1
+        frame = (guard_rails.rail_frame(shown[0]) if one
+                 else guard_rails.margins_frame(shown, carried=carried))
+        if one and not carried:
+            frame = frame.drop(columns="carried")
+        output.emit(
+            {"margins": clip_years(frame, years),
+             "summary": guard_rails.summary_frame(shown).reset_index(drop=True)},
+            title=f"guard rail {shown[0].rail.name}" if one else "guard rail margins",
+            dollars=mode.value, source=described,
+            rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense,
+                    "start": r.rail.start or None, "end": r.rail.end or None}
+                   for r in shown])
         return
     style = _margin_style(shown)
     if len(rail_names) == 1:
