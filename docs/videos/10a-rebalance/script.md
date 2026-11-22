@@ -36,7 +36,7 @@ video 9 but without its lifespans.
 type, then what the scenes make, tagging the data repo before each scene
 (`stage/<scene>`) so a tape can make on camera what later scenes already
 have. Each scenario is run once at the end and its run renamed to a fixed
-time. The tapes work in `~/retirement/data/sim`, as in videos 3 to 9.
+time. The tapes work in `~/zabob-retirement/sim`, as in videos 3 to 9.
 
 > Numbers in the narration were checked on 2026-11-10 against `setup.sh`.
 
@@ -97,9 +97,9 @@ Switch it off, and the chain's own order decides again.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/mix && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/mix && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -158,9 +158,9 @@ say so.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/targets && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/targets && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -220,9 +220,9 @@ five points heavy in stocks.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/add && cd ~/retirement/data/sim && sim switch rebalance > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/add && cd ~/zabob-retirement/sim && sim switch rebalance > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -252,9 +252,9 @@ command asks for each of these.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/invest && cd ~/retirement/data/sim && sim switch rebalance > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/invest && cd ~/zabob-retirement/sim && sim switch rebalance > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -298,9 +298,9 @@ Sim strategy list shows the two.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/log && cd ~/retirement/data/sim && sim switch rebalance > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/log && cd ~/zabob-retirement/sim && sim switch rebalance > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -340,7 +340,7 @@ for the whole run.
 ## Scene `nb-drift`: The accounts notebook
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "accounts.ipynb"
 RunAll
@@ -359,9 +359,9 @@ shaded and a tick on the axis for each month the strategy stepped in.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/off && cd ~/retirement/data/sim && sim switch rebalance > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/off && cd ~/zabob-retirement/sim && sim switch rebalance > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -432,9 +432,9 @@ need many futures: an ensemble.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/mc && cd ~/retirement/data/sim && sim switch no-rebalance > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/mc && cd ~/zabob-retirement/sim && sim switch no-rebalance > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -471,9 +471,9 @@ member five in the other. Running them takes a minute or two each.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/done && cd ~/retirement/data/sim && sim switch rebalance-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch rebalance-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -509,7 +509,7 @@ better floor. Whether that trade is worth it is Alice and Bill's call.
 ## Scene `nb-compare`: The comparison notebook
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "scenario_compare.ipynb"
 RunAll

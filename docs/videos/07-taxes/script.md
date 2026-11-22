@@ -38,7 +38,7 @@ type, then the what-ifs the scenes make, tagging the data repo before each
 scene (`stage/<scene>`) so a tape can make on camera what later scenes
 already have. Each scenario is run once, with a fixed time before any
 recording, so a run made on camera is the latest. The tapes work in
-`~/retirement/data/sim`, as in videos 3 to 6.
+`~/zabob-retirement/sim`, as in videos 3 to 6.
 
 ## Scene `title`: Title card
 
@@ -126,9 +126,9 @@ own, to see what a change in the law would do.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -163,9 +163,9 @@ effective rate as a line.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -212,9 +212,9 @@ free, and has no required distributions.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/convert && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/convert && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -264,9 +264,9 @@ it.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/irmaa-demo && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/irmaa-demo && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -322,9 +322,9 @@ supplies the tiers, growing with inflation.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/irmaa-demo && cd ~/retirement/data/sim && sim switch convert > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/irmaa-demo && cd ~/zabob-retirement/sim && sim switch convert > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -350,7 +350,7 @@ Enter
 Wait
 Sleep 3s
 Hide
-Type "git -C ~/retirement/data reset -q --hard stage/medical && sim switch convert-22 > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/medical && sim switch convert-22 > /dev/null 2>&1; clear"
 Enter
 Sleep 1s
 Show
@@ -391,9 +391,9 @@ money would be later.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/medical && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/medical && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -437,7 +437,7 @@ years around it barely change.
 ## Scene `nb-tax`: The notebooks
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "net_worth.ipynb"
 RunAll

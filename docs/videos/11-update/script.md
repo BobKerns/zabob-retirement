@@ -42,7 +42,7 @@ those runs renamed to fixed times, so the roll tape reads the same
 projections every time.
 Last year's plan, `plan-2026`, is run once too. Nothing after the roll is
 run in setup: the compare scene reruns everything on camera with
-`sim all`. The tapes work in `~/retirement/data/sim`, as in videos 3 to
+`sim all`. The tapes work in `~/zabob-retirement/sim`, as in videos 3 to
 10b.
 
 <!-- cspell:ignore BALX -->
@@ -104,9 +104,9 @@ they can see how it did.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/roll && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/roll && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -191,9 +191,9 @@ account, same statement: twenty two thousand four hundred.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/taxes && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/taxes && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -245,9 +245,9 @@ from capital gains to itself, so it counts only for tax.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/spending && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/spending && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -281,9 +281,9 @@ doesn't reach it. It gets its own: seven thousand.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/compare && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/compare && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -314,9 +314,9 @@ thousand six hundred short, which is the extra spending.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/compare && cd ~/retirement/data/sim && sim all --commit > /dev/null 2>&1; sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/compare && cd ~/zabob-retirement/sim && sim all --commit > /dev/null 2>&1; sim switch base > /dev/null 2>&1; clear"
 Enter
 Wait
 Sleep 2s

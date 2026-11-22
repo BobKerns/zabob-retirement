@@ -43,7 +43,7 @@ After editing it, keep each slide's `code_lines` and `marks` on the lines
 they mean. The trips as written (`trips-mc`) and the built-in
 guardrail on them (`trips-guardrail-mc`) are made and run off camera, for
 the compare scene. Each scenario and ensemble is run once at the end and
-its run renamed to a fixed time. The tapes work in `~/retirement/data/sim`,
+its run renamed to a fixed time. The tapes work in `~/zabob-retirement/sim`,
 as in videos 3 to 11.
 
 > Numbers in the narration were checked on 2026-11-11 against `setup.sh`.
@@ -104,9 +104,9 @@ No built-in strategy does that, so they write one that does.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/trips && cd ~/retirement/data/sim && sim switch travel > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/trips && cd ~/zabob-retirement/sim && sim switch travel > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -159,7 +159,7 @@ template = "window"
 look = "files"
 heading = "A strategy plugin is a file in the data repo"
 title = "sim"
-address = "~/retirement/data/sim"
+address = "~/zabob-retirement/sim"
 lines = ["strategies", "scenarios", "aux", "allocations.csv", "persons.csv", "securities.csv"]
 note = "strategies/whole_trips.py: for every scenario, versioned with the data, copied into each run"
 speaker = "bill"
@@ -262,9 +262,9 @@ two runs of one plan could differ.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/check && cd ~/retirement/data/sim && sim switch trips > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/check && cd ~/zabob-retirement/sim && sim switch trips > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -309,9 +309,9 @@ compares every decision: six hundred and eight, the same in both runs.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/use && cd ~/retirement/data/sim && sim switch trips-whole > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/use && cd ~/zabob-retirement/sim && sim switch trips-whole > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -334,9 +334,9 @@ spends the plan. Raises add nothing; only cuts change what they do.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/futures && cd ~/retirement/data/sim && sim switch trips-whole > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/futures && cd ~/zabob-retirement/sim && sim switch trips-whole > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -370,9 +370,9 @@ of it.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/compare && cd ~/retirement/data/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/compare && cd ~/zabob-retirement/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -398,9 +398,9 @@ spending above the plan, not only skipping whole trips.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/lumpy && cd ~/retirement/data/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/lumpy && cd ~/zabob-retirement/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -441,7 +441,7 @@ lines, and a good first change to try. It's their code, so they can.
 ## Scene `nb`: The ensemble notebook
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "ensemble.ipynb"
 RunAll

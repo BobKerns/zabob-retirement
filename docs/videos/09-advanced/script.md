@@ -36,7 +36,7 @@ checking sweep.
 type, then what the scenes make, tagging the data repo before each scene
 (`stage/<scene>`) so a tape can make on camera what later scenes already
 have. Each scenario is run once at the end and its run renamed to a fixed
-time. The tapes work in `~/retirement/data/sim`, as in videos 3 to 8.
+time. The tapes work in `~/zabob-retirement/sim`, as in videos 3 to 8.
 
 > Numbers in the narration were checked on 2026-11-08 against `setup.sh`.
 
@@ -98,9 +98,9 @@ second death, which nobody knows in advance.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/table && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/table && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -123,9 +123,9 @@ the point: a plan built on one age is built on a guess.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/set && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/set && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -166,9 +166,9 @@ last of them most likely dies around 2053, and one time in twenty, after
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/death && cd ~/retirement/data/sim && sim switch lives > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/death && cd ~/zabob-retirement/sim && sim switch lives > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -226,9 +226,9 @@ rail only reads a run. It never changes one.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/rail-add && cd ~/retirement/data/sim && sim switch lives > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/rail-add && cd ~/zabob-retirement/sim && sim switch lives > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -287,9 +287,9 @@ was money they could have spent.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/rail-report && cd ~/retirement/data/sim && sim switch lives > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/rail-report && cd ~/zabob-retirement/sim && sim switch lives > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -318,9 +318,9 @@ Dash dash chart draws the same thing.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/rail-mc && cd ~/retirement/data/sim && sim switch lives > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/rail-mc && cd ~/zabob-retirement/sim && sim switch lives > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -377,9 +377,9 @@ when it isn't.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/respond && cd ~/retirement/data/sim && sim switch lives-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/respond && cd ~/zabob-retirement/sim && sim switch lives-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -418,9 +418,9 @@ commit saves the changes first, so the run can be reproduced.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/done && cd ~/retirement/data/sim && sim switch respond-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch respond-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -443,9 +443,9 @@ January's look back at the year before.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/done && cd ~/retirement/data/sim && sim switch respond-mc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch respond-mc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -473,7 +473,7 @@ futures, their worst year's spending about eight thousand dollars lower.
 ## Scene `nb`: The notebooks
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "lifespan.ipynb"
 RunAll

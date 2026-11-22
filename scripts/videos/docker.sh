@@ -41,7 +41,7 @@ label=zabob.retirement.videos.inputs
 env_volume=analysis-videos-env
 # The checkout, mounted read-only over the image's /repo: piece by piece,
 # so the host's .venv (perhaps for another OS) stays out.
-MOUNTS=(src pyproject.toml uv.lock README.md .python-version templates historical_data
+MOUNTS=(src pyproject.toml uv.lock README.md PYPI.md LICENSE hatch_build.py .python-version templates historical_data
         prototype_data notebooks scripts/videos docs/videos)
 
 usage() {
