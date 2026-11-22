@@ -460,3 +460,30 @@ def test_sim_ensemble_compare_graph_refuses_more_variants_than_it_draws(
     ])
     assert result.exit_code == 2
     assert "--chart draws at most 4 variants" in result.output
+
+
+def test_sim_ensemble_summary_and_compare_take_json(
+    seeded_ensemble_batch: Callable[..., Path], runs_dir: Path,
+) -> None:
+    import json
+
+    seeded_ensemble_batch("baseline", 1)
+    seeded_ensemble_batch("other", 1)
+    result = CliRunner().invoke(main, [
+        "sim", "ensemble", "summary", "baseline", "--runs-dir", str(runs_dir),
+        "--account", "Asset_Checking", "--reserve", "5000", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.stdout)
+    assert found["columns"][0] == "year"
+    assert found["columns"][-2:] == ["below_reserve", "ever_below_reserve"]
+    assert found["reserve"] == 5000 and found["members"] > 0
+    result = CliRunner().invoke(main, [
+        "sim", "ensemble", "compare", "baseline", "other", "--runs-dir", str(runs_dir),
+        "--account", "Asset_Checking", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.stdout)
+    assert list(found["tables"]) == ["deltas", "tail:baseline", "tail:other"]
+    assert found["tables"]["deltas"]["columns"][0] == "year"
+    assert found["paired"]["other"] > 0

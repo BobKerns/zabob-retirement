@@ -2417,6 +2417,19 @@ bar per year with the plan as a dashed line over them. `sim allocation --chart` 
 bar per class split by the group with `--by`, and a line per class with
 `--drift`.
 
+`--csv` or `--json` prints the rows behind the table instead, for a
+spreadsheet, a script or an AI assistant to read exactly. Every list and report
+above takes them, and so do `sim explain`, `sim compare`, `sim ensemble
+summary|compare|guard-rails|drift|spending` and `sim strategy log`. The fields
+are the table's column names, and the values aren't rounded: dollars to the
+cent, and shares and rates as fractions (`0.25`, not `25%`). A value read
+straight from one of your CSV files, such as a calendar row's amount, comes as
+you wrote it there. JSON also says what the table's heading says (which
+dollars, which run), and a command that prints several tables, such as
+`sim compare`, names each one; CSV holds one table, a command's first unless
+`--section` picks another. Anything else the command would say goes to stderr,
+so the output is only the data. Neither goes with `--chart`.
+
 `sim report income` tells the whole story of each year. Its total,
 `economic_income`, is income plus paper gains, net of losses: what the year
 added before spending (economists call it Haig-Simons income). Its
@@ -2469,7 +2482,9 @@ Questions that work well are specific, and name what you're asking about:
 - "Why did `Asset_Checking` go negative in March 2031?"
 
 Naming the scenario (and the run file, if you have more than one run for it)
-helps the most. A vague question like "how's my retirement looking?" forces
+helps the most. An assistant that can run commands can also read any of the
+views above with `--json` (Part 5, "The same views from the terminal"), which
+gives it the exact figures the tables round. A vague question like "how's my retirement looking?" forces
 the AI to guess what you mean; a specific one gets a specific, checkable
 answer.
 

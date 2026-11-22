@@ -50,6 +50,25 @@ def _section(output: str, heading: str) -> list[str]:
 
 
 @pytest.mark.slow
+def test_sim_compare_json_holds_each_sections_raw_table(compare_runs: Callable[..., Result]) -> None:
+    import json
+
+    result = compare_runs("retire_alice", "higher_pay", "--json", "--dollars", "nominal")
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.stdout)
+    assert found["baseline"] == "retire_alice" and found["variants"] == ["higher_pay"]
+    tables = found["tables"]
+    assert list(tables)[:2] == ["runs", "rules"]
+    assert tables["net_worth"]["columns"] == ["year", "retire_alice", "higher_pay", "Δ higher_pay"]
+    year = tables["net_worth"]["rows"][-1]
+    assert year["Δ higher_pay"] == pytest.approx(year["higher_pay"] - year["retire_alice"], abs=0.01)
+    csv_result = compare_runs("retire_alice", "higher_pay", "--csv", "--section", "net-worth",
+                              "--dollars", "nominal")
+    assert csv_result.exit_code == 0, csv_result.output
+    assert csv_result.stdout.splitlines()[0] == "year,retire_alice,higher_pay,Δ higher_pay"
+
+
+@pytest.mark.slow
 def test_sim_compare_prints_every_section(compare_runs: Callable[..., Result]) -> None:
     result = compare_runs("retire_alice", "higher_pay")
     assert result.exit_code == 0, result.output

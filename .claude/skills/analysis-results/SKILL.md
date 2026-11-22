@@ -122,6 +122,16 @@ latest run; add `</dev/null`. Charts marked † take `--graph` (in the pane) or
 `sim networth`, `account history`, the reports and `report guard-rails` have
 no chart yet (#327): for those pictures, open the notebook.
 
+**Read figures with `--json`.** The list and report commands above (and
+`sim explain`, `sim compare`, `sim ensemble summary|compare|guard-rails|drift|spending`,
+`sim allocation`, `sim account holdings|holders`, `sim strategy log`, `sim prices show`)
+take `--json` (or `--csv`): the rows behind the table, under the table's
+column names, unrounded (dollars to the cent, shares and rates as
+fractions), with the heading's facts (title, dollars, run) as fields and a
+command with several tables giving each by name under `tables`. Read
+numbers from that rather than from a table's whole dollars; notes go to
+stderr, so stdout is only JSON. Show the user the table (or chart) itself.
+
 **"Why did X happen"**: find the month (`sim explain` lists negative
 balances; `account history` shows the change), list that month's movements
 with `sim items` (narrow it with `--reason`, `--rule`, `--tax-character`,

@@ -53,12 +53,12 @@ from zabob.retirement.expenses.baseline import (
 )
 from zabob.retirement.sim import (
     allocation, asset_classes, calendar_guide, chain_edit, chain_map, completion, deductions, drift, guard_rail_guide,
-    guard_rails, load_warnings, lot_guide, names, prices, readme, registries, rename, reports, research, roll,
+    guard_rails, load_warnings, lot_guide, names, output, prices, readme, registries, rename, reports, research, roll,
     scenario_guide,
     scheduled_guide, sensitivity, series_files, setup_listings, shortfalls, strategy_code, strategy_files,
     strategy_guide, symbols, states, tax_code, tax_files, tax_guide, units, working_set, ytd_guide,
 )
-from zabob.retirement.sim.accounts import load_accounts_view, render_accounts_table
+from zabob.retirement.sim.accounts import AccountRow, load_accounts_view, render_accounts_table
 from zabob.retirement.sim.connection import (
     EXPENSE_CATEGORIES, open_run, open_scenario, year_end_values, Connection, RunConnection,
 )
@@ -197,6 +197,7 @@ from zabob.retirement.sim.schema import connect_sim_file
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from rich.console import RenderableType
+    from zabob.retirement.sim.lifespan_curves import PersonLifespan
 
 
 def _resolve_state_dir(
@@ -1893,6 +1894,7 @@ def _apply_pool_edit(
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template ensembles (t_ names) read from the code repository.")
+@output.output_options
 def ensemble_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's ensembles: ``sim scenario list``, keeping only
     the scenarios whose merged ensemble_size is positive."""
@@ -2004,6 +2006,11 @@ def _ensemble_batch_dir(
             f"'sim ensemble sensitivity {scenario_name} --batch {batch_dir.name}'"
         )
     return batch_dir
+
+
+def _year_axis(table: pd.DataFrame) -> pd.DataFrame:
+    """A year-end table as ``_echo_year_table`` heads it: its index ``year``."""
+    return table if isinstance(table.index, pd.MultiIndex) else table.rename_axis("year")
 
 
 def _echo_year_table(table: pd.DataFrame) -> None:
@@ -2400,6 +2407,7 @@ def _subject(account: str | None, lot: str | None, after_tax: bool = False) -> s
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_summary(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     account: str | None, lot: str | None, reserve: str | None, dollars: str, pre_tax: bool,
@@ -2451,13 +2459,7 @@ def ensemble_summary(
     table = _shown_years(year_end_values(pd.concat(
         [monthly_summary, risk_summary(frame, reserve_dollars, cpi_frame)], axis=1,
     )), years)
-    click.echo(
-        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
-        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
-        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
-        + ("" if reserve_dollars is None
-           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
-    )
+
     def lows_frame() -> pd.DataFrame:
         # Net worth even with --account: an account only some components
         # have is 0 in the others' members, which would rank them worst.
@@ -2465,6 +2467,19 @@ def ensemble_summary(
             return cpi_frame
         return _member_frame(store, None, DollarMode.CPI_CONSTANT, None, after_tax=not pre_tax)
 
+    if output.machine():
+        output.emit(_year_axis(table), title=f"ensemble {scenario_name}", batch=batch_dir.name,
+                    dollars=mode.value, subject=_subject(account, lot, after_tax),
+                    members=len(store), failed={stem: statuses[stem] for stem in failed} or None,
+                    reserve=reserve_dollars, pool=_pool_summary_lines(batch_dir, lows_frame) or None)
+        return
+    click.echo(
+        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
+        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
+        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
+        + ("" if reserve_dollars is None
+           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
+    )
     for line in _pool_summary_lines(batch_dir, lows_frame):
         click.echo(f"  {line}")
     _echo_year_table(table)
@@ -2523,6 +2538,7 @@ def _fan_can_log(monthly_summary: pd.DataFrame, subject: str) -> bool:
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_compare(
     baseline: str | None, variants: tuple[str, ...], runs_dir: Path | None,
     data_dir: Path | None, account: str | None, lot: str | None, reserve: str | None,
@@ -2594,11 +2610,19 @@ def ensemble_compare(
     def clip(frame: pd.DataFrame) -> pd.DataFrame:
         return clip_years(frame, years)
 
-    if len(variants) == 1:
-        _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
-    else:
-        _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
-    _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    with output.collecting() as collected:
+        if len(variants) == 1:
+            _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
+        else:
+            _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
+        _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    subject=subject, members={name: len(stores[name]) for name in names},
+                    paired={name: len(tables.pairs(baseline, name)[0]) for name in variants
+                            if baseline in tables.frames and name in tables.frames},
+                    reserve=tables.reserve)
+        return
     if as_graph or graph_file is not None:
         def chart(size: tuple[float, float] | None = None) -> Figure:
             return _ensemble_compare_chart(tables, baseline, list(variants), subject,
@@ -2629,12 +2653,16 @@ def _echo_one_ensemble_comparison(
             f"  paired: {len(pairs)} future(s)" if pairs else f"  not paired: {unpaired}"
         )
         click.echo(f"{variant} − {baseline}, year end:")
-        _echo_year_table(tables.deltas(baseline, variant, clip))
+        deltas = tables.deltas(baseline, variant, clip)
+        output.collect("deltas", _year_axis(deltas))
+        _echo_year_table(deltas)
     else:
         click.echo(f"  only one side: {tables.missing()[0]} has no {subject}")
     for name in tables.frames:
         click.echo(f"{name} tail, year end{_reserve_note(tables)}:")
-        _echo_year_table(tables.tail(name, clip))
+        tail = tables.tail(name, clip)
+        output.collect(f"tail:{name}", _year_axis(tail))
+        _echo_year_table(tail)
 
 
 def _echo_ensemble_comparisons(
@@ -2658,9 +2686,13 @@ def _echo_ensemble_comparisons(
                        else f"  {name}: not paired: {unpaired}")
         if compared:
             click.echo(f"Against {baseline}, by year end:")
-            _echo_year_table(tables.deltas_table(baseline, compared, clip))
+            deltas = tables.deltas_table(baseline, compared, clip)
+            output.collect("deltas", _year_axis(deltas))
+            _echo_year_table(deltas)
     click.echo(f"Tail and reserve, by recipe, year end{_reserve_note(tables)}:")
-    _echo_year_table(tables.tails(clip))
+    tails = tables.tails(clip)
+    output.collect("tails", _year_axis(tails))
+    _echo_year_table(tails)
 
 
 def _ensemble_compare_chart(
@@ -2781,6 +2813,7 @@ _ENSEMBLE_RAIL_LEGEND = (
     help="Dollars the RMS overshoot is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_guard_rails(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     rail_names: tuple[str, ...], dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2812,7 +2845,22 @@ def ensemble_guard_rails(
     store = _open_series(batch_dir)
     results = _ensemble_guard_rails(data_dir, scenario_name, store, mode, rail_names)
     if not results:
-        click.echo(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        output.note(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        return
+    if output.machine():
+        shown = [r for r in results if r.applies]
+        for r in results:
+            if not r.applies:
+                output.note(f"  {r.rail.name} covers none of these members' years")
+        tables: dict[str, output.Table] = {}
+        if shown:
+            tables["summary"] = guard_rails.ensemble_summary_frame(shown)
+        for r in shown:
+            tables[r.rail.name] = guard_rails.ensemble_rail_frame(r)
+        output.emit(tables, title=f"ensemble {scenario_name} guard rails", batch=batch_dir.name,
+                    members=len(store), dollars=mode.value, legend=list(_ENSEMBLE_RAIL_LEGEND),
+                    rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense}
+                           for r in shown])
         return
     click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
                f"guard rails, {_DOLLAR_LABELS[mode]}")
@@ -2863,6 +2911,7 @@ def ensemble_guard_rails(
               help=f"One class's drift (share less target, signed) instead of the largest either way: "
                    f"{registries.asset_class_list()}.")
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_drift(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     target_set: str | None, portfolio: str | None, asset_class: str | None, as_graph: bool,
@@ -2896,12 +2945,19 @@ def ensemble_drift(
         raise click.ClickException(f"{scenario_name}: {exc}") from None
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
     what = f"{asset_class} share less target" if asset_class else "largest drift either way"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
                f"target set {target_set} ({whose}), {what}, percentage points"
                + (f"; band ±{band:g}" if band is not None else ""))
     table = drift.ensemble_drift_table(members, band=None if asset_class else band)
     if table.empty:
-        click.echo("(no months in the members)")
+        output.note("(no months in the members)")
+        return
+    if output.machine():
+        output.emit(table.rename_axis("month"), title=f"ensemble {scenario_name} drift",
+                    batch=batch_dir.name,
+                    members=len(store), target_set=target_set, portfolio=portfolio,
+                    measure=what, units="percentage points; past_band and ever_past fractions",
+                    band=band)
         return
     shares = [c for c in ("past_band", "ever_past") if c in table.columns]
     click.echo(table.to_string(formatters={
@@ -2933,6 +2989,7 @@ def ensemble_drift(
     help="Dollars the spending is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_spending(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     category: str | None, dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2966,11 +3023,17 @@ def ensemble_spending(
     # A household's partial final year counts toward cuts, not dollar figures (#377).
     partial = store.partial_last_years()
     what = f"{category} spending" if category else "spending"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
-               f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
+                f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
     table = reports.ensemble_spending_table(delivered, budgeted, partial)
     if table.empty:
-        click.echo("(no spending in the members)")
+        output.note("(no spending in the members)")
+        return
+    if output.machine():
+        output.emit(table.rename_axis("year"), title=f"ensemble {scenario_name} {what} against the plan",
+                    batch=batch_dir.name, members=len(store), dollars=mode.value,
+                    summary=reports.ensemble_spending_summary(delivered, budgeted,
+                                                              store.whole_years(), partial))
         return
     shares = ("of_plan", "cut")
     click.echo(table.to_string(formatters={
@@ -3015,6 +3078,7 @@ def _echo_ensemble_rail_deltas(
         click.echo(f"guard rails, {variant} − {baseline} ({_DOLLAR_LABELS[mode]}): Δ of each "
                    "share of members past and of the RMS overshoot")
         for rail, frame in frames.items():
+            output.collect(f"guard_rail:{variant}:{rail}", clip_years(frame, years))
             click.echo(f"{rail}:")
             _echo_rail_share_table(clip_years(frame, years))
 
@@ -4070,19 +4134,18 @@ def _read_data_version(intent_path: Path) -> str | None:
     default=None,
     help="Default: data-repo state/runs when activated, else state/runs.",
 )
+@output.output_options
 def list_runs(runs_dir: Path | None) -> None:
     """List run files in --runs-dir with status, scenario, who, when."""
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR)
     if not resolved_runs_dir.exists():
-        click.echo(f"(no runs dir: {resolved_runs_dir})")
+        output.note(f"(no runs dir: {resolved_runs_dir})")
         return
     files = sorted(resolved_runs_dir.glob("*.sqlite3"))
     if not files:
-        click.echo(f"(no run files in {resolved_runs_dir})")
+        output.note(f"(no run files in {resolved_runs_dir})")
         return
-    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
-    click.echo(header)
-    click.echo("-" * len(header))
+    runs = output.Rows(["status", "scenario", "finished_at", "run_by", "file", "error"])
     for f in files:
         try:
             con = connect_sim_file(f"file:{f}?mode=ro", uri=True)
@@ -4094,15 +4157,23 @@ def list_runs(runs_dir: Path | None) -> None:
             finally:
                 con.close()
         except sqlite3.DatabaseError as exc:
-            click.echo(f"{'unreadable':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name} ({exc})")
+            runs.add(status="unreadable", file=f.name, error=str(exc))
             continue
         if row is None:
-            click.echo(f"{'empty':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name}")
+            runs.add(status="empty", file=f.name)
             continue
         status, name, finished, by = row
-        click.echo(
-            f"{status:<10}  {name:<24}  {(finished or '-'):<20}  {(by or '-'):<16}  {f.name}"
-        )
+        runs.add(status=status, scenario=name, finished_at=finished, run_by=by, file=f.name)
+    if output.machine():
+        output.emit(runs, title=f"runs ({resolved_runs_dir})")
+        return
+    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
+    click.echo(header)
+    click.echo("-" * len(header))
+    for r in runs.rows:
+        error = f" ({r['error']})" if r["error"] else ""
+        click.echo(f"{r['status']:<10}  {r['scenario'] or '-':<24}  {r['finished_at'] or '-':<20}  "
+                   f"{r['run_by'] or '-':<16}  {r['file']}{error}")
 
 
 def _scenario_argument(fn):
@@ -4213,6 +4284,7 @@ def _resolve_run_target(
 @click.argument("target", type=completion.SCENARIO_OR_RUNFILE, metavar="[SCENARIO | RUNFILE]", required=False)
 @_PRE_TAX_OPTION
 @_run_target_options
+@output.output_options
 def explain(
     target: str | None, pre_tax: bool, runfile: Path | None, data_dir: Path | None,
     runs_dir: Path | None,
@@ -4220,8 +4292,22 @@ def explain(
     """Dump scenario name, versions, counts, lots, year-end net worth (after
     tax unless --pre-tax), the scenario's load warnings, negative-balance
     warnings and basis step-ups at a death for a run: the scenario's latest (the current scenario's by
-    default), or a run file. Sanity dump."""
+    default), or a run file. Sanity dump.
+
+    With --json, each part under its own name, the lists as tables; --csv
+    prints the year-end net worth alone."""
     runfile = _resolve_run_target(target, runfile, data_dir, runs_dir)
+    with output.collecting() as collected:
+        facts = _explain(runfile, pre_tax, data_dir)
+    if output.machine():
+        net_worth = collected.pop("net_worth")
+        output.emit({"net_worth": net_worth, **collected}, **facts)
+
+
+def _explain(runfile: Path, pre_tax: bool, data_dir: Path | None) -> dict[str, Any]:
+    """``sim explain``'s dump, and with --csv or --json, what it says
+    outside its tables (the tables go to ``output.collect``)."""
+    facts: dict[str, Any] = {}
     con = connect_sim_file(f"file:{runfile}?mode=ro", uri=True)
     try:
         run = con.execute(
@@ -4234,6 +4320,12 @@ def explain(
             raise click.ClickException(f"no simulation_run row in {runfile}")
         (name, status, started, finished, failure, cv, cd, dv, dd,
          by, host, py) = run
+        facts["run"] = {
+            "file": str(runfile), "scenario": name, "status": status, "failure": failure,
+            "started": started, "finished": finished, "code_version": cv,
+            "code_dirty": bool(cd), "data_version": dv, "data_dirty": bool(dd),
+            "run_by": by, "host": host, "python": py,
+        }
         click.echo(f"file:           {_shown(runfile)}")
         click.echo(f"scenario:       {name}")
         click.echo(f"status:         {status}" + (f"  ({failure})" if failure else ""))
@@ -4246,6 +4338,7 @@ def explain(
         steps = con.execute("SELECT COUNT(*) FROM simulation_step").fetchone()[0]
         states = con.execute("SELECT COUNT(*) FROM account_state").fetchone()[0]
         xfers = con.execute("SELECT COUNT(*) FROM transfer_event").fetchone()[0]
+        facts["counts"] = {"steps": steps, "account_states": states, "transfers": xfers}
         click.echo(
             f"counts:         steps={steps}  account_states={states}  transfers={xfers}"
         )
@@ -4265,6 +4358,9 @@ def explain(
             ),
             sorted(INVESTMENT_ASSET_SUBKINDS),
         ).fetchall()
+        output.collect("lots", output.from_rows(
+            ["account", "subkind", "lot", "symbol", "quantity_micros", "balance_cents",
+             "cost_basis_cents"], lots))
         if lots:
             click.echo("")
             click.echo("lots at the final step:")
@@ -4282,6 +4378,10 @@ def explain(
         click.echo(f"{'':21}{'nominal':>18}  {'CPI-constant':>18}")
         rows = (_year_end_pre_tax_net_worth(con) if pre_tax
                 else _year_end_after_tax_net_worth(con, runfile))
+        facts["after_tax"] = not pre_tax
+        output.collect("net_worth", output.from_rows(
+            ["year", "nominal_cents", "cpi_constant_cents"],
+            [(int(year), nw, real) for year, nw, real in rows]))
         for year, nw, real in rows:
             click.echo(f"  {year}  {'':13}{_fmt_cents(nw)}  {_fmt_cents(real):>18}")
 
@@ -4291,9 +4391,17 @@ def explain(
         _echo_basis_step_ups(con)
         _echo_inheritances(con)
         _echo_strategies(con)
+        if output.machine():
+            found = load_warnings.read(con)
+            facts["load_warnings"] = list(found.warnings)
+            facts["unused"] = list(found.unused)
+            negative = shortfalls.negative_balances(con)
+            output.collect("negative_balances", output.from_items(negative, shortfalls.NegativeBalance))
+            facts["negative_balance_warnings"] = shortfalls.warning_lines(negative)
     finally:
         con.close()
-    _echo_guard_rail_episodes(runfile, data_dir)
+    _echo_guard_rail_episodes(runfile, data_dir, facts)
+    return facts
 
 
 def _year_end_pre_tax_net_worth(con: sqlite3.Connection) -> list[tuple[str, int, int | None]]:
@@ -4331,7 +4439,8 @@ def _year_end_after_tax_net_worth(
     return rows
 
 
-def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
+def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None,
+                              facts: dict[str, Any] | None = None) -> None:
     """Each stretch of years the run spent past one of its scenario's guard
     rails (#305), annual and cumulative, in CPI-constant dollars. The rails
     are read from the data repo, so a run file read without one, or whose
@@ -4352,6 +4461,8 @@ def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
             return
         mode = DollarMode.CPI_CONSTANT if rc.cpi_index().notna().all() else DollarMode.NOMINAL
         lines = guard_rails.episode_lines(guard_rails.evaluate_run(rc, rails, mode))
+    if facts is not None:
+        facts["guard_rails_past"] = {"dollars": mode.value, "rails": len(rails), "episodes": lines}
     if not lines:
         click.echo(f"guard rails: never past any of {len(rails)}")
         return
@@ -4376,6 +4487,9 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
     ).fetchall()
     if not rows:
         return
+    output.collect("strategies", output.from_rows(
+        ["name", "kind", "chain", "decisions", "asked_cents", "chosen_cents", "chain_steps_cents"],
+        rows))
     year_end: dict[str, tuple[int, int]] = {
         name: (moved, gain) for name, moved, gain in con.execute(
             "SELECT s.name, SUM(d.chosen_cents), COALESCE(SUM(("
@@ -4384,8 +4498,12 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
             "FROM strategy_decision d JOIN strategy s ON s.id = d.strategy_id "
             "WHERE d.hook = 'year_end' GROUP BY s.id")
     }
+    output.collect("strategy_year_end", output.from_rows(
+        ["name", "moved_cents", "realized_gain_cents"],
+        [(name, moved, gain) for name, (moved, gain) in sorted(year_end.items())]))
     breach_lines: dict[str, list[str]] = {}
     told = strategy_guide.breaches(con)
+    output.collect("strategy_breaches", told)
     for key in sorted(set(zip(told["strategy"], told["rail"], told["margin_kind"], strict=True))):
         name, rail, kind = key
         group = told[(told["strategy"] == name) & (told["rail"] == rail) & (told["margin_kind"] == kind)]
@@ -4412,9 +4530,10 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
 def _echo_basis_step_ups(con: sqlite3.Connection) -> None:
     """The run's basis step-ups at a death (#255): the month, the lot, whose
     death, its basis before and after, and the rule that applied (#434)."""
-    from zabob.retirement.sim.step_ups import basis_step_ups
+    from zabob.retirement.sim.step_ups import BasisStepUp, basis_step_ups
 
     found = basis_step_ups(con)
+    output.collect("basis_step_ups", output.from_items(found, BasisStepUp))
     if not found:
         click.echo("basis step-ups at a death: none")
         return
@@ -4433,9 +4552,10 @@ def _echo_inheritances(con: sqlite3.Connection) -> None:
     """What each death did with the household's accounts (#274): the month,
     the decedent, the account, where it went and how; nothing for a run
     with none."""
-    from zabob.retirement.sim.inheritances import inheritances
+    from zabob.retirement.sim.inheritances import Inheritance, inheritances
 
     found = inheritances(con)
+    output.collect("inheritances", output.from_items(found, Inheritance))
     if not found:
         return
     click.echo(f"accounts passed on at a death ({len(found)}):")
@@ -4492,6 +4612,7 @@ def _echo_negative_balance_warnings(con: sqlite3.Connection) -> None:
 @_year_range_options
 @_report_graph_options
 @_run_target_options
+@output.output_options
 def networth_command(
     scenario: str | None, period: str, dollars: str, pre_tax: bool,
     first_year: int | None, last_year: int | None,
@@ -4578,6 +4699,15 @@ def _echo_pre_tax_networth(runfile: Path, period: str, dollars: str,
                 f"{rows[0][0][:4]} to {rows[-1][0][:4]}")
         rows = shown
     label = DollarMode(dollars).label
+    if output.machine():
+        when = "month" if period == "monthly" else "year"
+        shown = output.Rows([when, "net_worth"])
+        for month, cents in rows:
+            shown.add(**{when: month if period == "monthly" else int(month[:4]),
+                         "net_worth": None if cents is None else cents / 100})
+        output.emit(shown, title="net worth", dollars=DollarMode(dollars).value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"net worth, {label} dollars ({name}, run {runfile.name}):")
     for month, cents in rows:
         when = month if period == "monthly" else month[:4]
@@ -4607,6 +4737,14 @@ def _echo_after_tax_networth(rc: RunConnection, runfile: Path, period: str, mode
         table = table.groupby(index_years(table)).tail(1)
     table = _shown_years(table, years)
     label = DollarMode(mode).label
+    if output.machine():
+        if period != "monthly":
+            table = table.set_axis(pd.Index(index_years(table), name="year"))
+        else:
+            table = table.rename_axis("month")
+        output.emit(table, title="after-tax net worth", dollars=mode.value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"after-tax net worth, {label} dollars ({name}, run {runfile.name}):")
     _echo_table(
         ["month" if period == "monthly" else "year", *table.columns],
@@ -4682,6 +4820,7 @@ def _compare_variants(data: Path, runs_dir: Path, baseline: str) -> list[str]:
 @click.option("--lot", type=completion.LotName("account"), default=None,
               help="With --account: one lot of the account instead of its total.")
 @_year_range_options
+@output.output_options
 @_graph_options("net worth (or --account's balance) and each variant's difference, or with "
                 "--section social-security or tax, that section's chart",
                 after="the tables", written="that chart (one chart only)")
@@ -4751,7 +4890,9 @@ def compare_command(
     mode = DollarMode(dollars)
     mode_label = DollarMode(mode).label
     scenarios = [baseline, *variants]
-    with ExitStack() as stack:
+    run_warnings: list[str] = []
+    rebased_to: dict[str, Any] | None = None
+    with output.collecting() as collected, ExitStack() as stack:
         connections: dict[str, RunConnection] = {}
         # Matched against the folder list, not joined onto a path, so a name
         # like "../x" can't reach outside scenarios/ or the runs directory.
@@ -4771,11 +4912,16 @@ def compare_command(
         rebased = compare.align_cpi(connections, baseline)
         click.echo(f"{', '.join(variants)} vs {baseline}, {mode_label} dollars")
         if rebased and mode == DollarMode.CPI_CONSTANT:
+            # Those whose CPI-constant dollars are the baseline's, from its start.
+            rebased_to = {"scenarios": list(rebased),
+                          "to": f"{connections[baseline].cpi_index().index[0]:%Y-%m}"}
             click.echo(f"  ({', '.join(rebased)} in {baseline}'s dollars: "
-                       f"{baseline} starts {connections[baseline].cpi_index().index[0]:%Y-%m})")
+                       f"{baseline} starts {rebased_to['to']})")
 
         if "runs" in shown:
             meta, warnings = compare.comparability(connections, scenarios)
+            run_warnings = list(warnings)
+            output.collect("runs", meta)
             click.echo("\nRuns:")
             _echo_table(
                 ["scenario", "status", "finished", "code", "data"],
@@ -4792,24 +4938,28 @@ def compare_command(
 
         if "differences" in shown:
             rules = compare.rule_differences(connections, scenarios, baseline)
+            output.collect("rules", rules)
             click.echo("\nRules that differ, as each run ended:")
             if rules.empty:
                 click.echo("  none")
             else:
                 _echo_frame(rules.map(_cell))
             events = compare.event_differences(connections, scenarios)
+            output.collect("events", events)
             click.echo("\nCalendar events that differ:")
             if events.empty:
                 click.echo("  none")
             else:
                 _echo_frame(events.set_index(["scenario", "date"]).map(_cell))
             accounts = compare.account_definition_differences(connections, scenarios, baseline)
+            output.collect("accounts", accounts)
             click.echo("\nAccounts and lots defined differently:")
             if accounts.empty:
                 click.echo("  none")
             else:
                 _echo_frame(accounts.map(_cell))
             ytd = compare.year_to_date_differences(connections, scenarios, baseline)
+            output.collect("year_to_date", ytd)
             click.echo("\nYear-to-date rows that differ:")
             if ytd.empty:
                 click.echo("  none")
@@ -4823,6 +4973,7 @@ def compare_command(
                 click.echo(f"\nNo variant starts after {baseline}, so there is no start to compare.")
             for name in later:
                 month, frame = compare.start_comparison(connections, baseline, name)
+                output.collect(f"start:{name}", frame)
                 click.echo(f"\nWhere {name} starts: {baseline}'s projection for {month:%Y-%m} "
                            f"against {name}'s opening balances (nominal):")
                 _echo_frame(frame.map(_cell))
@@ -4838,15 +4989,17 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant net worth; pass --dollars nominal")
         if "net-worth" in shown:
+            year_end = _shown_years(compare.year_end_comparison(nw, baseline, variants), years)
+            output.collect("net_worth", year_end)
             click.echo(f"\n{'After-tax net worth' if after_tax else 'Net worth'} "
                        f"at year end ({mode_label}):")
-            _echo_frame(_shown_years(compare.year_end_comparison(nw, baseline, variants),
-                                     years).map(_cell))
+            _echo_frame(year_end.map(_cell))
 
         if "break-even" in shown:
             delta = compare.variant_delta(nw, baseline, variants)
             summary = compare.breakeven_summary(nw, delta, baseline, variants)
             summary.index.name = "variant"
+            output.collect("break_even", summary)
             click.echo(f"\nBreak-even vs {baseline}: the month after which a variant stays ahead")
             _echo_frame(summary.map(_cell))
 
@@ -4881,9 +5034,11 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant balance; pass --dollars nominal")
             if "account" in shown:
+                year_end = _shown_years(compare.year_end_comparison(balances, baseline, variants),
+                                        years)
+                output.collect("account", year_end)
                 click.echo(f"\n{subject} at year end ({mode_label}):")
-                _echo_frame(_shown_years(compare.year_end_comparison(balances, baseline, variants),
-                                         years).map(_cell))
+                _echo_frame(year_end.map(_cell))
 
         if graphed:
             from zabob.retirement.sim.compare_charts import comparison_figure, ss_figure, tax_figure
@@ -4911,6 +5066,10 @@ def compare_command(
                         f"Net worth, {mode_label}", deaths=deaths)
                 _draw_figure(figure, graph_file,
                              f"compare-{chart}-" if len(charts) > 1 else "compare-")
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    baseline=baseline, variants=list(variants),
+                    after_tax=after_tax, warnings=run_warnings or None, rebased=rebased_to)
 
 
 def _compare_charts(sections: Sequence[str], account: str | None) -> list[str]:
@@ -4965,6 +5124,8 @@ def _echo_ss_comparison(
     label = DollarMode(mode).label
     click.echo(f"\nGross Social Security by year ({label}):")
     table = clip_years(yearly, years)
+    output.collect("social_security", table)
+    output.collect("social_security_summary", compare.ss_summary(ss, baseline))
     if table.empty:
         click.echo("  none in these years")
     else:
@@ -4997,6 +5158,7 @@ def _echo_tax_comparison(
     label = DollarMode(mode).label
     shown = clip_years(comparison, years)
     moved = shown[compare.tax_differs(shown)]
+    output.collect("tax", moved)
     click.echo(f"\nTotal tax by tax year ({label}), the {len(moved)} of {len(shown)} years "
                f"where a variant's differs from {baseline}'s (a negative Δ owes less):")
     if moved.empty:
@@ -5005,6 +5167,7 @@ def _echo_tax_comparison(
         _echo_frame(moved.map(_whole_dollars_cell))
     ss = compare.ss_gross_by_month(connections, scenarios, mode)
     summary = compare.tax_summary(tax, ss, nw, baseline)
+    output.collect("tax_summary", summary)
     click.echo(f"\nTax over the run ({label}), Δ against {baseline}; final net worth "
                f"{'after tax' if after_tax else 'pre-tax'}:")
     _echo_frame(summary.map(_whole_dollars_cell))
@@ -5020,12 +5183,14 @@ def _echo_strategy_differences(
     if not compare.uses_strategies(connections):
         return
     strategies = compare.strategy_differences(connections, scenarios, baseline)
+    output.collect("strategy_differences", strategies)
     click.echo("\nStrategies that differ (— where a scenario doesn't run it):")
     if strategies.empty:
         click.echo("  none")
     else:
         _echo_frame(strategies.map(_cell))
     targets = compare.target_differences(connections, scenarios, baseline)
+    output.collect("target_differences", targets)
     click.echo("\nTarget weights that differ (percent):")
     if targets.empty:
         click.echo("  none")
@@ -5048,6 +5213,7 @@ def _echo_strategy_comparison(
             click.echo("\nStrategies: none in these runs")
         return
     activity = compare.strategy_activity(connections, scenarios)
+    output.collect("strategy_activity", activity)
     click.echo("\nStrategies over the run (dollars asked of their chains, moved by the strategy, "
                "left to the chain's steps):")
     if activity.empty:
@@ -5071,6 +5237,7 @@ def _echo_strategy_comparison(
                           for name, frame in by_scenario.items()})
     table.index.name = "month"
     table = clip_years(table, years)
+    output.collect("drift", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else f"{v:.1f}")))
 
 
@@ -5099,9 +5266,11 @@ def _echo_spending_comparison(
     baseline, variants = scenarios[0], scenarios[1:]
     click.echo(f"\nSpending delivered by year ({DollarMode(mode).label}):")
     table = clip_years(compare.spending_comparison(found, baseline, variants), years)
+    output.collect("spending", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else _whole_dollars(v))))
     click.echo("\nSpending against each scenario's plan over the run:")
     summary = compare.spending_summaries(found)
+    output.collect("spending_summary", summary)
     money = ("delivered", "budgeted", "rms", "lowest")
     shares = ("of_plan", "redirected")
     _echo_frame(summary.astype(object).assign(
@@ -5142,6 +5311,7 @@ def _echo_guard_rail_comparison(
     click.echo(f"\nGuard rail margins ({label}): negative is past the rail; cum is the years "
                "so far summed")
     for rail, frame in frames.items():
+        output.collect(f"guard_rail:{rail}", clip_years(frame, years))
         click.echo(f"\n{rail}:")
         _echo_frame(clip_years(frame, years).map(_cell))
 
@@ -5735,7 +5905,8 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     try:
         import readline
     except ImportError:
-        return click.prompt(text, default=default, show_default=bool(default), type=choice)
+        return click.prompt(text, default=default, show_default=bool(default), type=choice,
+                            err=output.machine())
     completer_choices = list(choices or [])
 
     def completer(prefix: str, state: int) -> str | None:  # noqa: ARG001
@@ -5755,7 +5926,9 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     else:
         readline.parse_and_bind("tab: complete")
     try:
-        return click.prompt(text, default=default, show_default=bool(default), type=choice)
+        # With --csv or --json, stdout is for the data alone (#196).
+        return click.prompt(text, default=default, show_default=bool(default), type=choice,
+                            err=output.machine())
     finally:
         readline.set_completer(old)
         readline.set_completer_delims(old_delims)
@@ -5781,11 +5954,11 @@ def _ask_name(what: str, choices: Iterable[str], *, prompt: str | None = None,
     listed = plural or (what if what.endswith("series") else f"{what}s")
     if not shown:
         raise click.ClickException(f"there are no {listed} to choose from")
-    click.echo(f"{listed}: {', '.join(shown)}")
+    output.note(f"{listed}: {', '.join(shown)}")
     while (answer := _prompt_with_completion(prompt or what, choices=shown).strip()) not in shown:
         if other is not None and answer and other(answer):
             break
-        click.echo(f"  one of: {', '.join(shown)}")
+        output.note(f"  one of: {', '.join(shown)}")
     return answer
 
 
@@ -10772,8 +10945,10 @@ def import_budget(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List recurring scheduled transactions."""
+    """List recurring scheduled transactions. --csv and --json give every
+    field of each rule."""
     from rich.console import Console
     from rich.table import Table
 
@@ -10783,6 +10958,12 @@ def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data_dir_p, _resolve_scenario(data_dir_p, scenario).name) as sc:
         scen_name = sc.name
         rows = scheduled_view(sc)
+    if output.machine():
+        # The view's "-" placeholders are for reading; missing is missing.
+        raw = rows.replace({c: {"-": None} for c in ("from_lot", "to_lot", "end", "description")
+                            if c in rows.columns})
+        output.emit(raw, title=f"scheduled ({data_dir_p.name} / {scen_name})", scenario=scen_name)
+        return
     table = Table(title=f"scheduled ({data_dir_p.name} / {scen_name})")
     for column, justify in (
         ("Name", "left"), ("Cadence", "left"), ("From", "left"), ("Lot", "left"),
@@ -11821,6 +12002,7 @@ def _default_tax_treatment(kind: str, subkind: str) -> str:
               help="Filter to accounts of this kind (e.g. asset, liability).")
 @click.option("--owner", type=completion.OWNER, default=None,
               help="Filter to accounts owned by this person or 'joint'.")
+@output.output_options
 def list_accounts(
     scenario: str | None,
     data_dir: Path | None,
@@ -11849,6 +12031,9 @@ def list_accounts(
     if owner:
         title += f" / owner={owner}"
     title += ")"
+    if output.machine():
+        output.emit(output.from_items(rows, AccountRow, blank_is_missing=True), title=title)
+        return
     Console().print(render_accounts_table(rows, title=title))
 
 
@@ -11868,7 +12053,7 @@ def _holdings_options(fn):
                      default=None, help="Run file (default: the scenario's latest run)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -11918,6 +12103,9 @@ def account_holdings_command(
         except (KeyError, ValueError) as exc:
             raise click.ClickException(exc.args[0]) from None
     title = f"holdings of {account} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, account=account, source=described)
+        return
     Console().print(render_holdings_table(frame, title=title))
 
 
@@ -11942,11 +12130,14 @@ def account_holders_command(
         except ValueError as exc:
             raise click.ClickException(str(exc)) from None
     if frame.empty:
-        click.echo(f"no lot holds {symbol!r} ({described})")
+        output.note(f"no lot holds {symbol!r} ({described})")
         return
     name = frame["name"].iloc[0]
     named = f"{symbol} ({name})" if isinstance(name, str) else symbol
     title = f"accounts holding {named} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, symbol=symbol, source=described)
+        return
     Console().print(render_holders_table(frame, title=title))
 
 
@@ -12006,6 +12197,11 @@ def allocation_command(
     title = f"asset allocation ({described}; {as_of})"
     if excluded:
         title += f", excluding {', '.join(excluded)}"
+    if output.machine():
+        # A share, as every other report's, not the table's percent.
+        shares = table.assign(share=table["percent"] / 100).drop(columns="percent")
+        output.emit(shares, title=title, source=described, by=by, excluded=list(excluded) or None)
+        return
     _print_unclipped(allocation.render_allocation_table(table, title=title))
     if allocation.UNCLASSIFIED in table.index:
         click.echo("unclassified: lots whose symbol has no rows in allocations.csv"
@@ -12037,10 +12233,15 @@ def _allocation_drift(
     finally:
         con.close()
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
-    click.echo(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
+    output.note(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
     if frame.empty:
-        click.echo("(no months in the run)")
+        output.note("(no months in the run)")
         _graph_nothing(graph_file, "drift", "drift-")
+        return
+    if output.machine():
+        output.emit(frame.rename_axis("month"), title=f"drift from target set {target_set}",
+                    target_set=target_set,
+                    portfolio=portfolio, units="percentage points", source=path.name)
         return
     click.echo(frame.to_string(float_format=lambda v: f"{v:+.1f}"))
 
@@ -12086,7 +12287,7 @@ def _report_options(fn):
                      default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -12115,10 +12316,14 @@ def _report_run(
 
 
 def _print_report(frame: pd.DataFrame, what: str, described: str, mode: DollarMode, *,
-                  total_row: bool = False) -> None:
+                  total_row: bool = False, **meta: Any) -> None:
     """Print a report: a line saying what it shows, in which dollars and from
     which run, then the table. Not the table's own title, which would wrap
-    over a narrow table."""
+    over a narrow table. With --csv or --json, the frame's rows instead, the
+    heading's parts (and ``meta``) as JSON's fields."""
+    if output.machine():
+        output.emit(frame, title=what, dollars=mode.value, source=described, **meta)
+        return
     click.echo(f"{what}, {_DOLLAR_LABELS[mode]} ({described})")
     _print_unclipped(reports.render_report_table(frame, total_row=total_row))
 
@@ -12166,7 +12371,7 @@ def account_history_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no balances for {account} in that range ({described})")
+        output.note(f"no balances for {account} in that range ({described})")
         _graph_nothing(graph_file, "balances", "history-")
         return
     subject = f"{account}/{lot}" if lot else account
@@ -12250,8 +12455,8 @@ def _flow_report(side: reports.FlowSide, year: int | None, by: str, untagged: bo
                                              reports.CASH_FLOW, *reports.NET_WORTH_COLUMNS])
     if by.startswith("tag:") and shown.empty:
         role = by.removeprefix("tag:")
-        click.echo(f"no {side}{period} is tagged in role {role} ({described});"
-                   " --untagged shows it all")
+        output.note(f"no {side}{period} is tagged in role {role} ({described});"
+                    " --untagged shows it all")
         _graph_nothing(graph_file, f"{side} tagged in role {role}", f"{side}-")
         return
     if year is None:
@@ -12411,13 +12616,15 @@ def report_spending_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if delivered.empty and budgeted.empty:
-        click.echo(f"no spending in {described}")
+        output.note(f"no spending in {described}")
         _graph_nothing(graph_file, "spending", "spending-")
         return
     frame, summary = reports.spending_report(delivered, budgeted)
     frame = _shown_years(frame, years)
     what = f"spending against plan by {by.removeprefix('tag:')}"
-    _print_report(frame, what, described, mode)
+    _print_report(frame, what, described, mode, summary=summary)
+    if output.machine():
+        return
 
     def figure():
         from zabob.retirement.sim.spending_charts import spending_figure
@@ -12519,7 +12726,7 @@ def report_tax_command(
             _hold_tables()
             frame = _shown_years(reports.tax_return(rc, jurisdiction, mode), years)
         if frame.empty:
-            click.echo(f"no {jurisdiction} tax was computed in this run ({described})")
+            output.note(f"no {jurisdiction} tax was computed in this run ({described})")
             return
         _print_report(frame.T.rename_axis("line"), f"the {jurisdiction} return", described, mode)
         return
@@ -12529,7 +12736,7 @@ def report_tax_command(
                              else reports.tax_by_year(rc, mode), years)
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no tax was computed in this run ({described})")
+        output.note(f"no tax was computed in this run ({described})")
         _graph_nothing(graph_file, "tax", "tax-")
         return
     _print_report(frame, "tax reconciliation" if reconciliation else "tax and taxable income",
@@ -12675,8 +12882,8 @@ def report_guard_rails_command(
                     + (f"; it has {', '.join(sorted(known))}" if known else ""))
             rails = [known[n] for n in dict.fromkeys(rail_names)]
         if not rails:
-            click.echo(f"no guard rails in {rc.name!r} ({described}); "
-                       "`sim guard-rail add` adds one")
+            output.note(f"no guard rails in {rc.name!r} ({described}); "
+                        "`sim guard-rail add` adds one")
             _graph_nothing(graph_file, "guard rails", "guard-rails-")
             return
         if mode == DollarMode.CPI_CONSTANT and rc.cpi_index().isna().all():
@@ -12692,9 +12899,28 @@ def report_guard_rails_command(
     shown = [r for r in results if r.applies]
     for r in results:
         if not r.applies:
-            click.echo(f"  {r.rail.name} covers none of this run's years")
+            output.note(f"  {r.rail.name} covers none of this run's years")
     if not shown:
         _graph_nothing(graph_file, "guard rails", "guard-rails-")
+        return
+    if output.machine():
+        one = len(rail_names) == 1
+        frame = (guard_rails.rail_frame(shown[0]) if one
+                 else guard_rails.margins_frame(shown, carried=carried))
+        if one and not carried:
+            frame = frame.drop(columns="carried")
+        responses = output.from_rows(
+            ["strategy", "rail", "margin_kind", "first_year_past", "year_back_inside", "answered"],
+            [s for s in spells if s[1] in {r.rail.name for r in shown}])
+        output.emit(
+            {"margins": clip_years(frame, years),
+             "summary": guard_rails.summary_frame(shown),
+             "responses": responses},
+            title=f"guard rail {shown[0].rail.name}" if one else "guard rail margins",
+            dollars=mode.value, source=described,
+            rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense,
+                    "start": r.rail.start or None, "end": r.rail.end or None}
+                   for r in shown])
         return
     style = _margin_style(shown)
     if len(rail_names) == 1:
@@ -13387,6 +13613,7 @@ def lot_group_command() -> None:
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """List an account's lots, as the scenario's load order leaves them, or
     every account's without ACCOUNT. A column no listed lot uses is left out.
@@ -13394,6 +13621,8 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
     The last column says where each lot comes from: this scenario, a parent
     it inherits from, or this scenario's override of a parent's lot, and
     whether the lot is deleted (zeroed here).
+
+    --csv and --json give every value column, as account_lots.csv has it.
     """
     data_dir_p = _resolve_data_dir(data_dir)
     scenario_dir, scenario_name = _resolve_scenario_dir(data_dir_p, scenario)
@@ -13412,7 +13641,7 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
                 )
             # The loader gives an account with no account_lots.csv rows an
             # empty default lot; say so rather than list nothing.
-            click.echo(
+            output.note(
                 f"{account!r} has no lots in account_lots.csv, so it loads with an "
                 f"empty {registries.DEFAULT_LOT!r} lot"
             )
@@ -13425,6 +13654,13 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
             return f"inherited from {one.inherited_from}"
         return f"overrides {one.inherited_from}" if one.inherited_from else scenario_name
 
+    if output.machine():
+        shown = output.Rows(["account", "lot", *lot_guide.VALUE_COLUMNS, "from"])
+        for one in lots:
+            shown.add(account=one.account, lot=one.lot, **{"from": source(one)},
+                      **{column: one.row[column] or None for column in lot_guide.VALUE_COLUMNS})
+        output.emit(shown, title=f"lots ({scenario_name})", scenario=scenario_name)
+        return
     columns = [column for column in lot_guide.VALUE_COLUMNS if any(one.row[column] for one in lots)]
     header = ["account", "lot", *columns, "from"]
     table = [[one.account, one.lot, *(one.row[column] for column in columns), source(one)] for one in lots]
@@ -14574,9 +14810,12 @@ def import_holdings(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
     """List one-time transfers: calendar one_off_transfer and transfer_balance
-    events, and scheduled rows with cadence one_off."""
+    events, and scheduled rows with cadence one_off. With --csv or --json,
+    amount is blank where amount_rule says how it is figured (balance: what
+    the lot holds when it fires)."""
     from rich.console import Console
     from rich.table import Table
 
@@ -14592,6 +14831,7 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
         table.add_column("Description")
 
         rows: list[tuple[str, ...]] = []
+        raw: list[dict[str, Any]] = []
         for row in con.execute(
             "SELECT ce.date, ce.kind, ce.amount, "
             "       COALESCE(ce.tax_character, '') AS tax_character, "
@@ -14622,6 +14862,16 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 amount,
                 row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "calendar",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount"] is None or row["kind"] == "transfer_balance"
+                else row["amount"] / 100,
+                "amount_rule": "balance" if row["kind"] == "transfer_balance" else "fixed_amount",
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
         for row in con.execute(
             "SELECT s.start AS date, s.amount_cents, s.amount_rule_kind, s.tax_character, "
             "       COALESCE(s.description, s.name) AS description, "
@@ -14646,6 +14896,23 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 _account_with_lot(row["name_2"] or row["chain_2"], row["subkind_2"], row["lot_2"]),
                 amt, row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "scheduled",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount_cents"] is None else row["amount_cents"] / 100,
+                "amount_rule": row["amount_rule_kind"],
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
+        if output.machine():
+            shown = output.Rows(["date", "source", "from", "from_lot", "to", "to_lot", "amount",
+                                 "amount_rule", "tax_character", "description"])
+            for record in sorted(raw, key=lambda r: (r["date"], r["source"])):
+                shown.add(**record)
+            output.emit(shown, title=f"transfers ({data_dir_p.name} / {scen_name})",
+                        scenario=scen_name)
+            return
         for record in sorted(rows, key=lambda r: (r[0], r[1])):
             table.add_row(*record)
 
@@ -14842,6 +15109,7 @@ def _note_stale_prices(data: Path) -> None:
               help="With SYMBOLS, show only prices from this date on.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_dir: Path | None) -> None:
     """Show the prices stored in prices/.
 
@@ -14873,7 +15141,10 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         held = prices.prices_in_use(scenarios_dir).symbols if scenarios_dir.is_dir() else []
         frame = prices.price_summary(prices_dir, {*held, *prices.known_symbols(data)})
         if frame.empty:
-            click.echo("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            output.note("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            return
+        if output.machine():
+            output.emit(frame, title="stored prices")
             return
         table = Table(title="stored prices", header_style="bold")
         for name, justify in (("Symbol", "left"), ("Prices", "right"), ("From", "left"),
@@ -14896,12 +15167,16 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
     except ValueError:
         raise click.ClickException(f"--since {since_text!r} is not a YYYY-MM-DD date") from None
     missing = []
+    histories: dict[str, output.Table] = {}
     for symbol in _upper(symbols):
         history = prices.price_history(prices_dir, symbol, since)
         if history is None:
             missing.append(symbol)
             click.echo(f"{symbol}: no prices/security_price__{symbol}.csv; "
                        f"`sim prices fetch {symbol}` gets them", err=True)
+            continue
+        if output.machine():
+            histories[symbol] = history
             continue
         table = Table(title=f"{symbol} prices", header_style="bold")
         for name in ("Date", "Price", "Change"):
@@ -14911,6 +15186,8 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         if not len(history):
             table.caption = f"no prices since {since}"
         console.print(table)
+    if output.machine() and histories:
+        output.emit(histories, title="prices", since=since)
     if missing:
         raise click.ClickException(f"no prices for {', '.join(missing)}")
 
@@ -14983,6 +15260,7 @@ def chain_group_command() -> None:
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the chains with their steps, where each is defined, and what uses it.
 
@@ -14999,7 +15277,18 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data, ref.name, scenarios_dir=ref.scenarios_dir) as scn:
         cmap = chain_map.chain_map(scn)
     if not cmap.steps:
-        click.echo(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        return
+    if output.machine():
+        found = setup_listings.chain_origins(ref.scenarios_dir, ref.name)
+        shown = output.Rows(["chain", "role", "steps", "defined_in", "used_by"])
+        for name, steps in sorted(cmap.steps.items()):
+            shown.add(chain=name, role=cmap.roles[name],
+                      steps=[{**output.dollars(dataclasses.asdict(s)), "label": cmap.label(s.target)}
+                             for s in steps],
+                      defined_in=str(found.get(name, "")) or None,
+                      used_by=[dataclasses.asdict(u) for u in cmap.uses.get(name, [])])
+        output.emit(shown, title=f"chains ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"chains ({ref.name})", header_style="bold", show_lines=True)
     for column in ("Chain", "Role", "Steps", "Defined in", "Used by"):
@@ -16489,6 +16778,7 @@ def _fill_research_name(data: Path, symbol: str, name: str | None) -> None:
 @symbol_group_command.command("list")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def symbol_list_command(data_dir: Path | None) -> None:
     """List every symbol: its name, latest allocation, prices and the lots holding it.
 
@@ -16504,7 +16794,10 @@ def symbol_list_command(data_dir: Path | None) -> None:
     data = _resolve_data_dir(data_dir)
     frame = symbols.symbol_table(data)
     if frame.empty:
-        click.echo("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        output.note("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        return
+    if output.machine():
+        output.emit(frame, title="symbols")
         return
     table = Table(title="symbols", header_style="bold")
     for column, justify in (("Symbol", "left"), ("Name", "left"), ("Allocation (latest)", "left"),
@@ -16542,6 +16835,7 @@ def scenario_group_command() -> None:
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template scenarios (t_ names) read from the code repository.")
+@output.output_options
 def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's scenarios.
 
@@ -16553,6 +16847,9 @@ def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     from an ancestor; a blank size means the scenario is not an ensemble.
     --all adds the template scenarios a data repo reads from the code
     repository when it has no folder of that name.
+
+    --csv and --json give what --verbose shows, each inherited value
+    flagged in its own field.
     """
     _list_scenarios(data_dir, verbose, ensembles_only=False, templates=all_)
 
@@ -16564,7 +16861,7 @@ def _list_scenarios(
     ``templates`` adds the template scenarios (``--all``)."""
     data_dir_p = _resolve_data_dir(data_dir)
     try:
-        if not verbose and not ensembles_only:
+        if not verbose and not ensembles_only and not output.machine():
             for name in sc.scenario_list_names(data_dir_p, templates=templates):
                 click.echo(name)
             return
@@ -16575,7 +16872,10 @@ def _list_scenarios(
         summaries = [s for s in summaries if s.is_ensemble]
     kind = "ensembles" if ensembles_only else "scenarios"
     if not summaries:
-        click.echo(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        output.note(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        return
+    if output.machine():
+        _emit_scenario_summaries(data_dir_p, summaries, kind)
         return
     if not verbose:
         for s in summaries:
@@ -16622,6 +16922,30 @@ def _list_scenarios(
             escape(s.description), "no" if s.name in disabled else "",
         )
     Console().print(table)
+
+
+def _emit_scenario_summaries(data_dir: Path, summaries: Sequence[sc.ScenarioSummary],
+                             kind: str) -> None:
+    """``scenario list``'s (or ``ensemble list``'s) --csv or --json."""
+    current = read_current_scenario(data_dir)
+    disabled = read_disabled_scenarios(data_dir)
+    shown = output.Rows([
+        "scenario", "current", "parents", "mixin_only", "pool", "start", "start_inherited",
+        "end", "end_inherited", "seed", "seed_inherited", "ensemble_size",
+        "ensemble_size_inherited", "description", "build",
+    ])
+    for s in summaries:
+        shown.add(
+            scenario=s.name, current=s.name == current, parents=list(s.parents),
+            mixin_only=s.mixin_only, pool=None if s.pool is None else list(s.pool),
+            start=s.start and s.start.month, start_inherited=bool(s.start and s.start.inherited),
+            end=s.end and s.end.month, end_inherited=bool(s.end and s.end.inherited),
+            seed=s.seed and s.seed.value, seed_inherited=bool(s.seed and s.seed.inherited),
+            ensemble_size=s.ensemble_size and s.ensemble_size.value,
+            ensemble_size_inherited=bool(s.ensemble_size and s.ensemble_size.inherited),
+            description=s.description, build=s.name not in disabled,
+        )
+    output.emit(shown, title=f"{kind} ({data_dir.name})")
 
 
 def _parents_cell(s: sc.ScenarioSummary) -> str:
@@ -17190,6 +17514,17 @@ def _scenario_start(data: Path, scenario: str) -> str | None:
     return summary.start.month if summary is not None and summary.start is not None else None
 
 
+def _rate_fraction(text: str) -> float | str | None:
+    """A rate as authored (``4.5%``) as --csv and --json give it, a fraction
+    (0.045); blank as None, and one that doesn't parse as written."""
+    if not text.strip():
+        return None
+    try:
+        return units.percent_to_micros(text, require_sign=False) / 1_000_000
+    except ValueError:
+        return text
+
+
 def _rate_at(rows: Sequence[Mapping[str, str]], month: str | None) -> str:
     """The rate in force in ``month``, from rows in date order: blank before
     the first row, or with no month to look at."""
@@ -17297,6 +17632,7 @@ def _series_readers(data: Path, scenario: str, name: str) -> list[str]:
 @click.option("-a", "--all", "show_all", is_flag=True,
               help="Also list the series this scenario has emptied (sim series delete).")
 @_scenario_options
+@output.output_options
 def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the rate and inflation series the scenario reads: how many rows
     each has, its rate at the scenario's start, and the file it comes from.
@@ -17313,7 +17649,21 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
     listed = [series for (k, _), series in series_files.scenario_series(data, ref.name).items()
               if (kind is None or k == kind) and (show_all or not series.empty)]
     if not listed:
-        click.echo(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        output.note(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["series", "kind", "rows", "empty", "rate_at_start", "start",
+                             "files", "defined_in", "overrides"])
+        for series in listed:
+            parts = [part for part in series.parts if not part.read.empty] or [series]
+            belows = [part.below for part in parts if part.own and part.below is not None]
+            shown.add(series=series.name, kind=series.kind, rows=len(series.rows),
+                      empty=series.empty, rate_at_start=_rate_fraction(_rate_at(series.rows, start)),
+                      start=start and start[:7],
+                      files=[f"{part.read.folder}/{part.read.filename}" for part in parts],
+                      defined_in=list(dict.fromkeys(part.read.defined_in for part in parts)),
+                      overrides=list(dict.fromkeys(below.defined_in for below in belows)))
+        output.emit(shown, title=f"series ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"series ({ref.name})", header_style="bold")
     for column, justify in (("Series", "left"), ("Kind", "left"), ("Rows", "right"),
@@ -17339,10 +17689,12 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
 @click.argument("series", required=False, type=completion.SeriesName(kind_param="kind"))
 @_SERIES_KIND_OPTION
 @_scenario_options
+@output.output_options
 def series_show(series: str | None, kind: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show SERIES's rows, the file they come from, and what names it.
 
-    Without SERIES, it is asked for.
+    Without SERIES, it is asked for. --json gives each file's rows as a
+    table named by the file, the rate a fraction.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -17350,6 +17702,20 @@ def series_show(series: str | None, kind: str | None, scenario: str | None, data
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, scenario)
     found = _pick_series(data, ref.name, series, kind, wanted=lambda s: not s.empty)
+    if output.machine():
+        tables: dict[str, output.Table] = {}
+        for part in found.parts:
+            file = part.read
+            extra = [c for c in file.header if c not in series_files.HEADER]
+            rows = output.Rows(["from", "annual_rate", *extra])
+            for row in file.rows:
+                rows.add(**{"from": _series_row_month(row)[:7],
+                            "annual_rate": _rate_fraction(row.get("annual_rate", ""))},
+                         **{c: row.get(c) or None for c in extra})
+            tables[f"{file.folder}/{file.filename}"] = rows
+        output.emit(tables, title=_series_label(found), series=found.name, kind=found.kind,
+                    scenario=ref.name, named_by=_series_readers(data, ref.name, found.name))
+        return
     # The loader reads the name's file in each folder that has one, so each
     # is shown, with where it comes from.
     for part in found.parts:
@@ -18973,6 +19339,7 @@ _CALENDAR_LIST_KINDS = sorted({*registries.CALENDAR_EVENT_KINDS, *_CALENDAR_COMM
               help="Also show each row's description and params_json.")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def calendar_list(
     kind: str | None, tag: str | None, verbose: bool,
     scenario: str | None, data_dir: Path | None,
@@ -18987,6 +19354,10 @@ def calendar_list(
 
     Latent factors, which only shape an ensemble's variation, are counted
     rather than listed unless --kind or --tag asks for them.
+
+    --csv and --json give every calendar.csv column of each row, as
+    written there (amounts in dollars, rates with their %), after #, and
+    the target and defined_in.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -19011,9 +19382,21 @@ def calendar_list(
     factor_note = (f"{factors} latent factor(s), for ensemble variation, not shown: "
                    "--kind latent_factor lists them")
     if not rows:
-        click.echo(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
+        output.note(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
         if factors:
-            click.echo(factor_note)
+            output.note(factor_note)
+        return
+    if output.machine():
+        shown = output.Rows(["#", *registries.CALENDAR_HEADER, "target", "defined_in"])
+        for entry in rows:
+            shown.add(**{"#": entry.number,
+                         **{c: entry.row.get(c) or None for c in registries.CALENDAR_HEADER},
+                         "target": setup_listings.calendar_target(entry.row) or None,
+                         "defined_in": entry.defined_in})
+        output.emit(shown, title=f"calendar ({ref.name})", scenario=ref.name,
+                    latent_factors_not_shown=factors or None)
+        if factors:
+            output.note(factor_note)
         return
     table = Table(title=f"calendar ({ref.name})", header_style="bold")
     columns = ["#", "Date", "Kind", "Name", "Target", "Amount", "Varies", "Tags", "Defined in"]
@@ -19262,6 +19645,7 @@ def person_group_command() -> None:
 @person_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_list(scenario: str | None, data_dir: Path | None) -> None:
     """List persons.csv's persons, with each one's lifespan in the scenario.
 
@@ -19278,7 +19662,18 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     persons = setup_listings.person_listing(data, ref.path)
     if not persons:
-        click.echo(f"no persons in {data / 'persons.csv'}")
+        output.note(f"no persons in {data / 'persons.csv'}")
+        return
+    if output.machine():
+        shown = output.Rows(["id", "display", "birthdate", "sex", "role", "age_at_death",
+                             "final_month", "varies", "defined_in"])
+        for person in persons:
+            row = person.row
+            shown.add(**{c: row.get(c) or None for c in ("id", "display", "birthdate", "sex", "role")},
+                      age_at_death=float(person.age_at_death) if person.age_at_death else None,
+                      final_month=person.final_month or None, varies=person.varies or None,
+                      defined_in=person.lifespan_defined_in or None)
+        output.emit(shown, title=f"persons ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"persons ({ref.name})", header_style="bold")
     for column in ("Id", "Display", "Birthdate", "Sex", "Role", "Age at death", "Final month",
@@ -19299,6 +19694,7 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
 @_graph_options("the chart", how=", filling it less three lines for the prompt")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_show(
     person: str | None, as_graph: bool, graph_file: Path | None,
     scenario: str | None, data_dir: Path | None,
@@ -19344,6 +19740,9 @@ def person_show(
         raise click.ClickException(f"no person in {name!r} has a sex for the life table to read")
 
     quantiles = (0.05, 0.2, 0.4, 0.5, 0.6, 0.8, 0.95)
+    if output.machine():
+        _emit_person_lifespans(persons, quantiles, name)
+        return
     for p in persons:
         table = f"{p.table} " if p.table else ""  # a named table (#315)
         if p.centered:
@@ -19380,6 +19779,37 @@ def person_show(
     if as_graph or graph_file is not None:
         _draw_figure(lifespan_figure(persons), graph_file, "lifespan-",
                      fit=lambda size: lifespan_figure(persons, size=size))
+
+
+def _emit_person_lifespans(persons: list[PersonLifespan], quantiles: Sequence[float],
+                           scenario: str) -> None:
+    """``person show``'s --csv or --json: each person's lifespan, the ages
+    at death by percentile, and each year of age's chance of having died
+    by its end (every year, not every fifth); with several, the household."""
+    from zabob.retirement.sim.lifespan_curves import household
+
+    columns = [f"p{round(q * 100):02d}" for q in quantiles]
+    about = output.Rows(["person", "display", "sex", "table", "age_now", "age_at_death",
+                         "set_forward", "table_median", "vary"])
+    ages = output.Rows(["person", *columns])
+    by_age = output.Rows(["person", "age", "year", "died_this_year", "died_by_then",
+                          "still_alive"])
+    for p in persons:
+        about.add(person=p.person, display=p.display, sex=p.sex, table=p.table or None,
+                  age_now=p.age_now, age_at_death=p.age_at_death if p.centered else None,
+                  set_forward=p.set_forward if p.centered else None,
+                  table_median=p.table_median if p.centered else None, vary=p.vary)
+        ages.add(person=p.person, **{c: p.quantile(q) for c, q in zip(columns, quantiles, strict=True)})
+        for age, chance, by_end in p.yearly():
+            by_age.add(person=p.person, age=age + 1, year=p.birthdate.year + age + 1,
+                       died_this_year=chance, died_by_then=by_end, still_alive=1 - by_end)
+    tables: dict[str, output.Table] = {"age_at_death": ages, "persons": about, "by_age": by_age}
+    if len(persons) > 1:
+        h = household(persons)
+        last = output.Rows(columns)
+        last.add(**{c: h.last_death_quantile(q).year for c, q in zip(columns, quantiles, strict=True)})
+        tables["household_last_death_year"] = last
+    output.emit(tables, title=f"lifespans ({scenario})", scenario=scenario)
 
 
 # ---------- person add|edit, lifespan set|clear (#192) ----------
@@ -19948,6 +20378,7 @@ def ytd_group_command() -> None:
 @ytd_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     """List year_to_date.csv's rows, then the scheduled rows carrying a
     ytd_amount or ytd_preroll.
@@ -19963,7 +20394,11 @@ def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = setup_listings.ytd_listing(ref.path)
     if not rows:
-        click.echo(f"no year-to-date rows in {ref.name}")
+        output.note(f"no year-to-date rows in {ref.name}")
+        return
+    if output.machine():
+        output.emit(output.from_items(rows, setup_listings.YtdListing),
+                    title=f"year to date ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"year to date ({ref.name})", header_style="bold")
     for column in ("Name", "Source", "From", "To", "Amount", "Tax", "Year",
@@ -20393,8 +20828,11 @@ def guard_rail_group_command() -> None:
 @guard_rail_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List the scenario's guard rails, its own and inherited."""
+    """List the scenario's guard rails, its own and inherited. With --csv or
+    --json, the threshold is dollars a year, or a fraction for a percent
+    basis."""
     from rich.markup import escape
     from rich.table import Table
 
@@ -20405,7 +20843,20 @@ def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
     for issue in [*issues, *more]:
         click.echo(f"  error: {issue}", err=True)
     if not rails:
-        click.echo(f"no guard rails in {ref.name}")
+        output.note(f"no guard rails in {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["name", "rail", "measure", "side", "threshold", "basis", "sense",
+                             "select", "portfolio", "start", "end", "description", "defined_in"])
+        for rail in rails:
+            shown.add(name=rail.name, rail=rail.describe(), measure=rail.measure,
+                      side=str(rail.side),
+                      threshold=rail.threshold / (1_000_000 if rail.is_percent else 100),
+                      basis=rail.basis, sense=rail.sense, select=str(rail.select) or None,
+                      portfolio=str(rail.portfolio) or None, start=rail.start or None,
+                      end=rail.end or None, description=rail.description or None,
+                      defined_in=rail.defined_in)
+        output.emit(shown, title=f"guard rails ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"guard rails ({ref.name})", header_style="bold")
     for column in ("Name", "Rail", "Sense", "Start", "End", "Description", "Defined in"):
@@ -20789,6 +21240,7 @@ def _fmt_total(item: setup_listings.Itemization) -> str:
 @itemization_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     """List the itemizations the scenario can reference, with their totals.
 
@@ -20804,9 +21256,18 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     items = setup_listings.itemizations(data, ref.path)
     if not items:
-        click.echo(f"no itemizations for {ref.name}")
+        output.note(f"no itemizations for {ref.name}")
         return
     references = setup_listings.itemization_references(data, ref.path)
+    if output.machine():
+        shown = output.Rows(["name", "rows", "total", "refs", "defined_in", "path", "error"])
+        for item in items:
+            shown.add(name=item.name, rows=len(item.rows),
+                      total=None if item.total_cents is None else item.total_cents / 100,
+                      refs=len(references.get(item.name, [])), defined_in=item.defined_in,
+                      path=str(item.path), error=item.error or None)
+        output.emit(shown, title=f"itemizations ({ref.name})", scenario=ref.name)
+        return
     table = Table(title=f"itemizations ({ref.name})", header_style="bold")
     for column, justify in (("Name", "left"), ("Rows", "right"), ("Total", "right"),
                             ("Refs", "right"), ("Defined in", "left")):
@@ -20826,6 +21287,7 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
 @click.argument("name", required=False, type=completion.ITEMIZATION)
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_show(name: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show itemization NAME's rows, its total, and what references it.
 
@@ -20843,6 +21305,20 @@ def itemization_show(name: str | None, scenario: str | None, data_dir: Path | No
     item = next((i for i in found if i.name == name), None)
     if item is None:
         raise click.ClickException(f"no itemization {name!r} for {ref.name}")
+    if output.machine():
+        columns = list(item.rows[0]) if item.rows else ["Value"]
+        rows = output.Rows(columns)
+        for row in item.rows:
+            rows.add(**{c: row.get(c) or None for c in columns})
+        output.emit(rows, title=f"@{item.name}", itemization=item.name,
+                    defined_in=item.defined_in, path=str(item.path),
+                    total=None if item.total_cents is None else item.total_cents / 100,
+                    error=item.error or None,
+                    referenced_by=[{"path": str(found.path), "line": found.line,
+                                    "column": found.column}
+                                   for found in setup_listings.itemization_references(
+                                       data, ref.path).get(name, [])])
+        return
     click.echo(f"@{item.name} ({item.defined_in}): {item.path}")
     table = Table(header_style="bold")
     columns = list(item.rows[0]) if item.rows else ["Value"]
@@ -21084,6 +21560,7 @@ def _deduction_origin(target: _DeductionEdit) -> str:
 @_STATE_OPTION
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the hand-typed itemized deductions, one row per tax year, with
     the total each counts (an @itemization summed).
@@ -21101,12 +21578,18 @@ def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> 
     which = "state" if state else "federal"
     if not listed:
         if state:
-            click.echo(f"no state itemized deductions in {ref.name}; the state uses the "
-                       "federal ones (`sim deduction list`)")
+            output.note(f"no state itemized deductions in {ref.name}; the state uses the "
+                        "federal ones (`sim deduction list`)")
         else:
-            click.echo(f"no hand-typed federal itemized deductions in {ref.name}; a year "
-                       "itemizes only what it figures from spending, when that beats the "
-                       "standard deduction")
+            output.note(f"no hand-typed federal itemized deductions in {ref.name}; a year "
+                        "itemizes only what it figures from spending, when that beats the "
+                        "standard deduction")
+        return
+    if output.machine():
+        output.emit(output.from_items(listed, deductions.Deduction),
+                    title=f"{which} itemized deductions ({ref.name})", scenario=ref.name,
+                    path=None if found.path is None else str(found.path),
+                    defined_in=found.defined_in)
         return
     table = Table(title=f"{which} itemized deductions ({ref.name})", header_style="bold")
     for column, justify in (("Year", "left"), ("Amount", "left"), ("Total", "right")):
@@ -22207,13 +22690,22 @@ def _strategy_dir(data: Path, scenario: str | None) -> tuple[Path, str]:
 @strategy_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def strategy_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's strategies: kind, chain, dates, parameters, and
     the scenario each is inherited from."""
     folder, name = _strategy_dir(_resolve_data_dir(data_dir), scenario)
     rows = _strategy_rows(folder)
     if not rows:
-        click.echo(f"no strategies in {name} (`sim strategy add` adds one)")
+        output.note(f"no strategies in {name} (`sim strategy add` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["name", *registries.STRATEGY_CSV_HEADER, "inherited_from"])
+        for strategy_name, found in sorted(rows.items()):
+            shown.add(name=strategy_name,
+                      **{c: found.row.get(c) or None for c in registries.STRATEGY_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"strategies ({name})", scenario=name)
         return
     width = max(len(n) for n in rows)
     for strategy_name, found in sorted(rows.items()):
@@ -22518,6 +23010,7 @@ def strategy_delete_command(name: str | None, yes: bool, scenario: str | None, d
 @click.option("--breaches", is_flag=True, default=False,
               help="List the guard-rail breaches strategies were told of instead (#441).")
 @_run_target_options
+@output.output_options
 def strategy_log_command(
     target: str | None, strategy_name: str | None, year: int | None, hooks: tuple[str, ...],
     breaches: bool, runfile: Path | None, data_dir: Path | None, runs_dir: Path | None,
@@ -22544,7 +23037,10 @@ def strategy_log_command(
             if year is not None:
                 told = told[told["year"] == year]
             if told.empty:
-                click.echo(f"no breaches in {path.name}")
+                output.note(f"no breaches in {path.name}")
+                return
+            if output.machine():
+                output.emit(told, title="strategy breaches", source=path.name, dollars="cpi_constant")
                 return
             for column in ("measure", "threshold", "margin"):
                 told[column] = told[column].map(lambda d: f"{'-' if d < 0 else ''}${abs(d):,.0f}")
@@ -22574,8 +23070,12 @@ def strategy_log_command(
             frame = frame[frame["month"].str.startswith(f"{year:04d}")]
     hidden_note = f"{hidden} monthly scale lines not shown; --hook scale lists them"
     if frame.empty:
-        click.echo(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
-                   else f"no strategy decisions in {path.name}")
+        output.note(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
+                    else f"no strategy decisions in {path.name}")
+        return
+    if output.machine():
+        output.emit(frame, title="strategy decisions", source=path.name,
+                    hidden_scale_lines=hidden or None)
         return
     # The note last and left-aligned: it is a sentence, often the widest column.
     notes = frame.pop("note")
@@ -22662,13 +23162,22 @@ def target_group_command() -> None:
 @target_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def target_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's target sets, each dated set's weights, and the
     scenario each is inherited from."""
     ref = _resolve_scenario(_resolve_data_dir(data_dir), scenario)
     rows = strategy_guide.lineage_targets(ref.scenarios_dir, ref.name)
     if not rows:
-        click.echo(f"no target sets in {ref.name} (`sim target set` adds one)")
+        output.note(f"no target sets in {ref.name} (`sim target set` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["target_set", "as_of", "asset_class", "weight", "defined_in"])
+        for row, where in rows:
+            shown.add(target_set=row["target_set"], as_of=row["as_of"] or None,
+                      asset_class=row["asset_class"], weight=_rate_fraction(row["weight"]),
+                      defined_in=where)
+        output.emit(shown, title=f"target sets ({ref.name})", scenario=ref.name)
         return
     grouped: dict[tuple[str, str], list[tuple[dict[str, str], str]]] = {}
     for row, where in rows:
@@ -22949,6 +23458,7 @@ def tax_group_command() -> None:
 @tax_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's tax jurisdictions, in the order they settle, and
     the scenario each is inherited from."""
@@ -22956,7 +23466,16 @@ def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = _tax_rows(ref.path)
     if not rows:
-        click.echo(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        output.note(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        return
+    if output.machine():
+        shown = output.Rows(["jurisdiction", *registries.TAX_CSV_HEADER, "inherited_from"])
+        for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
+            found = rows[name]
+            shown.add(jurisdiction=name,
+                      **{c: found.row.get(c) or None for c in registries.TAX_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"income taxes ({ref.name})", scenario=ref.name)
         return
     for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
         found = rows[name]
