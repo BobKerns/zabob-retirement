@@ -504,3 +504,6 @@ def test_ensemble_rename_refuses_and_skips_templates(
         result = sim(what, "rename", template, "mine")
         assert result.exit_code != 0 and f"{template} is a template scenario" in result.output, result.output
     assert not (test_data_dir / "scenarios" / "mine").exists()
+    # At a terminal a template's name isn't taken for a typo and re-asked:
+    # the command says why it refuses it.
+    assert completion.OWN_ENSEMBLE.is_known(ctx, template)

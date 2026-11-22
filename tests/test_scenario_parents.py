@@ -312,9 +312,8 @@ def test_edit_may_make_a_dated_scenario_mix_in_only(test_data_dir: Path, test_sc
     _mixin_on_mixin(test_data_dir)
     assert _sim(test_data_dir, "scenario", "create", "kid", "t_empty", "extra").exit_code == 0
     assert not is_mixin_only(test_scenarios_dir, "kid")
-    result = _sim(test_data_dir, "scenario", "edit", "kid", "--parents", "extra", input="y\n")
+    result = _sim(test_data_dir, "scenario", "edit", "kid", "--parents", "extra", "--yes")
     assert result.exit_code == 0, result.output
-    assert "kid will have no start or end" in result.output, result.output
     assert is_mixin_only(test_scenarios_dir, "kid")
 
 

@@ -18521,7 +18521,7 @@ _SCENARIO_CHECKERS: dict[str, Callable[[str], object]] = {
 
 
 def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_seed: bool,
-                   **fields: str | None) -> None:
+                   yes: bool = False, **fields: str | None) -> None:
     """``sim scenario edit`` and ``sim ensemble edit`` (``what``): with any
     option, the change at once; with none, a guided edit of every field."""
     data = _resolve_data_dir(data_dir)
@@ -18546,7 +18546,7 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
     # Named or picked at the prompt, it becomes current, even if nothing changes.
     _resolve_scenario(data, name)
     if new_seed or any(value is not None for value in fields.values()):
-        _apply_scenario_edit(data, name, new_seed=new_seed, **fields)
+        _apply_scenario_edit(data, name, new_seed=new_seed, yes=yes, **fields)
         return
 
     spec = scenario_guide.spec([n for n in _parent_choices(data) if n != name])
@@ -18557,6 +18557,8 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
     confirmed: set[str] = set()
 
     def ask_parents(current: str | None) -> str:
+        # Only the latest answer counts: one built only on mix-ins is asked about later.
+        confirmed.discard(name)
         chosen = _walk_parents(data, parse_parents(current), itself=name)
         if chosen or not current:
             return ":".join(chosen)
@@ -18584,7 +18586,7 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
         fresh = changed.get("seed") == scenario_guide.NEW_SEED
         if fresh:
             del changed["seed"]
-        _apply_scenario_edit(data, name, confirmed, new_seed=fresh, **changed)
+        _apply_scenario_edit(data, name, confirmed, new_seed=fresh, yes=yes, **changed)
 
     guide.review(spec, calendar_guide.GuideContext(), answers, submit, show_command=False)
 
@@ -18594,12 +18596,12 @@ def _apply_scenario_edit(
     start: str | None = None,
     end: str | None = None, parents: str | None = None, seed: str | None = None,
     new_seed: bool = False, size: str | None = None, reserve: str | None = None,
-    roll: str | None = None,
+    roll: str | None = None, yes: bool = False,
 ) -> None:
     """Set the given fields of scenario ``name``'s scenario.csv; see ``_edit_scenario``.
     An edit leaving it, or a scenario built on it, newly mix-in only is
-    confirmed first, except for the scenarios in ``confirmed``, which the
-    guided edit has already asked about."""
+    confirmed first (``yes`` skips that), except for the scenarios in
+    ``confirmed``, which the guided edit has already asked about."""
     if seed is not None and new_seed:
         raise click.UsageError("--seed and --new-seed are exclusive")
     values: dict[str, str] = {}
@@ -18662,10 +18664,18 @@ def _apply_scenario_edit(
         except LoadError as exc:
             raise click.ClickException("; ".join(exc.issues)) from None
         now_mixin_only = _new_mixin_only(edit.data_dir / "scenarios", runnable)
-        if (unasked := [n for n in now_mixin_only if n not in confirmed]) and not _confirm_mixin_only(
-                name, unasked, no_parent=not parse_parents(sc._scenario_row(folder).get("parent_scenario"))):
-            # Leaving the staged copy by an exception writes nothing (#347).
-            raise click.ClickException("nothing was written")
+        unasked = [n for n in now_mixin_only if n not in confirmed]
+        if unasked and not yes:
+            removed = bool(parse_parents(old_row.get("parent_scenario"))) and not parse_parents(
+                sc._scenario_row(folder).get("parent_scenario"))
+            if not _interactive():
+                # No one to ask: say what would happen, and how to go ahead.
+                raise click.ClickException(
+                    f"this edit makes {', '.join(unasked)} mix-in only (no start or end anywhere in "
+                    "the lineage); run it at a terminal to confirm, or pass --yes. Nothing was written.")
+            if not _confirm_mixin_only(name, unasked, removed_parents=removed):
+                # Leaving the staged copy by an exception writes nothing (#347).
+                raise click.ClickException("nothing was written")
         new_row = sc._scenario_row(folder)
         builds_on = parse_parents(new_row.get("parent_scenario"))
         # A blank description reads as the default, as `--description ''` sets it.
@@ -18699,13 +18709,13 @@ def _new_mixin_only(scenarios_dir: Path, runnable: Sequence[str]) -> list[str]:
     return [n for n in runnable if is_mixin_only(scenarios_dir, n)]
 
 
-def _confirm_mixin_only(name: str, now: Sequence[str], *, no_parent: bool) -> bool:
+def _confirm_mixin_only(name: str, now: Sequence[str], *, removed_parents: bool) -> bool:
     """Whether an edit of ``name`` that leaves the scenarios ``now`` mix-in
     only is meant (#347). Asked whether the edit was guided or given as
     options: the answer is part of what a guided command asks for (Bob,
     2026-10-28)."""
     others = [n for n in now if n != name]
-    if name in now and no_parent:
+    if name in now and removed_parents:
         also = f"; so will {', '.join(others)}, built on it" if others else ""
         return _confirm_no_parent(name, f"Make it build on nothing{also}?")
     return click.confirm(
@@ -18749,6 +18759,9 @@ def _add_edit_options(command: Callable[..., None], *, name_type: click.ParamTyp
                      help="monthly: the background builder rolls the start forward a month "
                           "each night the start month is over (meta_json roll, #564); off: "
                           "it doesn't, though a parent does; '' inherits it."),
+        click.option("--yes", is_flag=True, default=False,
+                     help="Don't ask before making a scenario mix-in only (no start or end "
+                          "anywhere in its lineage); needed off a terminal."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
                      default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
     ]
@@ -18771,7 +18784,9 @@ def scenario_edit(name: str | None, data_dir: Path | None, **fields: Any) -> Non
 
     The change is written only if NAME and every scenario built on it still
     load. A README.md that `scenario create` wrote follows the description
-    and parents. Same as `sim ensemble edit`."""
+    and parents. A change leaving NAME, or a scenario built on it, mix-in
+    only (no start or end anywhere in its lineage) is asked about first;
+    --yes skips that, and is needed off a terminal. Same as `sim ensemble edit`."""
     _edit_scenario(name, data_dir, what="scenario", **fields)
 
 

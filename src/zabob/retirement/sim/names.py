@@ -94,15 +94,6 @@ def scenario_names(data_dir: Path) -> list[str]:
     return sorted([*(p.name for p in scenarios.iterdir() if p.is_dir()), *template_names(scenarios)])
 
 
-def own_scenario_names(data_dir: Path) -> list[str]:
-    """The data repo's own scenario folder names, without the code
-    repository's templates: what a command changing a scenario can change."""
-    scenarios = data_dir / "scenarios"
-    if not scenarios.is_dir():
-        return []
-    return sorted(p.name for p in scenarios.iterdir() if p.is_dir())
-
-
 def account_names(data_dir: Path, scenario: str) -> list[str]:
     """Every account the scenario has, its own and inherited."""
     return _column((d / "accounts.csv" for d in _lineage_dirs(data_dir, scenario)), "name")

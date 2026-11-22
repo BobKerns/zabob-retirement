@@ -173,12 +173,19 @@ def _ensembles(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
     ]
 
 
-def _own_ensembles(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+def _own_scenarios(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.sim.loader import list_scenario_names
+    return list_scenario_names(data_dir)  # the data repo's own: no templates
+
+
+def _own_ensembles(ctx: click.Context, data_dir: Path) -> list[str]:
     import zabob.retirement.sim.scenario as sc  # it imports this module's importer, cli
-    return [
-        name for name in names.own_scenario_names(data_dir)
-        if sc.ensemble_settings(data_dir, name)[1] is not None
-    ]
+    return [name for name in _own_scenarios(ctx, data_dir) if sc.ensemble_settings(data_dir, name)[1] is not None]
+
+
+def _templates(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.sim.lineage import template_names
+    return template_names(data_dir / "scenarios")
 
 
 def _pools(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
@@ -262,9 +269,10 @@ PARENTS = ParentList(_scenarios, "scenario", check=False)
 SCENARIO_OR_RUNFILE = NameType(_scenarios, "scenario", check=False)
 ENSEMBLE = NameType(_ensembles, "ensemble")
 # The data repo's own, for a command that changes one: a template is the
-# code repository's, so not renamed from here (#297).
-OWN_SCENARIO = NameType(lambda ctx, data_dir: names.own_scenario_names(data_dir), "scenario")  # noqa: ARG005
-OWN_ENSEMBLE = NameType(_own_ensembles, "ensemble")
+# code repository's, so not renamed from here (#297). A template's name is
+# known, not re-asked as a typo, so the command can say why it refuses it.
+OWN_SCENARIO = NameType(_own_scenarios, "scenario", known=_templates)
+OWN_ENSEMBLE = NameType(_own_ensembles, "ensemble", known=_templates)
 POOL = NameType(_pools, "pool")
 POOL_COMPONENT = PoolComponent(_pool_components, "ensemble", check=False)
 ACCOUNT = NameType(_in_scenario(names.account_names), "account")
