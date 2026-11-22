@@ -9,7 +9,6 @@ wheel: the install-test container (`scripts/start-container.sh --install
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from importlib import metadata
@@ -20,27 +19,21 @@ import pytest
 from zabob.retirement import resources
 from zabob.retirement.sim import provenance
 
-pytestmark = pytest.mark.installed
+# Each runs the program in a subprocess, which takes seconds.
+pytestmark = [pytest.mark.installed, pytest.mark.slow]
 
 BIN = Path(sys.executable).parent
 """The installed program's scripts: `sim`, `analysis`, `jupyter`."""
 
 
 @pytest.fixture(scope="module")
-def session(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
-    """A new user's environment: an empty home, and a git identity (which
-    `sim init` commits with)."""
-    top = tmp_path_factory.mktemp("install")
-    home = top / "home"
-    home.mkdir()
-    (top / "gitconfig").write_text("[user]\n\tname = Alice Example\n\temail = alice@example.com\n"
-                                   "[init]\n\tdefaultBranch = main\n")
-    return {"PATH": f"{BIN}:/usr/bin:/bin", "HOME": str(home), "ANALYSIS_NO_BUILDER": "1",
-            "GIT_CONFIG_GLOBAL": str(top / "gitconfig"), "LANG": os.environ.get("LANG", "C.UTF-8")}
+def session(new_user_env: dict[str, str]) -> dict[str, str]:
+    """A new user's environment, with this install's commands on PATH."""
+    return {**new_user_env, "PATH": f"{BIN}:/usr/bin:/bin", "ANALYSIS_NO_BUILDER": "1"}
 
 
 def _shell(env: dict[str, str], command: str) -> str:
-    """Run ``command`` in bash, in the data repo once there is one."""
+    """Run ``command`` in bash, in the user's home folder."""
     done = subprocess.run(["bash", "-c", command], cwd=env["HOME"], env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
     return done.stdout

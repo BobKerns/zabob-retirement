@@ -16,12 +16,12 @@
 #      /repo, against the install: RUN_TESTS=default runs tests/install,
 #      the checks of a new user's first session; RUN_TESTS=all runs every
 #      test, less the few that need a checkout (marked `checkout`), to
-#      chase a problem seen only on a fresh machine. Only the test tools are
-#      added to the install, at the versions uv.lock names.
+#      chase a problem seen only on a fresh machine. Only the dev group's
+#      tools are added to the install, leaving what it has as it is.
 #
-# A failure is reported but still leaves you in the container to look around
-# (so the steps return on failure themselves: errexit doesn't reach into an
-# `if`).
+# A failure is reported but still leaves you in the container to look
+# around, and becomes the container's exit status. (The steps return on
+# failure themselves: errexit doesn't reach into an `if`.)
 set -eu
 
 export PATH="$HOME/.local/bin:$PATH"
@@ -72,9 +72,15 @@ EOF
 run_tests() {
     python=$(uv tool dir)/zabob-retirement/bin/python
     step "Adding the test tools"
-    (cd /repo && uv export --frozen --only-group dev --no-emit-project --no-hashes --quiet) \
-        > /tmp/test-requirements.txt || return
-    uv pip install --quiet --python "$python" -r /tmp/test-requirements.txt || return
+    # Only the dev group's own packages, at versions that keep every package
+    # the install already has as it is: the tests must see what a fresh
+    # machine got, not uv.lock's versions. A clash fails here, loudly.
+    uv pip freeze --python "$python" > /tmp/installed.txt || return
+    python3 -c '
+import sys, tomllib
+with open("/repo/pyproject.toml", "rb") as f:
+    print("\n".join(tomllib.load(f)["dependency-groups"]["dev"]))' > /tmp/test-tools.txt || return
+    uv pip install --quiet --python "$python" -r /tmp/test-tools.txt -c /tmp/installed.txt || return
     case $RUN_TESTS in
         default) set -- tests/install ;;
         all) set -- ;;
@@ -89,11 +95,15 @@ run_tests() {
         -o pythonpath= "$@")
 }
 
+# The command's status, or a failure before it: so a script or CI using the
+# container (`start-container.sh --install --run-tests true`) sees one.
+failed=0
 if install; then
     if [ -n "${RUN_TESTS:-}" ]; then
-        run_tests || echo "The tests failed (exit $?)." >&2
+        run_tests || { failed=$?; echo "The tests failed (exit $failed)." >&2; }
     fi
 else
-    echo "The install failed (exit $?)." >&2
+    failed=$?
+    echo "The install failed (exit $failed)." >&2
 fi
-exec "$@"
+"$@" && exit "$failed"

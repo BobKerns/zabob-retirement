@@ -11,8 +11,9 @@
 # start. --fresh deletes the volume first, so the clones (and anything
 # setup.sh left in them) start over. --setup runs scripts/setup.sh in the
 # container's clone before the command, which defaults to an interactive
-# bash. --run-tests (which implies --setup) then runs the clone's tests not
-# marked slow; --run-tests=all runs all of them.
+# bash. --run-tests (which implies --setup) first brings a kept clone up to
+# date with its branch, then runs the clone's tests not marked slow;
+# --run-tests=all runs all of them.
 #
 # The install test (docker/install-test, with --install) installs the
 # program as SETUP.md says, with no checkout and nothing kept between runs:
@@ -50,7 +51,7 @@ while [ $# -gt 0 ]; do
         --version=*) version=${1#*=} ;;
         --run-tests) tests=default ;;
         --run-tests=all) tests=all ;;
-        -h|--help) sed -n '2,28s/^# \{0,1\}//p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,29s/^# \{0,1\}//p' "$0"; exit 0 ;;
         --) shift; break ;;
         -*) echo "start-container: unknown option $1" >&2; exit 2 ;;
         *) break ;;
@@ -68,10 +69,12 @@ elif [ "$from$version" != pypi ]; then
     exit 2
 fi
 
+# docker run's arguments are put in front of the command, one at a time,
+# so a path with a space in it stays one argument.
 if [ -t 0 ] && [ -t 1 ]; then
-    tty_args=-it
+    tty=-it
 else
-    tty_args=-i
+    tty=-i
 fi
 
 # Each image is built FROM the base, so a change to the base reaches both.
@@ -80,22 +83,21 @@ docker build -q -t "$base" docker/base >/dev/null
 if [ -n "$install" ]; then
     image=analysis-install-test
     docker build -q -t "$image" docker/install-test >/dev/null
-    run_args="-e INSTALL_FROM=$from"
-    if [ -n "$version" ]; then
-        run_args="$run_args -e INSTALL_VERSION=$version"
+    set -- "$image" "$@"
+    if [ -n "$tests" ]; then
+        set -- -e "RUN_TESTS=$tests" -v "$(pwd):/repo:ro" "$@"
     fi
     if [ "$from" = wheels ]; then
         wheels=out/install-test/wheels
         rm -rf "$wheels"
         echo "Building wheels from this checkout..."
         uv build --quiet --out-dir "$wheels"
-        run_args="$run_args -v $(pwd)/$wheels:/wheels:ro"
+        set -- -v "$(pwd)/$wheels:/wheels:ro" "$@"
     fi
-    if [ -n "$tests" ]; then
-        run_args="$run_args -e RUN_TESTS=$tests -v $(pwd):/repo:ro"
+    if [ -n "$version" ]; then
+        set -- -e "INSTALL_VERSION=$version" "$@"
     fi
-    # shellcheck disable=SC2086  # run_args is a list of words, split on purpose
-    exec docker run --rm $tty_args $run_args "$image" "$@"
+    exec docker run --rm "$tty" -e "INSTALL_FROM=$from" "$@"
 fi
 
 image=analysis-setup-test
@@ -109,21 +111,16 @@ CODE_REPO_URL=${CODE_REPO_URL:-$(git remote get-url origin)}
 CODE_REPO_REF=${CODE_REPO_REF:-$(git branch --show-current)}
 export CODE_REPO_URL CODE_REPO_REF
 
-run_args=
+set -- -v "$volume":/work -v "$HOME/.ssh":/home/ubuntu/.ssh-host:ro "$image" "$@"
 for v in CODE_REPO_URL CODE_REPO_REF DATA_REPO_URL; do
     if eval "[ -n \"\${$v:-}\" ]"; then
-        run_args="$run_args -e $v"
+        set -- -e "$v" "$@"
     fi
 done
 if [ -n "$setup$tests" ]; then
-    run_args="$run_args -e RUN_SETUP=1"
+    set -- -e RUN_SETUP=1 "$@"
 fi
 if [ -n "$tests" ]; then
-    run_args="$run_args -e RUN_TESTS=$tests"
+    set -- -e "RUN_TESTS=$tests" "$@"
 fi
-
-# shellcheck disable=SC2086  # run_args is a list of words, split on purpose
-exec docker run --rm $tty_args $run_args \
-    -v "$volume":/work \
-    -v "$HOME/.ssh":/home/ubuntu/.ssh-host:ro \
-    "$image" "$@"
+exec docker run --rm "$tty" "$@"

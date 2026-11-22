@@ -94,7 +94,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     skip, why = (("installed", "needs an installed wheel, not a checkout") if CHECKOUT_DIR is not None
                  else ("checkout", "needs the code checkout"))
     for item in items:
-        if skip in item.keywords:
+        if item.get_closest_marker(skip) is not None:
             item.add_marker(pytest.mark.skip(reason=why))
 
 
@@ -564,6 +564,20 @@ def installed_wheel(tmp_path_factory: pytest.TempPathFactory, built_wheel: Path)
     subprocess.run(["uv", "pip", "install", "--quiet", "-p", str(venv / "bin" / "python"), str(built_wheel)],
                    env=env, check=True)
     return venv / "bin"
+
+
+@pytest.fixture(scope="module")
+def new_user_env(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
+    """The environment of a new user for a subprocess (#674): an empty home
+    folder, and a git identity in a global config of its own (``sim init``
+    commits). Without PATH: the caller says which program it runs."""
+    top = tmp_path_factory.mktemp("new-user")
+    home = top / "home"
+    home.mkdir()
+    (top / "gitconfig").write_text("[user]\n\tname = Alice Example\n\temail = alice@example.com\n"
+                                   "[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    return {"HOME": str(home), "GIT_CONFIG_GLOBAL": str(top / "gitconfig"),
+            "LANG": os.environ.get("LANG", "C.UTF-8")}
 
 
 @pytest.fixture(scope="function")

@@ -14,9 +14,10 @@
 #
 # With RUN_SETUP=1, run scripts/setup.sh in the code repo after that, and
 # with RUN_TESTS the clone's test suite in the environment setup.sh made
-# (#674): RUN_TESTS=default runs the everyday set (-m "not slow"),
-# RUN_TESTS=all every test. A failure is reported but still leaves you in
-# the container to look around.
+# (#674), after bringing a kept clone up to date with its branch:
+# RUN_TESTS=default runs the everyday set (-m "not slow"), RUN_TESTS=all
+# every test. A failure is reported but still leaves you in the container to
+# look around, and becomes the container's exit status.
 set -eu
 
 if [ -z "${CODE_REPO_URL:-}" ]; then
@@ -77,17 +78,20 @@ else
 fi
 
 cd /work/analysis
-if [ "${RUN_SETUP:-}" = 1 ]; then
-    if ./scripts/setup.sh; then
-        :
-    else
-        echo "scripts/setup.sh failed (exit $?)." >&2
-    fi
+failed=0
+if [ -n "${RUN_TESTS:-}" ] && [ -n "$(git branch --show-current)" ]; then
+    # A clone kept from an earlier run: test what was pushed since, not that.
+    git pull --ff-only || { failed=$?; echo "Couldn't bring the clone up to date (exit $failed)." >&2; }
 fi
-case ${RUN_TESTS:-} in
-    '') ;;
-    default) .venv/bin/python -m pytest -q -n auto -m "not slow" || echo "The tests failed (exit $?)." >&2 ;;
-    all) .venv/bin/python -m pytest -q -n auto || echo "The tests failed (exit $?)." >&2 ;;
-    *) echo "entrypoint: RUN_TESTS is default or all, not $RUN_TESTS" >&2 ;;
-esac
-exec "$@"
+if [ "${RUN_SETUP:-}" = 1 ] && [ "$failed" = 0 ]; then
+    ./scripts/setup.sh || { failed=$?; echo "scripts/setup.sh failed (exit $failed)." >&2; }
+fi
+if [ -n "${RUN_TESTS:-}" ] && [ "$failed" = 0 ]; then
+    case $RUN_TESTS in
+        default) .venv/bin/python -m pytest -q -n auto -m "not slow" ;;
+        all) .venv/bin/python -m pytest -q -n auto ;;
+        *) echo "entrypoint: RUN_TESTS is default or all, not $RUN_TESTS" >&2; false ;;
+    esac || { failed=$?; echo "The tests failed (exit $failed)." >&2; }
+fi
+# The command's status, or a failure before it, so a script sees one.
+"$@" && exit "$failed"
