@@ -22533,13 +22533,22 @@ def _strategy_dir(data: Path, scenario: str | None) -> tuple[Path, str]:
 @strategy_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def strategy_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's strategies: kind, chain, dates, parameters, and
     the scenario each is inherited from."""
     folder, name = _strategy_dir(_resolve_data_dir(data_dir), scenario)
     rows = _strategy_rows(folder)
     if not rows:
-        click.echo(f"no strategies in {name} (`sim strategy add` adds one)")
+        output.note(f"no strategies in {name} (`sim strategy add` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["name", *registries.STRATEGY_CSV_HEADER, "inherited_from"])
+        for strategy_name, found in sorted(rows.items()):
+            shown.add(name=strategy_name,
+                      **{c: found.row.get(c) or None for c in registries.STRATEGY_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"strategies ({name})", scenario=name)
         return
     width = max(len(n) for n in rows)
     for strategy_name, found in sorted(rows.items()):
@@ -22988,13 +22997,22 @@ def target_group_command() -> None:
 @target_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def target_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's target sets, each dated set's weights, and the
     scenario each is inherited from."""
     ref = _resolve_scenario(_resolve_data_dir(data_dir), scenario)
     rows = strategy_guide.lineage_targets(ref.scenarios_dir, ref.name)
     if not rows:
-        click.echo(f"no target sets in {ref.name} (`sim target set` adds one)")
+        output.note(f"no target sets in {ref.name} (`sim target set` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["target_set", "as_of", "asset_class", "weight", "defined_in"])
+        for row, where in rows:
+            shown.add(target_set=row["target_set"], as_of=row["as_of"] or None,
+                      asset_class=row["asset_class"], weight=_rate_fraction(row["weight"]),
+                      defined_in=where)
+        output.emit(shown, title=f"target sets ({ref.name})", scenario=ref.name)
         return
     grouped: dict[tuple[str, str], list[tuple[dict[str, str], str]]] = {}
     for row, where in rows:
@@ -23275,6 +23293,7 @@ def tax_group_command() -> None:
 @tax_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's tax jurisdictions, in the order they settle, and
     the scenario each is inherited from."""
@@ -23282,7 +23301,16 @@ def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = _tax_rows(ref.path)
     if not rows:
-        click.echo(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        output.note(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        return
+    if output.machine():
+        shown = output.Rows(["jurisdiction", *registries.TAX_CSV_HEADER, "inherited_from"])
+        for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
+            found = rows[name]
+            shown.add(jurisdiction=name,
+                      **{c: found.row.get(c) or None for c in registries.TAX_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"income taxes ({ref.name})", scenario=ref.name)
         return
     for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
         found = rows[name]
