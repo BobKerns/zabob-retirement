@@ -15062,6 +15062,7 @@ def _note_stale_prices(data: Path) -> None:
               help="With SYMBOLS, show only prices from this date on.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_dir: Path | None) -> None:
     """Show the prices stored in prices/.
 
@@ -15093,7 +15094,10 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         held = prices.prices_in_use(scenarios_dir).symbols if scenarios_dir.is_dir() else []
         frame = prices.price_summary(prices_dir, {*held, *prices.known_symbols(data)})
         if frame.empty:
-            click.echo("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            output.note("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            return
+        if output.machine():
+            output.emit(frame, title="stored prices")
             return
         table = Table(title="stored prices", header_style="bold")
         for name, justify in (("Symbol", "left"), ("Prices", "right"), ("From", "left"),
@@ -15116,12 +15120,16 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
     except ValueError:
         raise click.ClickException(f"--since {since_text!r} is not a YYYY-MM-DD date") from None
     missing = []
+    histories: dict[str, output.Table] = {}
     for symbol in _upper(symbols):
         history = prices.price_history(prices_dir, symbol, since)
         if history is None:
             missing.append(symbol)
             click.echo(f"{symbol}: no prices/security_price__{symbol}.csv; "
                        f"`sim prices fetch {symbol}` gets them", err=True)
+            continue
+        if output.machine():
+            histories[symbol] = history
             continue
         table = Table(title=f"{symbol} prices", header_style="bold")
         for name in ("Date", "Price", "Change"):
@@ -15131,6 +15139,8 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         if not len(history):
             table.caption = f"no prices since {since}"
         console.print(table)
+    if output.machine() and histories:
+        output.emit(histories, title="prices", since=since)
     if missing:
         raise click.ClickException(f"no prices for {', '.join(missing)}")
 
@@ -22898,6 +22908,7 @@ def strategy_delete_command(name: str | None, yes: bool, scenario: str | None, d
 @click.option("--breaches", is_flag=True, default=False,
               help="List the guard-rail breaches strategies were told of instead (#441).")
 @_run_target_options
+@output.output_options
 def strategy_log_command(
     target: str | None, strategy_name: str | None, year: int | None, hooks: tuple[str, ...],
     breaches: bool, runfile: Path | None, data_dir: Path | None, runs_dir: Path | None,
@@ -22924,7 +22935,10 @@ def strategy_log_command(
             if year is not None:
                 told = told[told["year"] == year]
             if told.empty:
-                click.echo(f"no breaches in {path.name}")
+                output.note(f"no breaches in {path.name}")
+                return
+            if output.machine():
+                output.emit(told, title="strategy breaches", source=path.name, dollars="cpi_constant")
                 return
             for column in ("measure", "threshold", "margin"):
                 told[column] = told[column].map(lambda d: f"{'-' if d < 0 else ''}${abs(d):,.0f}")
@@ -22954,8 +22968,12 @@ def strategy_log_command(
             frame = frame[frame["month"].str.startswith(f"{year:04d}")]
     hidden_note = f"{hidden} monthly scale lines not shown; --hook scale lists them"
     if frame.empty:
-        click.echo(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
-                   else f"no strategy decisions in {path.name}")
+        output.note(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
+                    else f"no strategy decisions in {path.name}")
+        return
+    if output.machine():
+        output.emit(frame, title="strategy decisions", source=path.name,
+                    hidden_scale_lines=hidden or None)
         return
     # The note last and left-aligned: it is a sentence, often the widest column.
     notes = frame.pop("note")
