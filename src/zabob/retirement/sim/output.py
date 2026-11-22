@@ -6,9 +6,11 @@ A command opts in with :func:`output_options` and, where it prints a table,
 asks :func:`machine` first and hands its rows to :func:`emit` instead. The
 rows are the data behind the table, not its cells: field names are the
 table's column names as they are (stable, so a reader can rely on them),
-amounts are dollars unrounded, shares and rates are fractions (0.25, not
-25%), months and dates are ISO strings, and a missing value is empty (CSV)
-or ``null`` (JSON).
+amounts are dollars, not rounded to the table's whole dollars (to 15
+significant digits, which drops float noise and nothing else), shares and
+rates are fractions (0.25, not 25%), months and dates are ISO strings, and
+a missing value is empty (CSV) or ``null`` (JSON). A value a command reads
+from a data repo CSV and doesn't compute with is given as written there.
 
 JSON is one object: what the command's heading line says (``title``,
 ``dollars``, ``source`` and the like, whichever it has) as fields, then
@@ -118,6 +120,10 @@ def value(item: Any) -> Any:
     if isinstance(item, float):
         if math.isnan(item):
             return None
+        # 15 significant digits, every one a double holds exactly: drops the
+        # noise arithmetic leaves (110658.78999999998 is 110658.79) and keeps
+        # far more than any table shows.
+        item = float(f"{item:.15g}")
         return int(item) if item.is_integer() and abs(item) < 2**53 else item
     if isinstance(item, (bool, int, str)):
         return item

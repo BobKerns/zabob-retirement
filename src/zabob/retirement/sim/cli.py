@@ -12011,7 +12011,7 @@ def _holdings_options(fn):
                      default=None, help="Run file (default: the scenario's latest run)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -12061,6 +12061,9 @@ def account_holdings_command(
         except (KeyError, ValueError) as exc:
             raise click.ClickException(exc.args[0]) from None
     title = f"holdings of {account} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, account=account, source=described)
+        return
     Console().print(render_holdings_table(frame, title=title))
 
 
@@ -12085,11 +12088,14 @@ def account_holders_command(
         except ValueError as exc:
             raise click.ClickException(str(exc)) from None
     if frame.empty:
-        click.echo(f"no lot holds {symbol!r} ({described})")
+        output.note(f"no lot holds {symbol!r} ({described})")
         return
     name = frame["name"].iloc[0]
     named = f"{symbol} ({name})" if isinstance(name, str) else symbol
     title = f"accounts holding {named} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, symbol=symbol, source=described)
+        return
     Console().print(render_holders_table(frame, title=title))
 
 
@@ -12149,6 +12155,11 @@ def allocation_command(
     title = f"asset allocation ({described}; {as_of})"
     if excluded:
         title += f", excluding {', '.join(excluded)}"
+    if output.machine():
+        # A share, as every other report's, not the table's percent.
+        shares = table.assign(share=table["percent"] / 100).drop(columns="percent")
+        output.emit(shares, title=title, source=described, by=by, excluded=list(excluded) or None)
+        return
     _print_unclipped(allocation.render_allocation_table(table, title=title))
     if allocation.UNCLASSIFIED in table.index:
         click.echo("unclassified: lots whose symbol has no rows in allocations.csv"
@@ -12180,10 +12191,14 @@ def _allocation_drift(
     finally:
         con.close()
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
-    click.echo(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
+    output.note(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
     if frame.empty:
-        click.echo("(no months in the run)")
+        output.note("(no months in the run)")
         _graph_nothing(graph_file, "drift", "drift-")
+        return
+    if output.machine():
+        output.emit(frame, title=f"drift from target set {target_set}", target_set=target_set,
+                    portfolio=portfolio, units="percentage points", source=path.name)
         return
     click.echo(frame.to_string(float_format=lambda v: f"{v:+.1f}"))
 
