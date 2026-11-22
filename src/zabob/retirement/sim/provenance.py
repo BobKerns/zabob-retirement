@@ -23,10 +23,10 @@ from __future__ import annotations
 import csv
 import io
 import re
+import runpy
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
-from importlib import import_module
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -86,13 +86,16 @@ def installed_version() -> tuple[str, bool]:
         version = _pkg_version("zabob-retirement")
     except PackageNotFoundError:
         version = "unknown"
+    # Written only into a wheel. Read from the file each time, not imported:
+    # a long-lived process (the builder's daemon) must see an upgrade.
+    from zabob.retirement.resources import PACKAGE_DIR
+
     try:
-        # Written only into a wheel, so imported by name.
-        build_info = import_module("zabob.retirement._build_info")
-    except ImportError:
+        build_info = runpy.run_path(str(PACKAGE_DIR / "_build_info.py"))
+    except OSError:
         return version, False
-    commit: str = getattr(build_info, "COMMIT", "")
-    dirty: bool = getattr(build_info, "DIRTY", False)
+    commit = str(build_info.get("COMMIT", ""))
+    dirty = bool(build_info.get("DIRTY", False))
     if commit:
         version += f"+g{commit[:12]}" + (".dirty" if dirty else "")
     return version, dirty
