@@ -171,6 +171,7 @@ from zabob.retirement.sim.dates import (
 )
 from zabob.retirement.sim.lineage import (
     MIXIN_BASE,
+    MIXIN_ONLY_DESCRIPTION,
     default_description,
     is_mixin_only,
     is_pool,
@@ -767,7 +768,7 @@ def run(
         resolved_data_dir = resolved_data_dir or _resolve_data_dir(data_dir)
         scenario_name = _resolve_scenario(resolved_data_dir, scenario_name).name
         if is_mixin_only(resolved_data_dir / "scenarios", scenario_name):
-            _refuse_mixin_only_run(scenario_name, sc.dependents(resolved_data_dir / "scenarios", scenario_name))
+            _refuse_mixin_only_run(scenario_name, _runnable_users(resolved_data_dir / "scenarios", scenario_name))
     if resolved_data_dir is not None:
         _offer_commit(resolved_data_dir, [scenario_name], commit=commit,
                       allow_dirty_data=allow_dirty_data, command=f"sim run {scenario_name}")
@@ -866,6 +867,26 @@ def _refuse_mixin_only_run(name: str, users: Sequence[str]) -> NoReturn:
         f"{name} is a mix-in only scenario (no start or end anywhere in its lineage), so it doesn't "
         f"run by itself; run {', '.join(users) if users else 'a scenario that mixes it in'}, "
         "or give it --start and --end (`sim scenario edit`)")
+
+
+def _runnable_users(scenarios_dir: Path, name: str) -> list[str]:
+    """The nearest scenarios built on ``name`` that can run, sorted: its
+    dependents, except that a dependent that is mix-in only too is passed
+    through to its own dependents (#347), since suggesting it would only be
+    refused the same way."""
+    found: set[str] = set()
+    seen = {name}
+    pending = [name]
+    while pending:
+        for user in sc.dependents(scenarios_dir, pending.pop()):
+            if user in seen:
+                continue
+            seen.add(user)
+            if is_mixin_only(scenarios_dir, user):
+                pending.append(user)
+            else:
+                found.add(user)
+    return sorted(found)
 
 
 def _intent_is_mixin_only(intent_path: Path) -> bool:
@@ -1591,7 +1612,7 @@ def ensemble_create(
 
     _make_current(data_dir_p, name)
     click.echo(f"created ensemble recipe {_shown(target)}")
-    click.echo(f"  inherits: {_inherits_line(data_dir_p, parents)}")
+    click.echo(f"  inherits: {_inherits_line(data_dir_p, name, parents)}")
     for label, own, inherited in (
         ("seed", seed, inherited_seed), ("ensemble_size", ensemble_size, inherited_size),
     ):
@@ -1602,7 +1623,11 @@ def ensemble_create(
     _suggest_readme(target)
     click.echo(
         "  next: sim calendar add <kind> ... --vary-distribution ... to mark rows as "
-        f"varying, then sim run {name}"
+        "varying, then "
+        # A mix-in only recipe can't run by itself (#347): `sim run` refuses it.
+        + ("mix it into a scenario with dates, or give it --start and --end "
+           f"(sim ensemble edit {name})" if is_mixin_only(data_dir_p / "scenarios", name)
+           else f"sim run {name}")
     )
 
 
@@ -5360,8 +5385,7 @@ def _create_data_repo(
         display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
     )
     if filing_status is None:
-        filing_status = click.prompt("filing status", default="MFJ",
-                                     type=click.Choice(registries.FILING_STATUSES))
+        filing_status = _prompt_choice("filing status", registries.FILING_STATUSES, default="MFJ")
     try:
         failed = data_repo.create_data_repo(
             root, {"id": person_id, **fields}, filing_status, commit=not no_commit, notebooks=notebooks)
@@ -5702,12 +5726,16 @@ def _line_completions(line: str, word_start: int, choices: list[str]) -> list[st
 
 
 def _prompt_with_completion(text: str, choices: list[str] | None = None,
-                            default: str | None = None) -> str:
-    """Prompt with readline tab-completion over ``choices``."""
+                            default: str | None = None, *, choice: click.Choice | None = None) -> str:
+    """Prompt with readline tab-completion over ``choices``. With a
+    ``click.Choice`` ``choice``, its choices are listed, completed, and the
+    only answers taken (see ``_prompt_choice``)."""
+    if choice is not None and choices is None:
+        choices = [str(c) for c in choice.choices]
     try:
         import readline
     except ImportError:
-        return click.prompt(text, default=default, show_default=bool(default))
+        return click.prompt(text, default=default, show_default=bool(default), type=choice)
     completer_choices = list(choices or [])
 
     def completer(prefix: str, state: int) -> str | None:  # noqa: ARG001
@@ -5727,10 +5755,20 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     else:
         readline.parse_and_bind("tab: complete")
     try:
-        return click.prompt(text, default=default, show_default=bool(default))
+        return click.prompt(text, default=default, show_default=bool(default), type=choice)
     finally:
         readline.set_completer(old)
         readline.set_completer_delims(old_delims)
+
+
+def _prompt_choice(text: str, choices: Iterable[str], *, default: str | None = None,
+                   case_sensitive: bool = True) -> str:
+    """One of ``choices``, asked for as ``click.prompt`` with a
+    ``click.Choice`` asks (listed, re-asked until valid), but completing over
+    them as a name prompt does (#260): a guided question with a fixed set of
+    answers uses this, not a bare ``click.Choice``."""
+    return _prompt_with_completion(
+        text, default=default, choice=click.Choice(list(choices), case_sensitive=case_sensitive))
 
 
 def _ask_name(what: str, choices: Iterable[str], *, prompt: str | None = None,
@@ -10378,10 +10416,10 @@ def _budget_or_actual(
                            f"{use}, an amount having moved more than {import_budget_.MOVED:.0%} since")
             use = prefer
         elif open_again and _interactive():
-            answer = click.prompt(
+            answer = _prompt_choice(
                 f"{each.category}: budget {format_dollars(each.budget_cents)} or actual "
                 f"{format_dollars(each.actual_cents)} a month?",
-                type=click.Choice(_BUDGET_OR_ACTUAL), default=each.saved)
+                _BUDGET_OR_ACTUAL, default=each.saved)
             if answer.startswith("all-"):
                 answer = for_the_rest = answer.removeprefix("all-")
             use = answer
@@ -11565,20 +11603,12 @@ def edit_account(
         beneficiary = beneficiary if beneficiary is not None else current.get("beneficiary", "")
     else:
         new_name = click.prompt("name", default=current.get("name", ""), show_default=True)
-        kind = click.prompt(
-            "kind",
-            default=current.get("kind", ""),
-            show_default=True,
-            type=click.Choice(sorted(registries.ACCOUNT_SUBKINDS), case_sensitive=False),
-        )
+        kind = _prompt_choice("kind", sorted(registries.ACCOUNT_SUBKINDS),
+                              default=current.get("kind", ""), case_sensitive=False)
         kind = kind.lower() if kind else kind
         allowed_subkinds = sorted(registries.ACCOUNT_SUBKINDS.get(kind, {current.get("subkind", "")}))
-        subkind = click.prompt(
-            "subkind",
-            default=current.get("subkind", ""),
-            show_default=True,
-            type=click.Choice(allowed_subkinds, case_sensitive=False),
-        )
+        subkind = _prompt_choice("subkind", allowed_subkinds,
+                                 default=current.get("subkind", ""), case_sensitive=False)
         subkind = subkind.lower() if subkind else subkind
         owner = click.prompt(
             "owner",
@@ -11587,12 +11617,9 @@ def edit_account(
         )
         owner = owner.strip() or "joint"
         # A retirement account's lots set its tax treatment (#217).
-        tax_treatment = "" if subkind == registries.RETIREMENT_SUBKIND else click.prompt(
-            "tax_treatment",
-            default=current.get("tax_treatment", ""),
-            show_default=True,
-            type=click.Choice(sorted(registries.TAX_TREATMENTS), case_sensitive=False),
-        )
+        tax_treatment = "" if subkind == registries.RETIREMENT_SUBKIND else _prompt_choice(
+            "tax_treatment", sorted(registries.TAX_TREATMENTS),
+            default=current.get("tax_treatment", ""), case_sensitive=False)
         opened = click.prompt("opened", default=current.get("opened", ""), show_default=True)
         if opened:
             opened = _validate_month_date(opened)
@@ -16608,11 +16635,16 @@ def _parents_cell(s: sc.ScenarioSummary) -> str:
     return f"{parents} (mix-in only)" if parents else "(mix-in only)"
 
 
-def _inherits_line(data: Path, parents: Sequence[str]) -> str:
-    """What ``create`` says a new scenario inherits."""
+def _inherits_line(data: Path, name: str, parents: Sequence[str]) -> str:
+    """What ``scenario create`` and ``ensemble create`` say the new scenario
+    ``name`` inherits."""
     if not parents:
         return "nothing (a mix-in only scenario)"
-    return " + ".join(_resolve_scenario(data, p, remember=False).name for p in parents)
+    line = " + ".join(_resolve_scenario(data, p, remember=False).name for p in parents)
+    if is_mixin_only(data / "scenarios", name):
+        # Built only on mix-ins, it is one too (#324): easy to miss.
+        line += " (a mix-in only scenario: nothing it builds on has a start or end)"
+    return line
 
 
 def _create_new_scenario(
@@ -16628,11 +16660,7 @@ def _create_new_scenario(
         sc.create_scenario(
             edit.data_dir, name, parent, description=description, mixins=mixins,
         )
-    line = _inherits_line(data, parents)
-    if parents and is_mixin_only(data / "scenarios", name):
-        # Built only on mix-ins, it is one too (#324): easy to miss.
-        line += " (a mix-in only scenario: nothing it builds on has a start or end)"
-    return line
+    return _inherits_line(data, name, parents)
 
 
 @scenario_group_command.command("create")
@@ -17785,6 +17813,12 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
     # Only a folder's own name: anything else (a path, '..') could reach
     # outside scenarios/.
     if old not in list_scenario_names(data):
+        if _is_template(data / "scenarios", old):
+            # The code repository's: renaming it would leave every data repo
+            # naming it with a missing parent (#297).
+            raise click.ClickException(
+                f"{old} is a template scenario, from the code repository, not the data repo's; "
+                f"it can't be renamed here (`sim {what} copy` makes a copy of it to rename)")
         raise click.ClickException(f"scenario not found: {data / 'scenarios' / old}")
     if not registries.SCENARIO_NAME_RE.match(new):
         raise click.ClickException(
@@ -17812,7 +17846,7 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
 
 
 @scenario_group_command.command("rename")
-@click.argument("old", required=False, type=completion.SCENARIO)
+@click.argument("old", required=False, type=completion.OWN_SCENARIO)
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -17828,7 +17862,7 @@ def scenario_rename(old: str | None, new: str | None, data_dir: Path | None) -> 
 
 
 @ensemble_group_command.command("rename")
-@click.argument("old", required=False, type=completion.ENSEMBLE)
+@click.argument("old", required=False, type=completion.OWN_ENSEMBLE)
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -18487,7 +18521,7 @@ _SCENARIO_CHECKERS: dict[str, Callable[[str], object]] = {
 
 
 def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_seed: bool,
-                   **fields: str | None) -> None:
+                   yes: bool = False, **fields: str | None) -> None:
     """``sim scenario edit`` and ``sim ensemble edit`` (``what``): with any
     option, the change at once; with none, a guided edit of every field."""
     data = _resolve_data_dir(data_dir)
@@ -18512,20 +18546,26 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
     # Named or picked at the prompt, it becomes current, even if nothing changes.
     _resolve_scenario(data, name)
     if new_seed or any(value is not None for value in fields.values()):
-        _apply_scenario_edit(data, name, new_seed=new_seed, **fields)
+        _apply_scenario_edit(data, name, new_seed=new_seed, yes=yes, **fields)
         return
 
     spec = scenario_guide.spec([n for n in _parent_choices(data) if n != name])
     before = scenario_guide.answers_of(sc._scenario_row(data / "scenarios" / name))
     answers = dict(before)
     _echo_guided_scenario(name, data / "scenarios" / name / "scenario.csv", defaulted=False)
+    # Asked here already, so not again before writing.
+    confirmed: set[str] = set()
 
     def ask_parents(current: str | None) -> str:
+        # Only the latest answer counts: one built only on mix-ins is asked about later.
+        confirmed.discard(name)
         chosen = _walk_parents(data, parse_parents(current), itself=name)
         if chosen or not current:
             return ":".join(chosen)
         dated = bool(answers.get("start", "").strip() or answers.get("end", "").strip())
         if _confirm_no_parent(name, "Make it build on nothing?", mixin_only=not dated):
+            if not dated:
+                confirmed.add(name)
             return ""
         click.echo("  parents unchanged")
         return current
@@ -18546,18 +18586,22 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
         fresh = changed.get("seed") == scenario_guide.NEW_SEED
         if fresh:
             del changed["seed"]
-        _apply_scenario_edit(data, name, new_seed=fresh, **changed)
+        _apply_scenario_edit(data, name, confirmed, new_seed=fresh, yes=yes, **changed)
 
     guide.review(spec, calendar_guide.GuideContext(), answers, submit, show_command=False)
 
 
 def _apply_scenario_edit(
-    data: Path, name: str, *, description: str | None = None, start: str | None = None,
+    data: Path, name: str, confirmed: Collection[str] = (), /, *, description: str | None = None,
+    start: str | None = None,
     end: str | None = None, parents: str | None = None, seed: str | None = None,
     new_seed: bool = False, size: str | None = None, reserve: str | None = None,
-    roll: str | None = None,
+    roll: str | None = None, yes: bool = False,
 ) -> None:
-    """Set the given fields of scenario ``name``'s scenario.csv; see ``_edit_scenario``."""
+    """Set the given fields of scenario ``name``'s scenario.csv; see ``_edit_scenario``.
+    An edit leaving it, or a scenario built on it, newly mix-in only is
+    confirmed first (``yes`` skips that), except for the scenarios in
+    ``confirmed``, which the guided edit has already asked about."""
     if seed is not None and new_seed:
         raise click.UsageError("--seed and --new-seed are exclusive")
     values: dict[str, str] = {}
@@ -18585,10 +18629,14 @@ def _apply_scenario_edit(
             # describes the parent.
             builds_on = parse_parents(values["parent_scenario"]) if "parent_scenario" in values \
                 else read_parents(data / "scenarios" / name)
-            if not builds_on:
+            if builds_on:
+                values["description"] = default_description(builds_on)
+            elif _own_dates(data / "scenarios" / name, values):
                 raise click.BadParameter("a root scenario has no default description; give one",
                                          param_hint="--description")
-            values["description"] = default_description(builds_on)
+            else:
+                # Building on nothing, with no dates, it is mix-in only (#347).
+                values["description"] = MIXIN_ONLY_DESCRIPTION
     if seed is not None:
         parsed = _blank_or(seed, _whole_number, "--seed")
         values["seed"] = "" if parsed is None else str(parsed)
@@ -18616,6 +18664,18 @@ def _apply_scenario_edit(
         except LoadError as exc:
             raise click.ClickException("; ".join(exc.issues)) from None
         now_mixin_only = _new_mixin_only(edit.data_dir / "scenarios", runnable)
+        unasked = [n for n in now_mixin_only if n not in confirmed]
+        if unasked and not yes:
+            removed = bool(parse_parents(old_row.get("parent_scenario"))) and not parse_parents(
+                sc._scenario_row(folder).get("parent_scenario"))
+            if not _interactive():
+                # No one to ask: say what would happen, and how to go ahead.
+                raise click.ClickException(
+                    f"this edit makes {', '.join(unasked)} mix-in only (no start or end anywhere in "
+                    "the lineage); run it at a terminal to confirm, or pass --yes. Nothing was written.")
+            if not _confirm_mixin_only(name, unasked, removed_parents=removed):
+                # Leaving the staged copy by an exception writes nothing (#347).
+                raise click.ClickException("nothing was written")
         new_row = sc._scenario_row(folder)
         builds_on = parse_parents(new_row.get("parent_scenario"))
         # A blank description reads as the default, as `--description ''` sets it.
@@ -18632,9 +18692,6 @@ def _apply_scenario_edit(
     click.echo(f"edited scenario {name}")
     for change in changes:
         click.echo(f"  {change.field}: {change.old or '(inherited)'} -> {change.new or '(inherited)'}")
-    if now_mixin_only:
-        click.echo(f"NOTE: now mix-in only (no start or end anywhere in the lineage), so "
-                   f"`sim run` refuses and `sim all` skips: {', '.join(now_mixin_only)}", err=True)
     if readme == "written":
         click.echo(f"  README.md: written; edit {data / 'scenarios' / name / 'README.md'} "
                    "to say what the scenario is for")
@@ -18648,8 +18705,29 @@ def _apply_scenario_edit(
 def _new_mixin_only(scenarios_dir: Path, runnable: Sequence[str]) -> list[str]:
     """Which ``runnable`` scenarios an edit left with no dates anywhere in
     their lineage, so mix-in only (#324): allowed, since that may be the
-    point, but said, since they stop running by themselves."""
+    point, but asked about, since they stop running by themselves."""
     return [n for n in runnable if is_mixin_only(scenarios_dir, n)]
+
+
+def _confirm_mixin_only(name: str, now: Sequence[str], *, removed_parents: bool) -> bool:
+    """Whether an edit of ``name`` that leaves the scenarios ``now`` mix-in
+    only is meant (#347). Asked whether the edit was guided or given as
+    options: the answer is part of what a guided command asks for (Bob,
+    2026-10-28)."""
+    others = [n for n in now if n != name]
+    if name in now and removed_parents:
+        also = f"; so will {', '.join(others)}, built on it" if others else ""
+        return _confirm_no_parent(name, f"Make it build on nothing{also}?")
+    return click.confirm(
+        f"{', '.join(now)} will have no start or end anywhere in the lineage, so mix-in only: "
+        "`sim run` refuses and `sim all` skips them. Go ahead?", default=False)
+
+
+def _own_dates(folder: Path, values: Mapping[str, str]) -> bool:
+    """Whether scenario ``folder`` has a start or end of its own once
+    ``values`` are set."""
+    row = {**sc._scenario_row(folder), **values}
+    return bool(row.get("start", "").strip() or row.get("end", "").strip())
 
 
 def _edit_options(what: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
@@ -18681,6 +18759,9 @@ def _add_edit_options(command: Callable[..., None], *, name_type: click.ParamTyp
                      help="monthly: the background builder rolls the start forward a month "
                           "each night the start month is over (meta_json roll, #564); off: "
                           "it doesn't, though a parent does; '' inherits it."),
+        click.option("--yes", is_flag=True, default=False,
+                     help="Don't ask before making a scenario mix-in only (no start or end "
+                          "anywhere in its lineage); needed off a terminal."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
                      default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
     ]
@@ -18703,7 +18784,9 @@ def scenario_edit(name: str | None, data_dir: Path | None, **fields: Any) -> Non
 
     The change is written only if NAME and every scenario built on it still
     load. A README.md that `scenario create` wrote follows the description
-    and parents. Same as `sim ensemble edit`."""
+    and parents. A change leaving NAME, or a scenario built on it, mix-in
+    only (no start or end anywhere in its lineage) is asked about first;
+    --yes skips that, and is needed off a terminal. Same as `sim ensemble edit`."""
     _edit_scenario(name, data_dir, what="scenario", **fields)
 
 
@@ -19617,9 +19700,8 @@ def _lifespan_fields(
             age = click.prompt("age at death (years, e.g. 84.5)",
                                default=current.get("age_at_death") or None)
         if vary is None:
-            vary = click.prompt(
-                "vary across ensemble members",
-                type=click.Choice([_NO_VARY, *registries.LIFESPAN_DISTRIBUTIONS]),
+            vary = _prompt_choice(
+                "vary across ensemble members", [_NO_VARY, *registries.LIFESPAN_DISTRIBUTIONS],
                 default=current.get("vary_distribution") or _NO_VARY,
             )
         if vary != _NO_VARY:
