@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,22 @@ def test_values_are_json_values() -> None:
     assert output.value(110658.78999999998) == 110658.79
     assert output.dollars({"balance_cents": 12345, "quantity_micros": 1_500_000, "name": "x"}) == {
         "balance": 123.45, "quantity": 1.5, "name": "x"}
+
+
+def test_values_from_prices_divisions_and_timestamps() -> None:
+    from decimal import Decimal
+
+    assert output.value(Decimal("12.50")) == 12.5
+    assert output.value(Decimal("3")) == 3
+    assert output.value(float("inf")) is None
+    assert output.value(pd.Timestamp("2030-01-31 09:30")) == "2030-01-31T09:30:00"
+
+
+def test_a_filtered_frame_has_no_row_number_field() -> None:
+    frame = pd.DataFrame({"x": [1, 2, 3]})
+    columns, rows = output.records(frame[frame.x != 2])
+    assert columns == ["x"]
+    assert rows == [{"x": 1}, {"x": 3}]
 
 
 def test_rows_refuse_a_field_that_is_not_a_column() -> None:
@@ -238,8 +255,22 @@ def test_an_empty_list_says_so_on_stderr(test_data_dir: Path) -> None:
     assert "no strategies in retire_alice" in result.stderr
 
 
-def test_tax_list_json_gives_each_jurisdictions_row(report_run_file: Path,
+def test_tax_list_json_gives_each_jurisdictions_row(add_tax: Callable[..., Path],
                                                     test_data_dir: Path) -> None:
+    add_tax()
     found = _json(_sim("tax", "list", "retire_alice", "--data-dir", str(test_data_dir), "--json"))
     assert found["columns"][:2] == ["jurisdiction", "kind"]
     assert [row["jurisdiction"] for row in found["rows"]] == ["federal"]
+
+
+def test_scheduled_list_gives_null_for_what_a_rule_leaves_out(test_data_dir: Path) -> None:
+    found = _json(_sim("scheduled", "list", "--data-dir", str(test_data_dir),
+                       "--scenario", "retire_alice", "--json"))
+    values = [row[c] for row in found["rows"] for c in ("from_lot", "to_lot", "end", "description")]
+    assert "-" not in values and "" not in values
+
+
+def test_explain_json_holds_every_table_it_prints(report_run_file: Path) -> None:
+    found = _json(_sim("explain", str(report_run_file), "--json"))
+    assert {"net_worth", "negative_balances"} <= set(found["tables"])
+    assert "negative_balance_warnings" in found

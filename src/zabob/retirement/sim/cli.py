@@ -2928,7 +2928,8 @@ def ensemble_drift(
         output.note("(no months in the members)")
         return
     if output.machine():
-        output.emit(table, title=f"ensemble {scenario_name} drift", batch=batch_dir.name,
+        output.emit(table.rename_axis("month"), title=f"ensemble {scenario_name} drift",
+                    batch=batch_dir.name,
                     members=len(store), target_set=target_set, portfolio=portfolio,
                     measure=what, units="percentage points; past_band and ever_past fractions",
                     band=band)
@@ -3004,7 +3005,7 @@ def ensemble_spending(
         output.note("(no spending in the members)")
         return
     if output.machine():
-        output.emit(table, title=f"ensemble {scenario_name} {what} against the plan",
+        output.emit(table.rename_axis("year"), title=f"ensemble {scenario_name} {what} against the plan",
                     batch=batch_dir.name, members=len(store), dollars=mode.value,
                     summary=reports.ensemble_spending_summary(delivered, budgeted,
                                                               store.whole_years(), partial))
@@ -4472,8 +4473,12 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
             "FROM strategy_decision d JOIN strategy s ON s.id = d.strategy_id "
             "WHERE d.hook = 'year_end' GROUP BY s.id")
     }
+    output.collect("strategy_year_end", output.from_rows(
+        ["name", "moved_cents", "realized_gain_cents"],
+        [(name, moved, gain) for name, (moved, gain) in sorted(year_end.items())]))
     breach_lines: dict[str, list[str]] = {}
     told = strategy_guide.breaches(con)
+    output.collect("strategy_breaches", told)
     for key in sorted(set(zip(told["strategy"], told["rail"], told["margin_kind"], strict=True))):
         name, rail, kind = key
         group = told[(told["strategy"] == name) & (told["rail"] == rail) & (told["margin_kind"] == kind)]
@@ -4861,6 +4866,7 @@ def compare_command(
     mode_label = DollarMode(mode).label
     scenarios = [baseline, *variants]
     run_warnings: list[str] = []
+    rebased_to: dict[str, Any] | None = None
     with output.collecting() as collected, ExitStack() as stack:
         connections: dict[str, RunConnection] = {}
         # Matched against the folder list, not joined onto a path, so a name
@@ -4881,8 +4887,11 @@ def compare_command(
         rebased = compare.align_cpi(connections, baseline)
         click.echo(f"{', '.join(variants)} vs {baseline}, {mode_label} dollars")
         if rebased and mode == DollarMode.CPI_CONSTANT:
+            # Those whose CPI-constant dollars are the baseline's, from its start.
+            rebased_to = {"scenarios": list(rebased),
+                          "to": f"{connections[baseline].cpi_index().index[0]:%Y-%m}"}
             click.echo(f"  ({', '.join(rebased)} in {baseline}'s dollars: "
-                       f"{baseline} starts {connections[baseline].cpi_index().index[0]:%Y-%m})")
+                       f"{baseline} starts {rebased_to['to']})")
 
         if "runs" in shown:
             meta, warnings = compare.comparability(connections, scenarios)
@@ -5035,7 +5044,7 @@ def compare_command(
     if output.machine():
         output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
                     baseline=baseline, variants=list(variants),
-                    after_tax=after_tax, rebased=rebased or None, warnings=run_warnings or None)
+                    after_tax=after_tax, warnings=run_warnings or None, rebased=rebased_to)
 
 
 def _compare_charts(sections: Sequence[str], account: str | None) -> list[str]:
@@ -5868,7 +5877,8 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     try:
         import readline
     except ImportError:
-        return click.prompt(text, default=default, show_default=bool(default))
+        return click.prompt(text, default=default, show_default=bool(default),
+                            err=output.machine())
     completer_choices = list(choices or [])
 
     def completer(prefix: str, state: int) -> str | None:  # noqa: ARG001
@@ -5888,7 +5898,9 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     else:
         readline.parse_and_bind("tab: complete")
     try:
-        return click.prompt(text, default=default, show_default=bool(default))
+        # With --csv or --json, stdout is for the data alone (#196).
+        return click.prompt(text, default=default, show_default=bool(default),
+                            err=output.machine())
     finally:
         readline.set_completer(old)
         readline.set_completer_delims(old_delims)
@@ -5904,11 +5916,11 @@ def _ask_name(what: str, choices: Iterable[str], *, prompt: str | None = None,
     listed = plural or (what if what.endswith("series") else f"{what}s")
     if not shown:
         raise click.ClickException(f"there are no {listed} to choose from")
-    click.echo(f"{listed}: {', '.join(shown)}")
+    output.note(f"{listed}: {', '.join(shown)}")
     while (answer := _prompt_with_completion(prompt or what, choices=shown).strip()) not in shown:
         if other is not None and answer and other(answer):
             break
-        click.echo(f"  one of: {', '.join(shown)}")
+        output.note(f"  one of: {', '.join(shown)}")
     return answer
 
 
@@ -10909,7 +10921,10 @@ def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
         scen_name = sc.name
         rows = scheduled_view(sc)
     if output.machine():
-        output.emit(rows, title=f"scheduled ({data_dir_p.name} / {scen_name})", scenario=scen_name)
+        # The view's "-" placeholders are for reading; missing is missing.
+        raw = rows.replace({c: {"-": None} for c in ("from_lot", "to_lot", "end", "description")
+                            if c in rows.columns})
+        output.emit(raw, title=f"scheduled ({data_dir_p.name} / {scen_name})", scenario=scen_name)
         return
     table = Table(title=f"scheduled ({data_dir_p.name} / {scen_name})")
     for column, justify in (
@@ -11990,7 +12005,7 @@ def list_accounts(
         title += f" / owner={owner}"
     title += ")"
     if output.machine():
-        output.emit(output.from_items(rows, AccountRow), title=title)
+        output.emit(output.from_items(rows, AccountRow, blank_is_missing=True), title=title)
         return
     Console().print(render_accounts_table(rows, title=title))
 
@@ -12197,7 +12212,8 @@ def _allocation_drift(
         _graph_nothing(graph_file, "drift", "drift-")
         return
     if output.machine():
-        output.emit(frame, title=f"drift from target set {target_set}", target_set=target_set,
+        output.emit(frame.rename_axis("month"), title=f"drift from target set {target_set}",
+                    target_set=target_set,
                     portfolio=portfolio, units="percentage points", source=path.name)
         return
     click.echo(frame.to_string(float_format=lambda v: f"{v:+.1f}"))
@@ -12866,9 +12882,13 @@ def report_guard_rails_command(
                  else guard_rails.margins_frame(shown, carried=carried))
         if one and not carried:
             frame = frame.drop(columns="carried")
+        responses = output.from_rows(
+            ["strategy", "rail", "margin_kind", "first_year_past", "year_back_inside", "answered"],
+            [s for s in spells if s[1] in {r.rail.name for r in shown}])
         output.emit(
             {"margins": clip_years(frame, years),
-             "summary": guard_rails.summary_frame(shown).reset_index(drop=True)},
+             "summary": guard_rails.summary_frame(shown),
+             "responses": responses},
             title=f"guard rail {shown[0].rail.name}" if one else "guard rail margins",
             dollars=mode.value, source=described,
             rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense,

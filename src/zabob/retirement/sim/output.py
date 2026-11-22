@@ -34,6 +34,7 @@ from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager, redirect_stdout
 from contextvars import ContextVar
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -110,15 +111,19 @@ def value(item: Any) -> Any:
     if item is None or item is pd.NA or item is pd.NaT:
         return None
     if isinstance(item, pd.Timestamp):
-        return None if pd.isna(item) else item.date().isoformat()
+        # A month end or a date as a date; a time of day, when there is one, kept.
+        return item.date().isoformat() if item == item.normalize() else item.isoformat()
     if isinstance(item, pd.Period):
         return str(item)
     if isinstance(item, (datetime, date)):
         return item.isoformat()
     if hasattr(item, "item") and not isinstance(item, (str, bytes)):
         item = item.item()  # NumPy scalar
+    if isinstance(item, Decimal):  # a stored price
+        return int(item) if item == item.to_integral_value() else float(item)
     if isinstance(item, float):
-        if math.isnan(item):
+        # JSON has no infinity; an unguarded division's inf is missing, as NaN is.
+        if math.isnan(item) or math.isinf(item):
             return None
         # 15 significant digits, every one a double holds exactly: drops the
         # noise arithmetic leaves (110658.78999999998 is 110658.79) and keeps
@@ -136,11 +141,14 @@ def value(item: Any) -> Any:
 
 def records(frame: pd.DataFrame) -> tuple[list[str], list[dict[str, Any]]]:
     """``frame``'s columns and rows, its index levels first (an unnamed one
-    as ``index``), unless the index is only row numbers."""
-    plain = (isinstance(frame.index, pd.RangeIndex) and frame.index.name is None
-             and frame.index.start == 0 and frame.index.step == 1)
-    if not plain:
-        frame = frame.reset_index()
+    as ``index``), unless the index is only row numbers: an unnamed integer
+    index, as a filter leaves a RangeIndex, is dropped, so the fields don't
+    change with the data. A caller whose index means something (a year)
+    names it."""
+    index = frame.index
+    numbers = (not isinstance(index, pd.MultiIndex) and index.name is None
+               and pd.api.types.is_integer_dtype(index.dtype))
+    frame = frame.reset_index(drop=numbers)
     columns = [str(c) for c in frame.columns]
     rows = [{c: value(v) for c, v in zip(columns, row, strict=True)}
             for row in frame.itertuples(index=False, name=None)]
@@ -161,14 +169,19 @@ def dollars(fields: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
-def from_items(items: Iterable[Any], kind: type[DataclassInstance]) -> Rows:
+def from_items(items: Iterable[Any], kind: type[DataclassInstance], *,
+               blank_is_missing: bool = False) -> Rows:
     """Instances of the dataclass ``kind`` as rows, through :func:`dollars`:
-    its fields are the columns, even with no rows."""
+    its fields are the columns, even with no rows. ``blank_is_missing``
+    makes an empty string missing, for a dataclass that holds "" for none."""
     import dataclasses
 
     shown = Rows(list(dollars(dict.fromkeys(f.name for f in dataclasses.fields(kind)))))
     for item in items:
-        shown.add(**dollars(dataclasses.asdict(item)))
+        fields = dollars(dataclasses.asdict(item))
+        if blank_is_missing:
+            fields = {k: None if v == "" else v for k, v in fields.items()}
+        shown.add(**fields)
     return shown
 
 
