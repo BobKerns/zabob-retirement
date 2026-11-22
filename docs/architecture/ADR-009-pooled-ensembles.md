@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-009: Pooled ensembles — one result set drawn from several ensembles](../assets/brand/banners/architecture-adr-009-pooled-ensembles.svg)
 
 # ADR-009: Pooled ensembles — one result set drawn from several ensembles
 

@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![How much information is in the historical series?](../assets/brand/banners/guides-historical-information.svg)
 
 # How much information is in the historical series?
 

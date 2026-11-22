@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-001: Overall architecture of the finance simulator](../assets/brand/banners/architecture-adr-001-overall-architecture.svg)
 
 # ADR-001: Overall architecture of the finance simulator
 

@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-008: Correlated parameters in ensembles](../assets/brand/banners/architecture-adr-008-correlated-parameters.svg)
 
 # ADR-008: Correlated parameters in ensembles
 

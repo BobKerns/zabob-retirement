@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Tax calculators: your own state's rules](../assets/brand/banners/guides-tax-calculators.svg)
 
 # Tax calculators: your own state's rules
 

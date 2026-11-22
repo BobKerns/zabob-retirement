@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Architecture](../assets/brand/banners/architecture-readme.svg)
 
 # Architecture
 

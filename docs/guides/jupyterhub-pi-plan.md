@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![JupyterHub on the Pi: setup plan (not yet implemented)](../assets/brand/banners/guides-jupyterhub-pi-plan.svg)
 
 # JupyterHub on the Pi: setup plan (not yet implemented)
 

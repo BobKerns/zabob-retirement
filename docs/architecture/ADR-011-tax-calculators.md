@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-011: Tax calculators](../assets/brand/banners/architecture-adr-011-tax-calculators.svg)
 
 # ADR-011: Tax calculators
 

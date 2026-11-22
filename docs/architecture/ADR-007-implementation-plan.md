@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-007(ADR-007-sensitivity-analysis.md) implementation plan: sensitivity analysis](../assets/brand/banners/architecture-adr-007-implementation-plan.svg)
 
 # [ADR-007](ADR-007-sensitivity-analysis.md) implementation plan: sensitivity analysis
 
