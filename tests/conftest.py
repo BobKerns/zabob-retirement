@@ -63,6 +63,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
 import sys
 import warnings
 from typing import Any
@@ -526,6 +527,31 @@ def repo_root() -> Path:
 def prototype_data(repo_root: Path) -> Path:
     """Fixture to provide the path to the prototype directory within the repository."""
     return repo_root / "prototype_data"
+
+
+@pytest.fixture(scope="session")
+def built_wheel(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Path:
+    """The wheel `uv build` makes of this checkout, through its sdist as a
+    release is (#662). Skips without uv."""
+    if shutil.which("uv") is None:
+        pytest.skip("needs uv")
+    out = tmp_path_factory.mktemp("dist")
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    subprocess.run(["uv", "build", "--quiet", "-o", str(out)], cwd=repo_root, env=env, check=True)
+    (wheel,) = out.glob("*.whl")
+    return wheel
+
+
+@pytest.fixture(scope="session")
+def installed_wheel(tmp_path_factory: pytest.TempPathFactory, built_wheel: Path) -> Path:
+    """A fresh venv, away from any checkout, with ``built_wheel`` installed
+    as a user's ``uv tool install`` would have it; its ``bin/``."""
+    venv = tmp_path_factory.mktemp("installed") / "venv"
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    subprocess.run(["uv", "venv", "--quiet", "-p", sys.executable, str(venv)], env=env, check=True)
+    subprocess.run(["uv", "pip", "install", "--quiet", "-p", str(venv / "bin" / "python"), str(built_wheel)],
+                   env=env, check=True)
+    return venv / "bin"
 
 
 @pytest.fixture(scope="function")
@@ -1787,6 +1813,26 @@ def stamp_runs(code_repo: git.Repo) -> Callable[[Path], None]:
                     con.execute("UPDATE simulation_run SET code_version = ?, code_dirty = 0",
                                 (code_repo.head.commit.hexsha,))
     return _stamp
+
+
+@pytest.fixture(scope="function")
+def installed_build(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None], Callable[[Path], None]]:
+    """Run freshness as an install from a wheel sees it (#662): no code
+    repo, only the build's version. Called with a version (None: a build
+    from dirty code), it makes that the installed one and returns a function
+    stamping every run under a runs dir as made by it, clean."""
+    from zabob.retirement.sim import freshness
+
+    def _install(version: str | None) -> Callable[[Path], None]:
+        monkeypatch.setattr(freshness, "code_tree", lambda: freshness.CodeTree(None, None, version))
+
+        def _stamp(runs_dir: Path) -> None:
+            for run_file in runs_dir.rglob("*.sqlite3"):
+                with closing(sqlite3.connect(run_file)) as con, con:
+                    if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'simulation_run'").fetchone():
+                        con.execute("UPDATE simulation_run SET code_version = ?, code_dirty = 0", (version,))
+        return _stamp
+    return _install
 
 
 @pytest.fixture(scope="function")

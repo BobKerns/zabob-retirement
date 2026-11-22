@@ -26,6 +26,7 @@ import re
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
+from importlib import import_module
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -66,16 +67,42 @@ EMPTY_DATA_STAMPS = DataStamps(version="", dirty=False, tree_id="", dirty_paths=
 EMPTY_CODE_STAMPS = CodeStamps(version="", dirty=False, repo_path=None)
 
 
-def code_stamps() -> CodeStamps:
-    import zabob.retirement
+def code_repo() -> Repo | None:
+    """The git repository of the checkout this package runs from; None when
+    it was installed from a wheel (#662). Only a checkout is looked in: an
+    installed package can sit beneath some unrelated repository (a home
+    folder kept in git), whose commit would say nothing about this code."""
+    from zabob.retirement.resources import CHECKOUT_DIR
 
-    repo = _open_repo(Path(zabob.retirement.__file__).parent)
+    return None if CHECKOUT_DIR is None else _open_repo(CHECKOUT_DIR)
+
+
+def installed_version() -> tuple[str, bool]:
+    """An installed package's version and whether it was built from
+    uncommitted code: the distribution's version, with the commit it was
+    built from (stamped by ``hatch_build.py``) as a local label, as in
+    ``1.0.0b1+g0123456789ab``, so two builds of one version differ."""
+    try:
+        version = _pkg_version("zabob-retirement")
+    except PackageNotFoundError:
+        version = "unknown"
+    try:
+        # Written only into a wheel, so imported by name.
+        build_info = import_module("zabob.retirement._build_info")
+    except ImportError:
+        return version, False
+    commit: str = getattr(build_info, "COMMIT", "")
+    dirty: bool = getattr(build_info, "DIRTY", False)
+    if commit:
+        version += f"+g{commit[:12]}" + (".dirty" if dirty else "")
+    return version, dirty
+
+
+def code_stamps() -> CodeStamps:
+    repo = code_repo()
     if repo is None:
-        try:
-            v = _pkg_version("zabob-retirement")
-        except PackageNotFoundError:
-            v = "unknown"
-        return CodeStamps(version=v, dirty=False, repo_path=None)
+        version, dirty = installed_version()
+        return CodeStamps(version=version, dirty=dirty, repo_path=None)
     return CodeStamps(
         version=repo.head.commit.hexsha,
         dirty=repo.is_dirty(untracked_files=True),

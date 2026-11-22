@@ -22,9 +22,12 @@ import csv
 import json
 from pathlib import Path
 
+from zabob.retirement.resources import TEMPLATES_DIR
+
 
 TEMPLATE_PREFIX = "t_"
-TEMPLATE_SCENARIOS_DIR = Path(__file__).resolve().parents[4] / "templates" / "scenarios"
+# The checkout's templates/, or the copy a wheel ships (#662).
+TEMPLATE_SCENARIOS_DIR = TEMPLATES_DIR / "scenarios"
 # The tax-law aux tables, read beneath the data repo's aux/ (#317).
 TEMPLATE_AUX_DIR = TEMPLATE_SCENARIOS_DIR.parent / "aux"
 # What a mix-in only scenario is loaded on top of when loaded by itself

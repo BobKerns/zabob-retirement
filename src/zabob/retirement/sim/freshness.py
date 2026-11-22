@@ -28,7 +28,7 @@ from git import BadName, Repo
 
 from zabob.retirement.sim.loader import latest_ensemble_batch, latest_run_path
 from zabob.retirement.sim.locks import run_name_key
-from zabob.retirement.sim.provenance import _open_repo, data_stamps
+from zabob.retirement.sim.provenance import code_repo, data_stamps, installed_version
 
 # The code a run's numbers depend on, relative to the code repo's root.
 CODE_PATHS = ("src", "templates", "pyproject.toml", "uv.lock")
@@ -43,12 +43,17 @@ class CodeTree:
 
     repo: Repo | None
     trees: tuple[str, ...] | None
+    # Installed from a wheel (no repo): the build's version, which a run's
+    # code_version must equal; None when the build had uncommitted code.
+    version: str | None = None
 
 
 def code_tree() -> CodeTree:
-    import zabob.retirement
-
-    return code_tree_of(_open_repo(Path(zabob.retirement.__file__).parent))
+    repo = code_repo()
+    if repo is None:
+        version, dirty = installed_version()
+        return CodeTree(None, None, None if dirty else version)
+    return code_tree_of(repo)
 
 
 def code_tree_of(repo: Repo | None) -> CodeTree:
@@ -119,7 +124,7 @@ def unchanged_run(
     components' answers, already found (see :func:`unchanged_pool`). With
     ``mode`` sensitivity, its latest sensitivity batch instead (#454): any
     quantiles, every member it planned finished."""
-    if code.repo is None or code.trees is None:
+    if code.trees is None and code.version is None:
         return None
     from zabob.retirement.sim.lineage import is_pool
 
@@ -163,7 +168,10 @@ def unchanged_run(
             return None
         if python_version.split()[0] != python:
             return None
-        if _trees(code.repo, code_version) != code.trees:
+        if code.repo is None:
+            if code_version != code.version:
+                return None
+        elif _trees(code.repo, code_version) != code.trees:
             return None
     return Unchanged(path)
 
