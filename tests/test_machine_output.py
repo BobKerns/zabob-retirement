@@ -236,3 +236,10 @@ def test_an_empty_list_says_so_on_stderr(test_data_dir: Path) -> None:
     assert result.exit_code == 0, result.output
     assert result.stdout == ""
     assert "no strategies in retire_alice" in result.stderr
+
+
+def test_tax_list_json_gives_each_jurisdictions_row(report_run_file: Path,
+                                                    test_data_dir: Path) -> None:
+    found = _json(_sim("tax", "list", "retire_alice", "--data-dir", str(test_data_dir), "--json"))
+    assert found["columns"][:2] == ["jurisdiction", "kind"]
+    assert [row["jurisdiction"] for row in found["rows"]] == ["federal"]
