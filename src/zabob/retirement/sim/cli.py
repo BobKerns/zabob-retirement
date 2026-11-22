@@ -17403,6 +17403,17 @@ def _scenario_start(data: Path, scenario: str) -> str | None:
     return summary.start.month if summary is not None and summary.start is not None else None
 
 
+def _rate_fraction(text: str) -> float | str | None:
+    """A rate as authored (``4.5%``) as --csv and --json give it, a fraction
+    (0.045); blank as None, and one that doesn't parse as written."""
+    if not text.strip():
+        return None
+    try:
+        return units.percent_to_micros(text, require_sign=False) / 1_000_000
+    except ValueError:
+        return text
+
+
 def _rate_at(rows: Sequence[Mapping[str, str]], month: str | None) -> str:
     """The rate in force in ``month``, from rows in date order: blank before
     the first row, or with no month to look at."""
@@ -17510,6 +17521,7 @@ def _series_readers(data: Path, scenario: str, name: str) -> list[str]:
 @click.option("-a", "--all", "show_all", is_flag=True,
               help="Also list the series this scenario has emptied (sim series delete).")
 @_scenario_options
+@output.output_options
 def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the rate and inflation series the scenario reads: how many rows
     each has, its rate at the scenario's start, and the file it comes from.
@@ -17526,7 +17538,21 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
     listed = [series for (k, _), series in series_files.scenario_series(data, ref.name).items()
               if (kind is None or k == kind) and (show_all or not series.empty)]
     if not listed:
-        click.echo(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        output.note(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["series", "kind", "rows", "empty", "rate_at_start", "start",
+                             "files", "defined_in", "overrides"])
+        for series in listed:
+            parts = [part for part in series.parts if not part.read.empty] or [series]
+            belows = [part.below for part in parts if part.own and part.below is not None]
+            shown.add(series=series.name, kind=series.kind, rows=len(series.rows),
+                      empty=series.empty, rate_at_start=_rate_fraction(_rate_at(series.rows, start)),
+                      start=start and start[:7],
+                      files=[f"{part.read.folder}/{part.read.filename}" for part in parts],
+                      defined_in=list(dict.fromkeys(part.read.defined_in for part in parts)),
+                      overrides=list(dict.fromkeys(below.defined_in for below in belows)))
+        output.emit(shown, title=f"series ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"series ({ref.name})", header_style="bold")
     for column, justify in (("Series", "left"), ("Kind", "left"), ("Rows", "right"),
@@ -17552,10 +17578,12 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
 @click.argument("series", required=False, type=completion.SeriesName(kind_param="kind"))
 @_SERIES_KIND_OPTION
 @_scenario_options
+@output.output_options
 def series_show(series: str | None, kind: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show SERIES's rows, the file they come from, and what names it.
 
-    Without SERIES, it is asked for.
+    Without SERIES, it is asked for. --json gives each file's rows as a
+    table named by the file, the rate a fraction.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -17563,6 +17591,20 @@ def series_show(series: str | None, kind: str | None, scenario: str | None, data
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, scenario)
     found = _pick_series(data, ref.name, series, kind, wanted=lambda s: not s.empty)
+    if output.machine():
+        tables: dict[str, output.Table] = {}
+        for part in found.parts:
+            file = part.read
+            extra = [c for c in file.header if c not in series_files.HEADER]
+            rows = output.Rows(["from", "annual_rate", *extra])
+            for row in file.rows:
+                rows.add(**{"from": _series_row_month(row)[:7],
+                            "annual_rate": _rate_fraction(row.get("annual_rate", ""))},
+                         **{c: row.get(c) or None for c in extra})
+            tables[f"{file.folder}/{file.filename}"] = rows
+        output.emit(tables, title=_series_label(found), series=found.name, kind=found.kind,
+                    scenario=ref.name, named_by=_series_readers(data, ref.name, found.name))
+        return
     # The loader reads the name's file in each folder that has one, so each
     # is shown, with where it comes from.
     for part in found.parts:

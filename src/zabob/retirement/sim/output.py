@@ -267,6 +267,7 @@ def _write_csv(columns: list[str], rows: Iterable[Mapping[str, Any]]) -> None:
     writer = csv.writer(sys.stdout, lineterminator="\n")
     writer.writerow(columns)
     for row in rows:
+        # Booleans and nested values as JSON spells them, so the two agree.
         writer.writerow(["" if row[c] is None else
-                         json.dumps(row[c]) if isinstance(row[c], (list, dict)) else row[c]
+                         json.dumps(row[c]) if isinstance(row[c], (bool, list, dict)) else row[c]
                          for c in columns])
