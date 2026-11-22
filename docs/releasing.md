@@ -1,4 +1,4 @@
-![Zabob Retirement](assets/brand/banner.jpg)
+![Releasing to PyPI](assets/brand/banners/releasing.svg)
 
 # Releasing to PyPI
 
