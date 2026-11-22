@@ -62,6 +62,7 @@ def _write(folder: Path, text: str, name: str = "script.md") -> Path:
     return folder
 
 
+@pytest.mark.checkout
 def test_every_repo_video_checks(repo_root: Path) -> None:
     folders = sorted(p for p in (repo_root / "docs" / "videos").iterdir() if (p / "script.md").is_file())
     assert folders, "the pilot video should exist"
@@ -687,6 +688,7 @@ def test_launch_chromium_says_how_to_get_one(monkeypatch: pytest.MonkeyPatch) ->
         render.launch_chromium(SimpleNamespace(chromium=_FakeChromium(set())))
 
 
+@pytest.mark.checkout
 def test_analysis_video_image_rebuilds_in_docker(monkeypatch: pytest.MonkeyPatch,
                                                  video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
@@ -700,6 +702,7 @@ def test_analysis_video_image_rebuilds_in_docker(monkeypatch: pytest.MonkeyPatch
     assert video_runs == {"docker": [["image"]], "local": []}
 
 
+@pytest.mark.checkout
 def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
     """The image is rebuilt only when docker/videos changes (#612), so it
     must copy nothing else: the checkout is mounted, and what the code needs
@@ -755,6 +758,7 @@ def video_runs(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
     (True, ["--local"], "local"),
     (True, ["--docker"], "docker"),
 ])
+@pytest.mark.checkout
 def test_analysis_video_build_runs_in_docker_when_it_can(monkeypatch: pytest.MonkeyPatch,
                                                          video_runs: dict[str, list[Any]],
                                                          running: bool, where: list[str], ran: str) -> None:
@@ -775,6 +779,7 @@ def test_analysis_video_build_runs_in_docker_when_it_can(monkeypatch: pytest.Mon
     assert ("running locally" in result.output) == (not running and not where)
 
 
+@pytest.mark.checkout
 @pytest.mark.parametrize("running", [True, False])
 def test_analysis_video_build_publish_publishes_what_it_built(monkeypatch: pytest.MonkeyPatch,
                                                               video_runs: dict[str, list[Any]],
@@ -813,6 +818,7 @@ def test_analysis_video_build_publishes_only_a_good_build(monkeypatch: pytest.Mo
     assert video_runs["local"] == []
 
 
+@pytest.mark.checkout
 def test_analysis_video_build_says_when_publish_wont_send_the_picture(
         monkeypatch: pytest.MonkeyPatch, video_runs: dict[str, list[Any]]) -> None:
     """A language already up gets only its title and description; say so,
@@ -836,6 +842,7 @@ def test_analysis_video_build_says_when_publish_wont_send_the_picture(
     (["--refresh", "--new-upload"], "--refresh, --new-upload only go with --publish"),
     (["--publish", "--refresh", "--new-upload"], "--refresh and --new-upload don't go together"),
 ])
+@pytest.mark.checkout
 def test_analysis_video_build_checks_publish_options_before_building(
         monkeypatch: pytest.MonkeyPatch, video_runs: dict[str, list[Any]], args: list[str], message: str) -> None:
     from click.testing import CliRunner
@@ -849,6 +856,7 @@ def test_analysis_video_build_checks_publish_options_before_building(
     assert video_runs == {"docker": [], "local": []}
 
 
+@pytest.mark.checkout
 def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
                                             video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
@@ -863,6 +871,7 @@ def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
     assert video_runs == {"docker": [], "local": []}
 
 
+@pytest.mark.checkout
 def test_analysis_video_names_a_video_by_folder_name(monkeypatch: pytest.MonkeyPatch,
                                                     video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner

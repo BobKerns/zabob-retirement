@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from zabob.retirement.cli import main
@@ -57,6 +58,7 @@ def test_find_repo_root_falls_back_outside_git(tmp_path: Path) -> None:
     assert root == outside_git.resolve()
 
 
+@pytest.mark.checkout
 def test_cli_jupyter_generates_config_and_execs_jupyter_lab(tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 
@@ -89,6 +91,7 @@ def test_cli_jupyter_generates_config_and_execs_jupyter_lab(tmp_path: Path) -> N
     assert argv[3] == f"--IdentityProvider.token={token}"
 
 
+@pytest.mark.checkout
 def test_cli_jupyter_reports_missing_jupyter_binary(tmp_path: Path) -> None:
     runner = CliRunner()
     with (
