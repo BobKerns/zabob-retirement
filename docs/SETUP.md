@@ -6,6 +6,37 @@
 > - In Jupyter: right-click on it and select `Open With / Markdown Preview`
 > - In VSCode: Command `Markdown Preview Enhanced: Open Preview` or ⌘⇧V
 
+## Install the program
+
+To use the simulator without its code, install it from PyPI with
+[uv](https://docs.astral.sh/uv/getting-started/installation/), which also
+fetches Python 3.14 if you don't have it:
+
+```sh
+uv tool install zabob-retirement
+```
+
+(`zabob-retire` is the same program under a shorter name.) Then make your
+data repo, the git repository of CSV files that holds your household, and
+activate it:
+
+```sh
+sim init                                          # in ~/zabob-retirement, asking who you are
+source ~/zabob-retirement/sim/activate-analysis   # in each new shell
+```
+
+`sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
+prototype household, Alice and Bill, asking nothing: somewhere to try
+commands before entering your own. Either way the data repo gets the
+notebooks, in its `notebooks/`; `analysis jupyter` opens them.
+
+To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
+--replace` to take the new notebooks (it replaces the copies in your data
+repo; without `--replace` it adds only new ones). Runs made with the old
+version become stale and are rebuilt.
+
+The rest of this page is for working from a clone of the code.
+
 ## Install with one line
 
 If you don't have the code yet, or don't use git, paste this into a terminal
