@@ -4077,19 +4077,18 @@ def _read_data_version(intent_path: Path) -> str | None:
     default=None,
     help="Default: data-repo state/runs when activated, else state/runs.",
 )
+@output.output_options
 def list_runs(runs_dir: Path | None) -> None:
     """List run files in --runs-dir with status, scenario, who, when."""
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR)
     if not resolved_runs_dir.exists():
-        click.echo(f"(no runs dir: {resolved_runs_dir})")
+        output.note(f"(no runs dir: {resolved_runs_dir})")
         return
     files = sorted(resolved_runs_dir.glob("*.sqlite3"))
     if not files:
-        click.echo(f"(no run files in {resolved_runs_dir})")
+        output.note(f"(no run files in {resolved_runs_dir})")
         return
-    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
-    click.echo(header)
-    click.echo("-" * len(header))
+    runs = output.Rows(["status", "scenario", "finished_at", "run_by", "file", "error"])
     for f in files:
         try:
             con = connect_sim_file(f"file:{f}?mode=ro", uri=True)
@@ -4101,15 +4100,23 @@ def list_runs(runs_dir: Path | None) -> None:
             finally:
                 con.close()
         except sqlite3.DatabaseError as exc:
-            click.echo(f"{'unreadable':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name} ({exc})")
+            runs.add(status="unreadable", file=f.name, error=str(exc))
             continue
         if row is None:
-            click.echo(f"{'empty':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name}")
+            runs.add(status="empty", file=f.name)
             continue
         status, name, finished, by = row
-        click.echo(
-            f"{status:<10}  {name:<24}  {(finished or '-'):<20}  {(by or '-'):<16}  {f.name}"
-        )
+        runs.add(status=status, scenario=name, finished_at=finished, run_by=by, file=f.name)
+    if output.machine():
+        output.emit(runs, title=f"runs ({resolved_runs_dir})")
+        return
+    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
+    click.echo(header)
+    click.echo("-" * len(header))
+    for r in runs.rows:
+        error = f" ({r['error']})" if r["error"] else ""
+        click.echo(f"{r['status']:<10}  {r['scenario'] or '-':<24}  {r['finished_at'] or '-':<20}  "
+                   f"{r['run_by'] or '-':<16}  {r['file']}{error}")
 
 
 def _scenario_argument(fn):
@@ -20212,6 +20219,7 @@ def ytd_group_command() -> None:
 @ytd_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     """List year_to_date.csv's rows, then the scheduled rows carrying a
     ytd_amount or ytd_preroll.
@@ -20227,7 +20235,11 @@ def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = setup_listings.ytd_listing(ref.path)
     if not rows:
-        click.echo(f"no year-to-date rows in {ref.name}")
+        output.note(f"no year-to-date rows in {ref.name}")
+        return
+    if output.machine():
+        output.emit(output.from_items(rows, setup_listings.YtdListing),
+                    title=f"year to date ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"year to date ({ref.name})", header_style="bold")
     for column in ("Name", "Source", "From", "To", "Amount", "Tax", "Year",
@@ -20657,8 +20669,11 @@ def guard_rail_group_command() -> None:
 @guard_rail_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List the scenario's guard rails, its own and inherited."""
+    """List the scenario's guard rails, its own and inherited. With --csv or
+    --json, the threshold is dollars a year, or a fraction for a percent
+    basis."""
     from rich.markup import escape
     from rich.table import Table
 
@@ -20669,7 +20684,20 @@ def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
     for issue in [*issues, *more]:
         click.echo(f"  error: {issue}", err=True)
     if not rails:
-        click.echo(f"no guard rails in {ref.name}")
+        output.note(f"no guard rails in {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["name", "rail", "measure", "side", "threshold", "basis", "sense",
+                             "select", "portfolio", "start", "end", "description", "defined_in"])
+        for rail in rails:
+            shown.add(name=rail.name, rail=rail.describe(), measure=rail.measure,
+                      side=str(rail.side),
+                      threshold=rail.threshold / (1_000_000 if rail.is_percent else 100),
+                      basis=rail.basis, sense=rail.sense, select=str(rail.select) or None,
+                      portfolio=str(rail.portfolio) or None, start=rail.start or None,
+                      end=rail.end or None, description=rail.description or None,
+                      defined_in=rail.defined_in)
+        output.emit(shown, title=f"guard rails ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"guard rails ({ref.name})", header_style="bold")
     for column in ("Name", "Rail", "Sense", "Start", "End", "Description", "Defined in"):
