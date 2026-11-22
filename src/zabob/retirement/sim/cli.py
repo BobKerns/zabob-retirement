@@ -19173,6 +19173,7 @@ _CALENDAR_LIST_KINDS = sorted({*registries.CALENDAR_EVENT_KINDS, *_CALENDAR_COMM
               help="Also show each row's description and params_json.")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def calendar_list(
     kind: str | None, tag: str | None, verbose: bool,
     scenario: str | None, data_dir: Path | None,
@@ -19187,6 +19188,10 @@ def calendar_list(
 
     Latent factors, which only shape an ensemble's variation, are counted
     rather than listed unless --kind or --tag asks for them.
+
+    --csv and --json give every calendar.csv column of each row, as
+    written there (amounts in dollars, rates with their %), after #, and
+    the target and defined_in.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -19211,9 +19216,21 @@ def calendar_list(
     factor_note = (f"{factors} latent factor(s), for ensemble variation, not shown: "
                    "--kind latent_factor lists them")
     if not rows:
-        click.echo(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
+        output.note(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
         if factors:
-            click.echo(factor_note)
+            output.note(factor_note)
+        return
+    if output.machine():
+        shown = output.Rows(["#", *registries.CALENDAR_HEADER, "target", "defined_in"])
+        for entry in rows:
+            shown.add(**{"#": entry.number,
+                         **{c: entry.row.get(c) or None for c in registries.CALENDAR_HEADER},
+                         "target": setup_listings.calendar_target(entry.row) or None,
+                         "defined_in": entry.defined_in})
+        output.emit(shown, title=f"calendar ({ref.name})", scenario=ref.name,
+                    latent_factors_not_shown=factors or None)
+        if factors:
+            output.note(factor_note)
         return
     table = Table(title=f"calendar ({ref.name})", header_style="bold")
     columns = ["#", "Date", "Kind", "Name", "Target", "Amount", "Varies", "Tags", "Defined in"]
@@ -19462,6 +19479,7 @@ def person_group_command() -> None:
 @person_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_list(scenario: str | None, data_dir: Path | None) -> None:
     """List persons.csv's persons, with each one's lifespan in the scenario.
 
@@ -19478,7 +19496,18 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     persons = setup_listings.person_listing(data, ref.path)
     if not persons:
-        click.echo(f"no persons in {data / 'persons.csv'}")
+        output.note(f"no persons in {data / 'persons.csv'}")
+        return
+    if output.machine():
+        shown = output.Rows(["id", "display", "birthdate", "sex", "role", "age_at_death",
+                             "final_month", "varies", "defined_in"])
+        for person in persons:
+            row = person.row
+            shown.add(**{c: row.get(c) or None for c in ("id", "display", "birthdate", "sex", "role")},
+                      age_at_death=float(person.age_at_death) if person.age_at_death else None,
+                      final_month=person.final_month or None, varies=person.varies or None,
+                      defined_in=person.lifespan_defined_in or None)
+        output.emit(shown, title=f"persons ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"persons ({ref.name})", header_style="bold")
     for column in ("Id", "Display", "Birthdate", "Sex", "Role", "Age at death", "Final month",
@@ -19499,6 +19528,7 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
 @_graph_options("the chart", how=", filling it less three lines for the prompt")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_show(
     person: str | None, as_graph: bool, graph_file: Path | None,
     scenario: str | None, data_dir: Path | None,
@@ -19544,6 +19574,9 @@ def person_show(
         raise click.ClickException(f"no person in {name!r} has a sex for the life table to read")
 
     quantiles = (0.05, 0.2, 0.4, 0.5, 0.6, 0.8, 0.95)
+    if output.machine():
+        _emit_person_lifespans(persons, quantiles, name)
+        return
     for p in persons:
         table = f"{p.table} " if p.table else ""  # a named table (#315)
         if p.centered:
@@ -19580,6 +19613,36 @@ def person_show(
     if as_graph or graph_file is not None:
         _draw_figure(lifespan_figure(persons), graph_file, "lifespan-",
                      fit=lambda size: lifespan_figure(persons, size=size))
+
+
+def _emit_person_lifespans(persons: Sequence[Any], quantiles: Sequence[float], scenario: str) -> None:
+    """``person show``'s --csv or --json: each person's lifespan, the ages
+    at death by percentile, and each year of age's chance of having died
+    by its end (every year, not every fifth); with several, the household."""
+    from zabob.retirement.sim.lifespan_curves import household
+
+    columns = [f"p{round(q * 100):02d}" for q in quantiles]
+    about = output.Rows(["person", "display", "sex", "table", "age_now", "age_at_death",
+                         "set_forward", "table_median", "vary"])
+    ages = output.Rows(["person", *columns])
+    by_age = output.Rows(["person", "age", "year", "died_this_year", "died_by_then",
+                          "still_alive"])
+    for p in persons:
+        about.add(person=p.person, display=p.display, sex=p.sex, table=p.table or None,
+                  age_now=p.age_now, age_at_death=p.age_at_death if p.centered else None,
+                  set_forward=p.set_forward if p.centered else None,
+                  table_median=p.table_median if p.centered else None, vary=p.vary)
+        ages.add(person=p.person, **{c: p.quantile(q) for c, q in zip(columns, quantiles, strict=True)})
+        for age, chance, by_end in p.yearly():
+            by_age.add(person=p.person, age=age + 1, year=p.birthdate.year + age + 1,
+                       died_this_year=chance, died_by_then=by_end, still_alive=1 - by_end)
+    tables: dict[str, output.Table] = {"age_at_death": ages, "persons": about, "by_age": by_age}
+    if len(persons) > 1:
+        h = household(persons)
+        last = output.Rows(columns)
+        last.add(**{c: h.last_death_quantile(q).year for c, q in zip(columns, quantiles, strict=True)})
+        tables["household_last_death_year"] = last
+    output.emit(tables, title=f"lifespans ({scenario})", scenario=scenario)
 
 
 # ---------- person add|edit, lifespan set|clear (#192) ----------
