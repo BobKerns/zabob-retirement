@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![State income tax, state by state](../assets/brand/banners/guides-state-income-tax.svg)
 
 # State income tax, state by state
 

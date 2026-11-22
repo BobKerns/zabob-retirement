@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Startup stock options: what they're worth, and how to model them](../assets/brand/banners/guides-startup-stock-options.svg)
 
 # Startup stock options: what they're worth, and how to model them
 

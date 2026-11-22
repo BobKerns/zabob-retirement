@@ -1,4 +1,4 @@
-![Zabob Retirement](assets/brand/banner.jpg)
+![Spending Data Guide (Non-SQL)](assets/brand/banners/sqlite-guide.svg)
 
 # Spending Data Guide (Non-SQL)
 

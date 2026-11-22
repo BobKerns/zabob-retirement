@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![ADR-008(ADR-008-correlated-parameters.md) implementation plan: correlated parameters](../assets/brand/banners/architecture-adr-008-implementation-plan.svg)
 
 # [ADR-008](ADR-008-correlated-parameters.md) implementation plan: correlated parameters
 

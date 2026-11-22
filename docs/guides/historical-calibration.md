@@ -1,4 +1,4 @@
-![Zabob Retirement](../assets/brand/banner.jpg)
+![Historical calibration: what numbers to put in](../assets/brand/banners/guides-historical-calibration.svg)
 
 # Historical calibration: what numbers to put in
 

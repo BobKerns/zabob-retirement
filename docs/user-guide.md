@@ -1,4 +1,4 @@
-![Zabob Retirement](assets/brand/banner.jpg)
+![User Guide: Building and Editing Scenarios](assets/brand/banners/user-guide.svg)
 
 # User Guide: Building and Editing Scenarios
 
