@@ -14,7 +14,8 @@ import pytest
 from zabob.retirement import resources
 from zabob.retirement.checkout import is_checkout
 
-pytestmark = pytest.mark.slow
+# They build the wheel from this checkout.
+pytestmark = [pytest.mark.slow, pytest.mark.checkout]
 
 SHIPPED = "zabob/retirement/_shipped/"
 

@@ -62,6 +62,7 @@ BUYMF
 BUYTYPE
 cachedir
 cacheinfo
+cacheprovider
 calevt
 capex
 capitalizable
@@ -268,6 +269,7 @@ mktree
 MKTVAL
 MMKX
 modelcontextprotocol
+modifyitems
 mojimoji
 MONEYMRKT
 movflags
@@ -309,6 +311,7 @@ oneline
 oneoff
 OpenStax
 overfit
+packagetype
 pacman
 pathoplexus
 pathspecs
@@ -343,6 +346,7 @@ pyeb
 pyopenjtalk
 pypi
 pytestmark
+PYTHONDONTWRITEBYTECODE
 PYTHONPYCACHEPREFIX
 QQQM
 QQQX

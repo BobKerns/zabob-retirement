@@ -223,6 +223,7 @@ def test_scene_lengths_file_is_json(tmp_path: Path) -> None:
     assert path.name == "v.en.scenes.json" and json.loads(path.read_text()) == [["a", 1.235]]
 
 
+@pytest.mark.checkout
 def test_upload_worker_compiles(repo_root: Path) -> None:
     py_compile.compile(str(repo_root / "scripts" / "videos" / "youtube_api.py"), doraise=True)
 
