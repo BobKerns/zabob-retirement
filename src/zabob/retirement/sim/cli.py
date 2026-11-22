@@ -4675,6 +4675,7 @@ def _compare_variants(data: Path, runs_dir: Path, baseline: str) -> list[str]:
 @click.option("--lot", type=completion.LotName("account"), default=None,
               help="With --account: one lot of the account instead of its total.")
 @_year_range_options
+@output.output_options
 @_graph_options("net worth (or --account's balance) and each variant's difference, or with "
                 "--section social-security or tax, that section's chart",
                 after="the tables", written="that chart (one chart only)")
@@ -4744,7 +4745,8 @@ def compare_command(
     mode = DollarMode(dollars)
     mode_label = DollarMode(mode).label
     scenarios = [baseline, *variants]
-    with ExitStack() as stack:
+    run_warnings: list[str] = []
+    with output.collecting() as collected, ExitStack() as stack:
         connections: dict[str, RunConnection] = {}
         # Matched against the folder list, not joined onto a path, so a name
         # like "../x" can't reach outside scenarios/ or the runs directory.
@@ -4769,6 +4771,8 @@ def compare_command(
 
         if "runs" in shown:
             meta, warnings = compare.comparability(connections, scenarios)
+            run_warnings = list(warnings)
+            output.collect("runs", meta)
             click.echo("\nRuns:")
             _echo_table(
                 ["scenario", "status", "finished", "code", "data"],
@@ -4785,24 +4789,28 @@ def compare_command(
 
         if "differences" in shown:
             rules = compare.rule_differences(connections, scenarios, baseline)
+            output.collect("rules", rules)
             click.echo("\nRules that differ, as each run ended:")
             if rules.empty:
                 click.echo("  none")
             else:
                 _echo_frame(rules.map(_cell))
             events = compare.event_differences(connections, scenarios)
+            output.collect("events", events)
             click.echo("\nCalendar events that differ:")
             if events.empty:
                 click.echo("  none")
             else:
                 _echo_frame(events.set_index(["scenario", "date"]).map(_cell))
             accounts = compare.account_definition_differences(connections, scenarios, baseline)
+            output.collect("accounts", accounts)
             click.echo("\nAccounts and lots defined differently:")
             if accounts.empty:
                 click.echo("  none")
             else:
                 _echo_frame(accounts.map(_cell))
             ytd = compare.year_to_date_differences(connections, scenarios, baseline)
+            output.collect("year_to_date", ytd)
             click.echo("\nYear-to-date rows that differ:")
             if ytd.empty:
                 click.echo("  none")
@@ -4816,6 +4824,7 @@ def compare_command(
                 click.echo(f"\nNo variant starts after {baseline}, so there is no start to compare.")
             for name in later:
                 month, frame = compare.start_comparison(connections, baseline, name)
+                output.collect(f"start:{name}", frame)
                 click.echo(f"\nWhere {name} starts: {baseline}'s projection for {month:%Y-%m} "
                            f"against {name}'s opening balances (nominal):")
                 _echo_frame(frame.map(_cell))
@@ -4831,15 +4840,17 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant net worth; pass --dollars nominal")
         if "net-worth" in shown:
+            year_end = _shown_years(compare.year_end_comparison(nw, baseline, variants), years)
+            output.collect("net_worth", year_end)
             click.echo(f"\n{'After-tax net worth' if after_tax else 'Net worth'} "
                        f"at year end ({mode_label}):")
-            _echo_frame(_shown_years(compare.year_end_comparison(nw, baseline, variants),
-                                     years).map(_cell))
+            _echo_frame(year_end.map(_cell))
 
         if "break-even" in shown:
             delta = compare.variant_delta(nw, baseline, variants)
             summary = compare.breakeven_summary(nw, delta, baseline, variants)
             summary.index.name = "variant"
+            output.collect("break_even", summary)
             click.echo(f"\nBreak-even vs {baseline}: the month after which a variant stays ahead")
             _echo_frame(summary.map(_cell))
 
@@ -4874,9 +4885,11 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant balance; pass --dollars nominal")
             if "account" in shown:
+                year_end = _shown_years(compare.year_end_comparison(balances, baseline, variants),
+                                        years)
+                output.collect("account", year_end)
                 click.echo(f"\n{subject} at year end ({mode_label}):")
-                _echo_frame(_shown_years(compare.year_end_comparison(balances, baseline, variants),
-                                         years).map(_cell))
+                _echo_frame(year_end.map(_cell))
 
         if graphed:
             from zabob.retirement.sim.compare_charts import comparison_figure, ss_figure, tax_figure
@@ -4904,6 +4917,10 @@ def compare_command(
                         f"Net worth, {mode_label}", deaths=deaths)
                 _draw_figure(figure, graph_file,
                              f"compare-{chart}-" if len(charts) > 1 else "compare-")
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    baseline=baseline, variants=list(variants),
+                    after_tax=after_tax, rebased=rebased or None, warnings=run_warnings or None)
 
 
 def _compare_charts(sections: Sequence[str], account: str | None) -> list[str]:
@@ -4958,6 +4975,8 @@ def _echo_ss_comparison(
     label = DollarMode(mode).label
     click.echo(f"\nGross Social Security by year ({label}):")
     table = clip_years(yearly, years)
+    output.collect("social_security", table)
+    output.collect("social_security_summary", compare.ss_summary(ss, baseline))
     if table.empty:
         click.echo("  none in these years")
     else:
@@ -4990,6 +5009,7 @@ def _echo_tax_comparison(
     label = DollarMode(mode).label
     shown = clip_years(comparison, years)
     moved = shown[compare.tax_differs(shown)]
+    output.collect("tax", moved)
     click.echo(f"\nTotal tax by tax year ({label}), the {len(moved)} of {len(shown)} years "
                f"where a variant's differs from {baseline}'s (a negative Δ owes less):")
     if moved.empty:
@@ -4998,6 +5018,7 @@ def _echo_tax_comparison(
         _echo_frame(moved.map(_whole_dollars_cell))
     ss = compare.ss_gross_by_month(connections, scenarios, mode)
     summary = compare.tax_summary(tax, ss, nw, baseline)
+    output.collect("tax_summary", summary)
     click.echo(f"\nTax over the run ({label}), Δ against {baseline}; final net worth "
                f"{'after tax' if after_tax else 'pre-tax'}:")
     _echo_frame(summary.map(_whole_dollars_cell))
@@ -5013,12 +5034,14 @@ def _echo_strategy_differences(
     if not compare.uses_strategies(connections):
         return
     strategies = compare.strategy_differences(connections, scenarios, baseline)
+    output.collect("strategy_differences", strategies)
     click.echo("\nStrategies that differ (— where a scenario doesn't run it):")
     if strategies.empty:
         click.echo("  none")
     else:
         _echo_frame(strategies.map(_cell))
     targets = compare.target_differences(connections, scenarios, baseline)
+    output.collect("target_differences", targets)
     click.echo("\nTarget weights that differ (percent):")
     if targets.empty:
         click.echo("  none")
@@ -5041,6 +5064,7 @@ def _echo_strategy_comparison(
             click.echo("\nStrategies: none in these runs")
         return
     activity = compare.strategy_activity(connections, scenarios)
+    output.collect("strategy_activity", activity)
     click.echo("\nStrategies over the run (dollars asked of their chains, moved by the strategy, "
                "left to the chain's steps):")
     if activity.empty:
@@ -5064,6 +5088,7 @@ def _echo_strategy_comparison(
                           for name, frame in by_scenario.items()})
     table.index.name = "month"
     table = clip_years(table, years)
+    output.collect("drift", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else f"{v:.1f}")))
 
 
@@ -5092,9 +5117,11 @@ def _echo_spending_comparison(
     baseline, variants = scenarios[0], scenarios[1:]
     click.echo(f"\nSpending delivered by year ({DollarMode(mode).label}):")
     table = clip_years(compare.spending_comparison(found, baseline, variants), years)
+    output.collect("spending", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else _whole_dollars(v))))
     click.echo("\nSpending against each scenario's plan over the run:")
     summary = compare.spending_summaries(found)
+    output.collect("spending_summary", summary)
     money = ("delivered", "budgeted", "rms", "lowest")
     shares = ("of_plan", "redirected")
     _echo_frame(summary.astype(object).assign(
@@ -5135,6 +5162,7 @@ def _echo_guard_rail_comparison(
     click.echo(f"\nGuard rail margins ({label}): negative is past the rail; cum is the years "
                "so far summed")
     for rail, frame in frames.items():
+        output.collect(f"guard_rail:{rail}", clip_years(frame, years))
         click.echo(f"\n{rail}:")
         _echo_frame(clip_years(frame, years).map(_cell))
 

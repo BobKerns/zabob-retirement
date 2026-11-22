@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import csv
 import functools
+import io
 import json
 import math
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
+from contextlib import contextmanager, redirect_stdout
 from contextvars import ContextVar
 from datetime import date, datetime
 from enum import StrEnum
@@ -44,6 +46,7 @@ class Format(StrEnum):
 
 
 _FORMAT: ContextVar[Format] = ContextVar("_FORMAT", default=Format.TABLE)
+_COLLECTED: ContextVar[dict[str, Table] | None] = ContextVar("_COLLECTED", default=None)
 
 
 def current() -> Format:
@@ -153,6 +156,34 @@ class Rows:
 
 
 type Table = pd.DataFrame | Rows
+
+
+@contextmanager
+def collecting() -> Generator[dict[str, Table]]:
+    """For a command that prints many sections, each its own way: with
+    --csv or --json, what the body prints to stdout is dropped, and the
+    tables it hands :func:`collect` gather in the dict yielded, for
+    :func:`emit` once it's done. With a table, nothing changes. Enter it
+    once the command has asked for any names it needs: a prompt in it
+    would be dropped too."""
+    tables: dict[str, Table] = {}
+    if not machine():
+        yield tables
+        return
+    token = _COLLECTED.set(tables)
+    try:
+        with redirect_stdout(io.StringIO()):
+            yield tables
+    finally:
+        _COLLECTED.reset(token)
+
+
+def collect(name: str, table: Table) -> None:
+    """Inside :func:`collecting`, keep ``table`` (its raw values, not the
+    cells printed) under ``name``; elsewhere, nothing."""
+    tables = _COLLECTED.get()
+    if tables is not None:
+        tables[name] = table
 
 
 def _columns_rows(table: Table) -> tuple[list[str], list[dict[str, Any]]]:
