@@ -107,7 +107,7 @@ def note(message: str) -> None:
 def value(item: Any) -> Any:
     """``item`` as JSON holds it: a number unrounded, a missing value
     ``None``, a date or month ISO, a NumPy scalar its Python value."""
-    if item is None:
+    if item is None or item is pd.NA or item is pd.NaT:
         return None
     if isinstance(item, pd.Timestamp):
         return None if pd.isna(item) else item.date().isoformat()
@@ -127,8 +127,6 @@ def value(item: Any) -> Any:
         return int(item) if item.is_integer() and abs(item) < 2**53 else item
     if isinstance(item, (bool, int, str)):
         return item
-    if item is pd.NA or item is pd.NaT:
-        return None
     if isinstance(item, (list, tuple)):
         return [value(i) for i in item]
     if isinstance(item, Mapping):
