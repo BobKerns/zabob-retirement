@@ -1868,6 +1868,7 @@ def _apply_pool_edit(
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template ensembles (t_ names) read from the code repository.")
+@output.output_options
 def ensemble_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's ensembles: ``sim scenario list``, keeping only
     the scenarios whose merged ensemble_size is positive."""
@@ -10856,8 +10857,10 @@ def import_budget(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List recurring scheduled transactions."""
+    """List recurring scheduled transactions. --csv and --json give every
+    field of each rule."""
     from rich.console import Console
     from rich.table import Table
 
@@ -10867,6 +10870,9 @@ def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data_dir_p, _resolve_scenario(data_dir_p, scenario).name) as sc:
         scen_name = sc.name
         rows = scheduled_view(sc)
+    if output.machine():
+        output.emit(rows, title=f"scheduled ({data_dir_p.name} / {scen_name})", scenario=scen_name)
+        return
     table = Table(title=f"scheduled ({data_dir_p.name} / {scen_name})")
     for column, justify in (
         ("Name", "left"), ("Cadence", "left"), ("From", "left"), ("Lot", "left"),
@@ -14704,9 +14710,12 @@ def import_holdings(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
     """List one-time transfers: calendar one_off_transfer and transfer_balance
-    events, and scheduled rows with cadence one_off."""
+    events, and scheduled rows with cadence one_off. With --csv or --json,
+    amount is blank where amount_rule says how it is figured (balance: what
+    the lot holds when it fires)."""
     from rich.console import Console
     from rich.table import Table
 
@@ -14722,6 +14731,7 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
         table.add_column("Description")
 
         rows: list[tuple[str, ...]] = []
+        raw: list[dict[str, Any]] = []
         for row in con.execute(
             "SELECT ce.date, ce.kind, ce.amount, "
             "       COALESCE(ce.tax_character, '') AS tax_character, "
@@ -14752,6 +14762,16 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 amount,
                 row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "calendar",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount"] is None or row["kind"] == "transfer_balance"
+                else row["amount"] / 100,
+                "amount_rule": "balance" if row["kind"] == "transfer_balance" else "fixed_amount",
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
         for row in con.execute(
             "SELECT s.start AS date, s.amount_cents, s.amount_rule_kind, s.tax_character, "
             "       COALESCE(s.description, s.name) AS description, "
@@ -14776,6 +14796,23 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 _account_with_lot(row["name_2"] or row["chain_2"], row["subkind_2"], row["lot_2"]),
                 amt, row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "scheduled",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount_cents"] is None else row["amount_cents"] / 100,
+                "amount_rule": row["amount_rule_kind"],
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
+        if output.machine():
+            shown = output.Rows(["date", "source", "from", "from_lot", "to", "to_lot", "amount",
+                                 "amount_rule", "tax_character", "description"])
+            for record in sorted(raw, key=lambda r: (r["date"], r["source"])):
+                shown.add(**record)
+            output.emit(shown, title=f"transfers ({data_dir_p.name} / {scen_name})",
+                        scenario=scen_name)
+            return
         for record in sorted(rows, key=lambda r: (r[0], r[1])):
             table.add_row(*record)
 
@@ -15113,6 +15150,7 @@ def chain_group_command() -> None:
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the chains with their steps, where each is defined, and what uses it.
 
@@ -15129,7 +15167,18 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data, ref.name, scenarios_dir=ref.scenarios_dir) as scn:
         cmap = chain_map.chain_map(scn)
     if not cmap.steps:
-        click.echo(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        return
+    if output.machine():
+        found = setup_listings.chain_origins(ref.scenarios_dir, ref.name)
+        shown = output.Rows(["chain", "role", "steps", "defined_in", "used_by"])
+        for name, steps in sorted(cmap.steps.items()):
+            shown.add(chain=name, role=cmap.roles[name],
+                      steps=[{**output.dollars(dataclasses.asdict(s)), "label": cmap.label(s.target)}
+                             for s in steps],
+                      defined_in=str(found.get(name, "")) or None,
+                      used_by=[dataclasses.asdict(u) for u in cmap.uses.get(name, [])])
+        output.emit(shown, title=f"chains ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"chains ({ref.name})", header_style="bold", show_lines=True)
     for column in ("Chain", "Role", "Steps", "Defined in", "Used by"):
@@ -16619,6 +16668,7 @@ def _fill_research_name(data: Path, symbol: str, name: str | None) -> None:
 @symbol_group_command.command("list")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def symbol_list_command(data_dir: Path | None) -> None:
     """List every symbol: its name, latest allocation, prices and the lots holding it.
 
@@ -16634,7 +16684,10 @@ def symbol_list_command(data_dir: Path | None) -> None:
     data = _resolve_data_dir(data_dir)
     frame = symbols.symbol_table(data)
     if frame.empty:
-        click.echo("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        output.note("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        return
+    if output.machine():
+        output.emit(frame, title="symbols")
         return
     table = Table(title="symbols", header_style="bold")
     for column, justify in (("Symbol", "left"), ("Name", "left"), ("Allocation (latest)", "left"),
@@ -16672,6 +16725,7 @@ def scenario_group_command() -> None:
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template scenarios (t_ names) read from the code repository.")
+@output.output_options
 def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's scenarios.
 
@@ -16683,6 +16737,9 @@ def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     from an ancestor; a blank size means the scenario is not an ensemble.
     --all adds the template scenarios a data repo reads from the code
     repository when it has no folder of that name.
+
+    --csv and --json give what --verbose shows, each inherited value
+    flagged in its own field.
     """
     _list_scenarios(data_dir, verbose, ensembles_only=False, templates=all_)
 
@@ -16694,7 +16751,7 @@ def _list_scenarios(
     ``templates`` adds the template scenarios (``--all``)."""
     data_dir_p = _resolve_data_dir(data_dir)
     try:
-        if not verbose and not ensembles_only:
+        if not verbose and not ensembles_only and not output.machine():
             for name in sc.scenario_list_names(data_dir_p, templates=templates):
                 click.echo(name)
             return
@@ -16705,7 +16762,10 @@ def _list_scenarios(
         summaries = [s for s in summaries if s.is_ensemble]
     kind = "ensembles" if ensembles_only else "scenarios"
     if not summaries:
-        click.echo(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        output.note(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        return
+    if output.machine():
+        _emit_scenario_summaries(data_dir_p, summaries, kind)
         return
     if not verbose:
         for s in summaries:
@@ -16752,6 +16812,30 @@ def _list_scenarios(
             escape(s.description), "no" if s.name in disabled else "",
         )
     Console().print(table)
+
+
+def _emit_scenario_summaries(data_dir: Path, summaries: Sequence[sc.ScenarioSummary],
+                             kind: str) -> None:
+    """``scenario list``'s (or ``ensemble list``'s) --csv or --json."""
+    current = read_current_scenario(data_dir)
+    disabled = read_disabled_scenarios(data_dir)
+    shown = output.Rows([
+        "scenario", "current", "parents", "mixin_only", "pool", "start", "start_inherited",
+        "end", "end_inherited", "seed", "seed_inherited", "ensemble_size",
+        "ensemble_size_inherited", "description", "build",
+    ])
+    for s in summaries:
+        shown.add(
+            scenario=s.name, current=s.name == current, parents=list(s.parents),
+            mixin_only=s.mixin_only, pool=None if s.pool is None else list(s.pool),
+            start=s.start and s.start.month, start_inherited=bool(s.start and s.start.inherited),
+            end=s.end and s.end.month, end_inherited=bool(s.end and s.end.inherited),
+            seed=s.seed and s.seed.value, seed_inherited=bool(s.seed and s.seed.inherited),
+            ensemble_size=s.ensemble_size and s.ensemble_size.value,
+            ensemble_size_inherited=bool(s.ensemble_size and s.ensemble_size.inherited),
+            description=s.description, build=s.name not in disabled,
+        )
+    output.emit(shown, title=f"{kind} ({data_dir.name})")
 
 
 def _parents_cell(s: sc.ScenarioSummary) -> str:
