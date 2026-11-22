@@ -33,10 +33,13 @@ from contextlib import contextmanager, redirect_stdout
 from contextvars import ContextVar
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 import pandas as pd
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 
 class Format(StrEnum):
@@ -128,13 +131,49 @@ def value(item: Any) -> Any:
 
 
 def records(frame: pd.DataFrame) -> tuple[list[str], list[dict[str, Any]]]:
-    """``frame``'s columns and rows, its (named) index levels first."""
-    if any(name is not None for name in frame.index.names):
+    """``frame``'s columns and rows, its index levels first (an unnamed one
+    as ``index``), unless the index is only row numbers."""
+    plain = (isinstance(frame.index, pd.RangeIndex) and frame.index.name is None
+             and frame.index.start == 0 and frame.index.step == 1)
+    if not plain:
         frame = frame.reset_index()
     columns = [str(c) for c in frame.columns]
     rows = [{c: value(v) for c, v in zip(columns, row, strict=True)}
             for row in frame.itertuples(index=False, name=None)]
     return columns, rows
+
+
+def dollars(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """``fields`` with the store's units made plain: an ``x_cents`` field as
+    ``x`` in dollars, an ``x_micros`` one as ``x`` in whole units."""
+    out: dict[str, Any] = {}
+    for key, item in fields.items():
+        for suffix, scale in (("_cents", 100), ("_micros", 1_000_000)):
+            if key.endswith(suffix):
+                key = key.removesuffix(suffix)
+                item = None if item is None else item / scale
+                break
+        out[key] = item
+    return out
+
+
+def from_items(items: Iterable[Any], kind: type[DataclassInstance]) -> Rows:
+    """Instances of the dataclass ``kind`` as rows, through :func:`dollars`:
+    its fields are the columns, even with no rows."""
+    import dataclasses
+
+    shown = Rows(list(dollars(dict.fromkeys(f.name for f in dataclasses.fields(kind)))))
+    for item in items:
+        shown.add(**dollars(dataclasses.asdict(item)))
+    return shown
+
+
+def from_rows(columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> Rows:
+    """Rows from a query's tuples under ``columns``, through :func:`dollars`."""
+    shown = Rows(list(dollars(dict.fromkeys(columns))))
+    for row in rows:
+        shown.add(**dollars(dict(zip(columns, row, strict=True))))
+    return shown
 
 
 class Rows:
@@ -194,21 +233,28 @@ def emit(table: Table | Mapping[str, Table], **meta: Any) -> None:
     """Print ``table`` (or several, by name) as the running command's
     format asks; ``meta`` (what its heading line says) goes into JSON."""
     fmt = current()
-    tables = dict(table) if isinstance(table, Mapping) else None
-    if fmt is Format.CSV:
-        if tables is not None and len(tables) > 1:
-            first, *rest = tables
-            click.echo(f"--csv prints the {first} table; --json has {', '.join(rest)} too",
-                       err=True)
-        columns, rows = _columns_rows(next(iter(tables.values())) if tables is not None
-                                      else table)
-        _write_csv(columns, rows)
-        return
-    if fmt is not Format.JSON:
+    if fmt is Format.TABLE:
         raise RuntimeError("emit() is for --csv and --json")
+    single = table if isinstance(table, (pd.DataFrame, Rows)) else None
+    tables: dict[str, Table] = {}
+    if single is None:
+        assert isinstance(table, Mapping)
+        tables = dict(table)
+    if fmt is Format.CSV:
+        if single is None:
+            if not tables:
+                click.echo("nothing to print", err=True)
+                return
+            first, *rest = tables
+            if rest:
+                click.echo(f"--csv prints the {first} table; --json has {', '.join(rest)} too",
+                           err=True)
+            single = tables[first]
+        _write_csv(*_columns_rows(single))
+        return
     out: dict[str, Any] = {k: value(v) for k, v in meta.items() if v is not None}
-    if tables is None:
-        out["columns"], out["rows"] = _columns_rows(table)
+    if single is not None:
+        out["columns"], out["rows"] = _columns_rows(single)
     else:
         out["tables"] = {}
         for name, each in tables.items():

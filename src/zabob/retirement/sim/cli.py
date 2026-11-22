@@ -1981,6 +1981,11 @@ def _ensemble_batch_dir(
     return batch_dir
 
 
+def _year_axis(table: pd.DataFrame) -> pd.DataFrame:
+    """A year-end table as ``_echo_year_table`` heads it: its index ``year``."""
+    return table if isinstance(table.index, pd.MultiIndex) else table.rename_axis("year")
+
+
 def _echo_year_table(table: pd.DataFrame) -> None:
     """One header row over right-aligned columns, the same columns the
     notebook's table shows: with nine statistics a row, key=value fields
@@ -2375,6 +2380,7 @@ def _subject(account: str | None, lot: str | None, after_tax: bool = False) -> s
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_summary(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     account: str | None, lot: str | None, reserve: str | None, dollars: str, pre_tax: bool,
@@ -2426,13 +2432,7 @@ def ensemble_summary(
     table = _shown_years(year_end_values(pd.concat(
         [monthly_summary, risk_summary(frame, reserve_dollars, cpi_frame)], axis=1,
     )), years)
-    click.echo(
-        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
-        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
-        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
-        + ("" if reserve_dollars is None
-           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
-    )
+
     def lows_frame() -> pd.DataFrame:
         # Net worth even with --account: an account only some components
         # have is 0 in the others' members, which would rank them worst.
@@ -2440,6 +2440,19 @@ def ensemble_summary(
             return cpi_frame
         return _member_frame(store, None, DollarMode.CPI_CONSTANT, None, after_tax=not pre_tax)
 
+    if output.machine():
+        output.emit(_year_axis(table), title=f"ensemble {scenario_name}", batch=batch_dir.name,
+                    dollars=mode.value, subject=_subject(account, lot, after_tax),
+                    members=len(store), failed={stem: statuses[stem] for stem in failed} or None,
+                    reserve=reserve_dollars, pool=_pool_summary_lines(batch_dir, lows_frame) or None)
+        return
+    click.echo(
+        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
+        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
+        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
+        + ("" if reserve_dollars is None
+           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
+    )
     for line in _pool_summary_lines(batch_dir, lows_frame):
         click.echo(f"  {line}")
     _echo_year_table(table)
@@ -2498,6 +2511,7 @@ def _fan_can_log(monthly_summary: pd.DataFrame, subject: str) -> bool:
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_compare(
     baseline: str | None, variants: tuple[str, ...], runs_dir: Path | None,
     data_dir: Path | None, account: str | None, lot: str | None, reserve: str | None,
@@ -2569,11 +2583,19 @@ def ensemble_compare(
     def clip(frame: pd.DataFrame) -> pd.DataFrame:
         return clip_years(frame, years)
 
-    if len(variants) == 1:
-        _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
-    else:
-        _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
-    _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    with output.collecting() as collected:
+        if len(variants) == 1:
+            _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
+        else:
+            _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
+        _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    subject=subject, members={name: len(stores[name]) for name in names},
+                    paired={name: len(tables.pairs(baseline, name)[0]) for name in variants
+                            if baseline in tables.frames and name in tables.frames},
+                    reserve=tables.reserve)
+        return
     if as_graph or graph_file is not None:
         def chart(size: tuple[float, float] | None = None) -> Figure:
             return _ensemble_compare_chart(tables, baseline, list(variants), subject,
@@ -2604,12 +2626,16 @@ def _echo_one_ensemble_comparison(
             f"  paired: {len(pairs)} future(s)" if pairs else f"  not paired: {unpaired}"
         )
         click.echo(f"{variant} − {baseline}, year end:")
-        _echo_year_table(tables.deltas(baseline, variant, clip))
+        deltas = tables.deltas(baseline, variant, clip)
+        output.collect("deltas", _year_axis(deltas))
+        _echo_year_table(deltas)
     else:
         click.echo(f"  only one side: {tables.missing()[0]} has no {subject}")
     for name in tables.frames:
         click.echo(f"{name} tail, year end{_reserve_note(tables)}:")
-        _echo_year_table(tables.tail(name, clip))
+        tail = tables.tail(name, clip)
+        output.collect(f"tail:{name}", _year_axis(tail))
+        _echo_year_table(tail)
 
 
 def _echo_ensemble_comparisons(
@@ -2633,9 +2659,13 @@ def _echo_ensemble_comparisons(
                        else f"  {name}: not paired: {unpaired}")
         if compared:
             click.echo(f"Against {baseline}, by year end:")
-            _echo_year_table(tables.deltas_table(baseline, compared, clip))
+            deltas = tables.deltas_table(baseline, compared, clip)
+            output.collect("deltas", _year_axis(deltas))
+            _echo_year_table(deltas)
     click.echo(f"Tail and reserve, by recipe, year end{_reserve_note(tables)}:")
-    _echo_year_table(tables.tails(clip))
+    tails = tables.tails(clip)
+    output.collect("tails", _year_axis(tails))
+    _echo_year_table(tails)
 
 
 def _ensemble_compare_chart(
@@ -2990,6 +3020,7 @@ def _echo_ensemble_rail_deltas(
         click.echo(f"guard rails, {variant} − {baseline} ({_DOLLAR_LABELS[mode]}): Δ of each "
                    "share of members past and of the RMS overshoot")
         for rail, frame in frames.items():
+            output.collect(f"guard_rail:{variant}:{rail}", clip_years(frame, years))
             click.echo(f"{rail}:")
             _echo_rail_share_table(clip_years(frame, years))
 
@@ -4188,6 +4219,7 @@ def _resolve_run_target(
 @click.argument("target", type=completion.SCENARIO_OR_RUNFILE, metavar="[SCENARIO | RUNFILE]", required=False)
 @_PRE_TAX_OPTION
 @_run_target_options
+@output.output_options
 def explain(
     target: str | None, pre_tax: bool, runfile: Path | None, data_dir: Path | None,
     runs_dir: Path | None,
@@ -4195,8 +4227,22 @@ def explain(
     """Dump scenario name, versions, counts, lots, year-end net worth (after
     tax unless --pre-tax), the scenario's load warnings, negative-balance
     warnings and basis step-ups at a death for a run: the scenario's latest (the current scenario's by
-    default), or a run file. Sanity dump."""
+    default), or a run file. Sanity dump.
+
+    With --json, each part under its own name, the lists as tables; --csv
+    prints the year-end net worth alone."""
     runfile = _resolve_run_target(target, runfile, data_dir, runs_dir)
+    with output.collecting() as collected:
+        facts = _explain(runfile, pre_tax, data_dir)
+    if output.machine():
+        net_worth = collected.pop("net_worth")
+        output.emit({"net_worth": net_worth, **collected}, **facts)
+
+
+def _explain(runfile: Path, pre_tax: bool, data_dir: Path | None) -> dict[str, Any]:
+    """``sim explain``'s dump, and with --csv or --json, what it says
+    outside its tables (the tables go to ``output.collect``)."""
+    facts: dict[str, Any] = {}
     con = connect_sim_file(f"file:{runfile}?mode=ro", uri=True)
     try:
         run = con.execute(
@@ -4209,6 +4255,12 @@ def explain(
             raise click.ClickException(f"no simulation_run row in {runfile}")
         (name, status, started, finished, failure, cv, cd, dv, dd,
          by, host, py) = run
+        facts["run"] = {
+            "file": str(runfile), "scenario": name, "status": status, "failure": failure,
+            "started": started, "finished": finished, "code_version": cv,
+            "code_dirty": bool(cd), "data_version": dv, "data_dirty": bool(dd),
+            "run_by": by, "host": host, "python": py,
+        }
         click.echo(f"file:           {_shown(runfile)}")
         click.echo(f"scenario:       {name}")
         click.echo(f"status:         {status}" + (f"  ({failure})" if failure else ""))
@@ -4221,6 +4273,7 @@ def explain(
         steps = con.execute("SELECT COUNT(*) FROM simulation_step").fetchone()[0]
         states = con.execute("SELECT COUNT(*) FROM account_state").fetchone()[0]
         xfers = con.execute("SELECT COUNT(*) FROM transfer_event").fetchone()[0]
+        facts["counts"] = {"steps": steps, "account_states": states, "transfers": xfers}
         click.echo(
             f"counts:         steps={steps}  account_states={states}  transfers={xfers}"
         )
@@ -4240,6 +4293,9 @@ def explain(
             ),
             sorted(INVESTMENT_ASSET_SUBKINDS),
         ).fetchall()
+        output.collect("lots", output.from_rows(
+            ["account", "subkind", "lot", "symbol", "quantity_micros", "balance_cents",
+             "cost_basis_cents"], lots))
         if lots:
             click.echo("")
             click.echo("lots at the final step:")
@@ -4257,6 +4313,10 @@ def explain(
         click.echo(f"{'':21}{'nominal':>18}  {'CPI-constant':>18}")
         rows = (_year_end_pre_tax_net_worth(con) if pre_tax
                 else _year_end_after_tax_net_worth(con, runfile))
+        facts["after_tax"] = not pre_tax
+        output.collect("net_worth", output.from_rows(
+            ["year", "nominal_cents", "cpi_constant_cents"],
+            [(int(year), nw, real) for year, nw, real in rows]))
         for year, nw, real in rows:
             click.echo(f"  {year}  {'':13}{_fmt_cents(nw)}  {_fmt_cents(real):>18}")
 
@@ -4266,9 +4326,17 @@ def explain(
         _echo_basis_step_ups(con)
         _echo_inheritances(con)
         _echo_strategies(con)
+        if output.machine():
+            found = load_warnings.read(con)
+            facts["load_warnings"] = list(found.warnings)
+            facts["unused"] = list(found.unused)
+            negative = shortfalls.negative_balances(con)
+            output.collect("negative_balances", output.from_items(negative, shortfalls.NegativeBalance))
+            facts["negative_balance_warnings"] = shortfalls.warning_lines(negative)
     finally:
         con.close()
-    _echo_guard_rail_episodes(runfile, data_dir)
+    _echo_guard_rail_episodes(runfile, data_dir, facts)
+    return facts
 
 
 def _year_end_pre_tax_net_worth(con: sqlite3.Connection) -> list[tuple[str, int, int | None]]:
@@ -4306,7 +4374,8 @@ def _year_end_after_tax_net_worth(
     return rows
 
 
-def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
+def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None,
+                              facts: dict[str, Any] | None = None) -> None:
     """Each stretch of years the run spent past one of its scenario's guard
     rails (#305), annual and cumulative, in CPI-constant dollars. The rails
     are read from the data repo, so a run file read without one, or whose
@@ -4327,6 +4396,8 @@ def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
             return
         mode = DollarMode.CPI_CONSTANT if rc.cpi_index().notna().all() else DollarMode.NOMINAL
         lines = guard_rails.episode_lines(guard_rails.evaluate_run(rc, rails, mode))
+    if facts is not None:
+        facts["guard_rails_past"] = {"dollars": mode.value, "rails": len(rails), "episodes": lines}
     if not lines:
         click.echo(f"guard rails: never past any of {len(rails)}")
         return
@@ -4351,6 +4422,9 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
     ).fetchall()
     if not rows:
         return
+    output.collect("strategies", output.from_rows(
+        ["name", "kind", "chain", "decisions", "asked_cents", "chosen_cents", "chain_steps_cents"],
+        rows))
     year_end: dict[str, tuple[int, int]] = {
         name: (moved, gain) for name, moved, gain in con.execute(
             "SELECT s.name, SUM(d.chosen_cents), COALESCE(SUM(("
@@ -4387,9 +4461,10 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
 def _echo_basis_step_ups(con: sqlite3.Connection) -> None:
     """The run's basis step-ups at a death (#255): the month, the lot, whose
     death, its basis before and after, and the rule that applied (#434)."""
-    from zabob.retirement.sim.step_ups import basis_step_ups
+    from zabob.retirement.sim.step_ups import BasisStepUp, basis_step_ups
 
     found = basis_step_ups(con)
+    output.collect("basis_step_ups", output.from_items(found, BasisStepUp))
     if not found:
         click.echo("basis step-ups at a death: none")
         return
@@ -4408,9 +4483,10 @@ def _echo_inheritances(con: sqlite3.Connection) -> None:
     """What each death did with the household's accounts (#274): the month,
     the decedent, the account, where it went and how; nothing for a run
     with none."""
-    from zabob.retirement.sim.inheritances import inheritances
+    from zabob.retirement.sim.inheritances import Inheritance, inheritances
 
     found = inheritances(con)
+    output.collect("inheritances", output.from_items(found, Inheritance))
     if not found:
         return
     click.echo(f"accounts passed on at a death ({len(found)}):")
