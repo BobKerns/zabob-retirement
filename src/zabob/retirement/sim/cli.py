@@ -196,6 +196,7 @@ from zabob.retirement.sim.schema import connect_sim_file
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from rich.console import RenderableType
+    from zabob.retirement.sim.lifespan_curves import PersonLifespan
 
 
 def _resolve_state_dir(
@@ -19622,7 +19623,8 @@ def person_show(
                      fit=lambda size: lifespan_figure(persons, size=size))
 
 
-def _emit_person_lifespans(persons: Sequence[Any], quantiles: Sequence[float], scenario: str) -> None:
+def _emit_person_lifespans(persons: list[PersonLifespan], quantiles: Sequence[float],
+                           scenario: str) -> None:
     """``person show``'s --csv or --json: each person's lifespan, the ages
     at death by percentile, and each year of age's chance of having died
     by its end (every year, not every fifth); with several, the household."""
@@ -21081,6 +21083,7 @@ def _fmt_total(item: setup_listings.Itemization) -> str:
 @itemization_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     """List the itemizations the scenario can reference, with their totals.
 
@@ -21096,9 +21099,18 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     items = setup_listings.itemizations(data, ref.path)
     if not items:
-        click.echo(f"no itemizations for {ref.name}")
+        output.note(f"no itemizations for {ref.name}")
         return
     references = setup_listings.itemization_references(data, ref.path)
+    if output.machine():
+        shown = output.Rows(["name", "rows", "total", "refs", "defined_in", "path", "error"])
+        for item in items:
+            shown.add(name=item.name, rows=len(item.rows),
+                      total=None if item.total_cents is None else item.total_cents / 100,
+                      refs=len(references.get(item.name, [])), defined_in=item.defined_in,
+                      path=str(item.path), error=item.error or None)
+        output.emit(shown, title=f"itemizations ({ref.name})", scenario=ref.name)
+        return
     table = Table(title=f"itemizations ({ref.name})", header_style="bold")
     for column, justify in (("Name", "left"), ("Rows", "right"), ("Total", "right"),
                             ("Refs", "right"), ("Defined in", "left")):
@@ -21118,6 +21130,7 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
 @click.argument("name", required=False, type=completion.ITEMIZATION)
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_show(name: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show itemization NAME's rows, its total, and what references it.
 
@@ -21135,6 +21148,20 @@ def itemization_show(name: str | None, scenario: str | None, data_dir: Path | No
     item = next((i for i in found if i.name == name), None)
     if item is None:
         raise click.ClickException(f"no itemization {name!r} for {ref.name}")
+    if output.machine():
+        columns = list(item.rows[0]) if item.rows else ["Value"]
+        rows = output.Rows(columns)
+        for row in item.rows:
+            rows.add(**{c: row.get(c) or None for c in columns})
+        output.emit(rows, title=f"@{item.name}", itemization=item.name,
+                    defined_in=item.defined_in, path=str(item.path),
+                    total=None if item.total_cents is None else item.total_cents / 100,
+                    error=item.error or None,
+                    referenced_by=[{"path": str(found.path), "line": found.line,
+                                    "column": found.column}
+                                   for found in setup_listings.itemization_references(
+                                       data, ref.path).get(name, [])])
+        return
     click.echo(f"@{item.name} ({item.defined_in}): {item.path}")
     table = Table(header_style="bold")
     columns = list(item.rows[0]) if item.rows else ["Value"]
@@ -21376,6 +21403,7 @@ def _deduction_origin(target: _DeductionEdit) -> str:
 @_STATE_OPTION
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the hand-typed itemized deductions, one row per tax year, with
     the total each counts (an @itemization summed).
@@ -21393,12 +21421,18 @@ def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> 
     which = "state" if state else "federal"
     if not listed:
         if state:
-            click.echo(f"no state itemized deductions in {ref.name}; the state uses the "
-                       "federal ones (`sim deduction list`)")
+            output.note(f"no state itemized deductions in {ref.name}; the state uses the "
+                        "federal ones (`sim deduction list`)")
         else:
-            click.echo(f"no hand-typed federal itemized deductions in {ref.name}; a year "
-                       "itemizes only what it figures from spending, when that beats the "
-                       "standard deduction")
+            output.note(f"no hand-typed federal itemized deductions in {ref.name}; a year "
+                        "itemizes only what it figures from spending, when that beats the "
+                        "standard deduction")
+        return
+    if output.machine():
+        output.emit(output.from_items(listed, deductions.Deduction),
+                    title=f"{which} itemized deductions ({ref.name})", scenario=ref.name,
+                    path=None if found.path is None else str(found.path),
+                    defined_in=found.defined_in)
         return
     table = Table(title=f"{which} itemized deductions ({ref.name})", header_style="bold")
     for column, justify in (("Year", "left"), ("Amount", "left"), ("Total", "right")):
