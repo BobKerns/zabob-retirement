@@ -28,7 +28,8 @@ from zabob.retirement.sim.loader import read_current_scenario
 
 __all__ = [
     "ACCOUNT", "ACCOUNT_OR_NEW", "ANY_TAG", "AUX_KIND", "CALENDAR_ROW", "CHAIN",
-    "CORRELATE_WITH", "ENDPOINT", "ENSEMBLE", "ITEMIZATION", "OWNER", "PERSON", "RULE",
+    "CORRELATE_WITH", "ENDPOINT", "ENSEMBLE", "ITEMIZATION", "OWNER", "OWN_ENSEMBLE", "OWN_SCENARIO",
+    "PERSON", "RULE",
     "RULE_TAG", "SCENARIO", "SCENARIO_OR_RUNFILE", "SCENARIO_PARAMS", "SCHEDULED_SERIES",
     "SENSITIVITY_ROW", "STRATEGY",
     "STRATEGY_KIND", "SYMBOL", "TAG", "TAG_FILTER", "TARGET_SET", "TAX_JURISDICTION", "TAX_KIND",
@@ -172,6 +173,14 @@ def _ensembles(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
     ]
 
 
+def _own_ensembles(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    import zabob.retirement.sim.scenario as sc  # it imports this module's importer, cli
+    return [
+        name for name in names.own_scenario_names(data_dir)
+        if sc.ensemble_settings(data_dir, name)[1] is not None
+    ]
+
+
 def _pools(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
     from zabob.retirement.sim.lineage import is_pool
     return [name for name in names.scenario_names(data_dir) if is_pool(data_dir / "scenarios", name)]
@@ -252,6 +261,10 @@ PARENTS = ParentList(_scenarios, "scenario", check=False)
 # `sim explain`'s target: a scenario, or a run file's path, which no list holds.
 SCENARIO_OR_RUNFILE = NameType(_scenarios, "scenario", check=False)
 ENSEMBLE = NameType(_ensembles, "ensemble")
+# The data repo's own, for a command that changes one: a template is the
+# code repository's, so not renamed from here (#297).
+OWN_SCENARIO = NameType(lambda ctx, data_dir: names.own_scenario_names(data_dir), "scenario")  # noqa: ARG005
+OWN_ENSEMBLE = NameType(_own_ensembles, "ensemble")
 POOL = NameType(_pools, "pool")
 POOL_COMPONENT = PoolComponent(_pool_components, "ensemble", check=False)
 ACCOUNT = NameType(_in_scenario(names.account_names), "account")

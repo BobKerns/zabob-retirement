@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from zabob.retirement.cli import main
 from zabob.retirement.sim import scenario as sc
-from zabob.retirement.sim.lineage import read_parents
+from zabob.retirement.sim.lineage import MIXIN_ONLY_DESCRIPTION, read_parents
 from zabob.retirement.sim.loader import load_scenario
 from zabob.retirement.sim.readme import parse_readme_summary
 
@@ -156,14 +156,28 @@ def test_edit_leaves_a_partly_hand_written_readme_alone(test_data_dir: Path, tes
     assert readme.read_text() == edited
 
 
-def test_root_parents_keep_the_description(test_child_scenario: Path) -> None:
-    changes = sc.edit_scenario_row(test_child_scenario, {"parent_scenario": ""}, {})
+def test_a_dated_root_keeps_the_description(test_child_scenario: Path) -> None:
+    changes = sc.edit_scenario_row(
+        test_child_scenario, {"parent_scenario": "", "start": "2027-01", "end": "2060-12"}, {})
     assert _row(test_child_scenario)["description"] == "Derived from retire_alice"
-    assert [c.field for c in changes] == ["parent_scenario"]
+    assert [c.field for c in changes] == ["start", "end", "parent_scenario"]
     assert sc.follow_readme(test_child_scenario, {"description": "Derived from retire_alice",
                                                   "parent_scenario": "retire_alice"},
                             _row(test_child_scenario)) is True
     assert "Builds on no other scenario." in (test_child_scenario / "README.md").read_text()
+
+
+def test_no_parents_and_no_dates_describes_a_mix_in(test_data_dir: Path, test_child_scenario: Path) -> None:
+    # child inherits its dates, so with no parent it is mix-in only, and its
+    # default description says so, as `create --no-parent` writes it (#347).
+    result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert _row(test_child_scenario)["description"] == MIXIN_ONLY_DESCRIPTION
+    readme = (test_child_scenario / "README.md").read_text()
+    assert MIXIN_ONLY_DESCRIPTION in readme and "Derived from" not in readme, readme
+    # And back: given a parent again, it is derived from that one.
+    assert _sim(test_data_dir, "scenario", "edit", "child", "--parents", "retire_alice").exit_code == 0
+    assert _row(test_child_scenario)["description"] == "Derived from retire_alice"
 
 
 def test_blank_description_restores_the_default(test_data_dir: Path, test_child_scenario: Path) -> None:
@@ -276,14 +290,24 @@ def test_edit_refuses_a_cycle_through_a_descendant(test_data_dir: Path, test_chi
     assert (test_child_scenario / "scenario.csv").read_text() == before
 
 
-def test_edit_says_which_scenarios_it_makes_mix_in_only(test_data_dir: Path, test_child_scenario: Path,
+def test_edit_asks_before_making_scenarios_mix_in_only(test_data_dir: Path, test_child_scenario: Path,
                                                         test_grandchild_scenario: Path) -> None:
     # child inherits its dates; with no parent, it and grandchild have none
-    # anywhere, so they become mix-in only (#324): allowed, but said.
-    result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "")
+    # anywhere, so they become mix-in only (#324): allowed, but asked, even
+    # given as options (#347).
+    result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", input="y\n")
     assert result.exit_code == 0, result.output
-    assert "now mix-in only" in result.output and "child, grandchild" in result.output, result.output
+    assert "child will have no parent" in result.output and "so will grandchild" in result.output, result.output
     assert read_parents(test_child_scenario) == []
+
+
+def test_no_to_mix_in_only_leaves_everything(test_data_dir: Path, test_child_scenario: Path) -> None:
+    before = (test_child_scenario / "scenario.csv").read_text()
+    readme = (test_child_scenario / "README.md").read_text()
+    result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", input="n\n")
+    assert result.exit_code != 0 and "nothing was written" in result.output, result.output
+    assert (test_child_scenario / "scenario.csv").read_text() == before
+    assert (test_child_scenario / "README.md").read_text() == readme
 
 
 def test_edit_unknown_scenario(test_data_dir: Path) -> None:

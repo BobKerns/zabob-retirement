@@ -1,15 +1,19 @@
 """``sim person add|edit`` and ``sim person lifespan set|clear`` (#192)."""
+# cspell:ignore tabel
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
 from click.testing import CliRunner, Result
 
 from zabob.retirement.cli import main
+from zabob.retirement.sim import cli as sim_cli
+from zabob.retirement.sim import registries
 from zabob.retirement.sim.staging import EditRejected, staged_edit
 
 
@@ -349,6 +353,30 @@ def test_lifespan_set_with_no_options_asks_for_each_field(
     row = _lifespan_row(folder, "alice")
     assert (row["age_at_death"], row["vary_distribution"], row["vary_low"],
             row["vary_high"], row["vary_correlate_with"]) == ("84", "triangular", "75", "95", "")
+
+
+def test_lifespan_set_completes_the_distribution(
+    sim: Callable[..., Result], test_scenarios_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The "vary across" question completes over its answers, as a name
+    prompt does, and still takes only those (#260)."""
+    asked: dict[str, list[str] | None] = {}
+    prompt = sim_cli._prompt_with_completion
+
+    def spy(text: str, choices: list[str] | None = None, default: str | None = None,
+            **kwargs: Any) -> str:
+        asked[text] = choices if choices is not None else (
+            [str(c) for c in kwargs["choice"].choices] if kwargs.get("choice") else None)
+        return prompt(text, choices, default, **kwargs)
+    monkeypatch.setattr(sim_cli, "_prompt_with_completion", spy)
+
+    result = sim("person", "lifespan", "set", "alice", "--scenario", "retire_alice",
+                 input="84\nlife_tabel\nlife_table\n\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert asked["vary across ensemble members"] == ["none", *registries.LIFESPAN_DISTRIBUTIONS]
+    assert "not one of" in result.output, result.output
+    assert _lifespan_row(test_scenarios_dir / "retire_alice", "alice")["vary_distribution"] == "life_table"
 
 
 def test_lifespan_set_correlates_two_lifespans(

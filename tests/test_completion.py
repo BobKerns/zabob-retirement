@@ -157,8 +157,11 @@ def test_ensemble_commands_complete_only_ensembles(test_data_dir: Path,
         "t_market_current", "t_market_ensemble",
     ])
     assert test_ensemble_scenario in _complete(test_data_dir, "run ")
-    # #296: edit completes like rename, over ensembles only.
-    assert _complete(test_data_dir, "ensemble edit ") == _complete(test_data_dir, "ensemble rename ")
+    # #296: edit completes like rename, over ensembles only; rename only
+    # the data repo's own, since a template can't be renamed (#297).
+    assert _complete(test_data_dir, "ensemble rename ") == [test_ensemble_scenario]
+    assert [n for n in _complete(test_data_dir, "ensemble edit ") if not n.startswith("t_")] == [
+        test_ensemble_scenario]
     assert "retire_alice" not in _complete(test_data_dir, "ensemble edit ")
     assert "retire_alice" in _complete(test_data_dir, "scenario edit ")
 

@@ -487,3 +487,20 @@ def test_a_builtin_account_is_not_a_mistyped_one(sim: Callable[..., Result]) -> 
 
 def test_builtin_accounts_include_payouts_and_growth() -> None:
     assert {"capital_gains", "dividends", "interest_income"} <= set(names.builtin_account_names())
+
+
+def test_ensemble_rename_refuses_and_skips_templates(
+    sim: Callable[..., Result], test_data_dir: Path, test_ensemble_scenario: str,
+) -> None:
+    # A template is the code repository's; renaming one would leave the data
+    # repo's scenarios on a missing parent (#297).
+    template = "t_market_ensemble"
+    ctx = click.Context(sim_group_command)
+    ctx.params["data_dir"] = test_data_dir
+    assert template in completion._ensembles(ctx, test_data_dir)
+    offered = completion.OWN_ENSEMBLE.choices(ctx)
+    assert test_ensemble_scenario in offered and template not in offered
+    for what in ("ensemble", "scenario"):
+        result = sim(what, "rename", template, "mine")
+        assert result.exit_code != 0 and f"{template} is a template scenario" in result.output, result.output
+    assert not (test_data_dir / "scenarios" / "mine").exists()

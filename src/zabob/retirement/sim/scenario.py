@@ -489,13 +489,19 @@ def edit_scenario_row(
     row = {k: v or "" for k, v in rows[0].items() if k is not None}
     before = dict(row)
     values = dict(values)
-    new_parents = parse_parents(values.get("parent_scenario"))
-    # A root scenario derives from nothing, so the old description stays.
-    if new_parents and "description" not in values:
-        old_parents = parse_parents(row.get("parent_scenario"))
-        if row.get("description", "").strip() == default_description(old_parents):
-            values["description"] = default_description(new_parents)
+    old_parents = parse_parents(row.get("parent_scenario"))
     row.update(values)
+    if "parent_scenario" in values and "description" not in values:
+        new_parents = parse_parents(row.get("parent_scenario"))
+        was = default_description(old_parents) if old_parents else MIXIN_ONLY_DESCRIPTION
+        if row.get("description", "").strip() == was:
+            if new_parents:
+                row["description"] = default_description(new_parents)
+            elif not (row.get("start", "").strip() or row.get("end", "").strip()):
+                # Building on nothing, with no dates of its own, it is mix-in
+                # only: described as `create --no-parent` describes one (#347).
+                row["description"] = MIXIN_ONLY_DESCRIPTION
+            # A dated root scenario derives from nothing, so the old one stays.
     if meta:
         try:
             meta_json = json.loads(row.get("meta_json") or "{}")
