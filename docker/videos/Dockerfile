@@ -8,7 +8,7 @@
 #
 #   /repo/...          the checkout, read-only: src, pyproject.toml, uv.lock,
 #                      README.md, templates, historical_data, prototype_data,
-#                      notebooks, scripts/videos, docs/videos
+#                      notebooks, plugins, scripts/videos, docs/videos
 #   /opt/env           the named volume analysis-videos-env: the project's
 #                      venv, uv's cache and Pythons, Playwright's Chromium
 #   /out               where the videos land (and the build cache, .cache)

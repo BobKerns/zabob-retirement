@@ -14,6 +14,7 @@ import pytest
 from click.testing import CliRunner
 
 from zabob.retirement import research_plugin as rp
+from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import registries
 
 HOUSEHOLD = rp.ResearchConfig(languages=("en", "ja"), tax_state="CA")
@@ -212,11 +213,28 @@ def test_render_reports_a_bad_config(tmp_path):
     assert "two-letter" in result.output
 
 
+@pytest.mark.checkout
 def test_repo_marketplace_lists_the_neutral_plugin():
-    manifest = json.loads((rp.REPO_ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    assert CHECKOUT_DIR is not None
+    manifest = json.loads((CHECKOUT_DIR / ".claude-plugin" / "marketplace.json").read_text())
     assert manifest["name"] == "analysis"
     assert manifest["plugins"][0]["source"] == f"./plugins/{rp.PLUGIN_NAME}"
-    settings = json.loads((rp.REPO_ROOT / ".claude" / "settings.json").read_text())
+    settings = json.loads((CHECKOUT_DIR / ".claude" / "settings.json").read_text())
     # Registered for discovery only: never switched on for everyone.
     assert "analysis" in settings["extraKnownMarketplaces"]
     assert "enabledPlugins" not in settings
+
+
+def test_an_installed_program_renders_into_the_users_data_folder(tmp_path, monkeypatch):
+    # #676: no checkout means no out/; Claude Code reads the render in place,
+    # so it goes where it is kept, not in a cache.
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert rp.default_out_dir() == tmp_path / "zabob-retirement" / rp.PLUGIN_NAME
+
+
+def test_an_installed_program_refuses_to_rewrite_the_neutral_plugin(monkeypatch):
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    result = CliRunner().invoke(rp.research_plugin_command, ["render", "--neutral"])
+    assert result.exit_code != 0
+    assert "installed" in result.output

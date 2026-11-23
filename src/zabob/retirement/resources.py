@@ -1,8 +1,8 @@
 """Where the program's own folders are, in a checkout or installed (#662).
 
-``templates/``, ``notebooks/`` and ``prototype_data/`` live at the top of a
+``templates/``, ``notebooks/``, ``prototype_data/`` and ``plugins/`` live at the top of a
 code checkout, where the docs, the data repo and the tests name them. A wheel
-has no checkout, so the build hook (``hatch_build.py``) copies the three into
+has no checkout, so the build hook (``hatch_build.py``) copies them into
 the package as ``_shipped/``. Everything that reads them asks here, so a
 checkout (an editable ``uv sync`` install) reads its own working copies and
 an installed program reads what shipped with it.
@@ -18,8 +18,8 @@ from zabob.retirement.checkout import is_checkout
 
 __all__ = [
     "CHECKOUT_DIR", "DEFAULT_DATA_REPO", "INSTALLED", "NOTEBOOKS_DIR", "PACKAGE_DIR", "PROTOTYPE_DIR",
-    "SHIPPED_DIR", "TEMPLATES_DIR", "cache_dir", "home_checkout", "program_home", "program_sim", "same_home",
-    "shipped",
+    "SHIPPED_DIR", "TEMPLATES_DIR", "cache_dir", "data_home", "home_checkout", "program_home", "program_sim",
+    "same_home", "shipped",
 ]
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -52,6 +52,14 @@ def cache_dir(name: str) -> Path:
     if CHECKOUT_DIR is not None:
         return CHECKOUT_DIR / name
     base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(base) / "zabob-retirement" / name
+
+
+def data_home(name: str) -> Path:
+    """``name`` under the user's data folder (``$XDG_DATA_HOME``, by default
+    ``~/.local/share``), in ``zabob-retirement``: for what an installed
+    program writes and must keep, which has no checkout to go in."""
+    base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
     return Path(base) / "zabob-retirement" / name
 
 
