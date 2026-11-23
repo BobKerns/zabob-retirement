@@ -556,13 +556,14 @@ class ScenarioShow:
     end: ScenarioDate | None
     seed: ScenarioValue | None
     ensemble_size: ScenarioValue | None
-    reserve: tuple[str, bool] | None
-    """``meta_json.reserve`` as written, and whether it is inherited."""
+    reserve: tuple[object, bool] | None
+    """``meta_json.reserve`` as written (:func:`reserve_text` says it), and
+    whether it is inherited."""
     latest_run: tuple[Path, datetime] | None
     latest_batch: tuple[Path, datetime] | None
 
 
-def _merged_reserve(lineage: list[Path], name: str) -> tuple[str, bool] | None:
+def _merged_reserve(lineage: list[Path], name: str) -> tuple[object, bool] | None:
     for folder in reversed(lineage):
         rows = _read_rows(folder / "scenario.csv")
         try:
@@ -570,16 +571,22 @@ def _merged_reserve(lineage: list[Path], name: str) -> tuple[str, bool] | None:
         except json.JSONDecodeError:
             continue
         if isinstance(meta, dict) and "reserve" in meta:
-            return reserve_text(meta["reserve"]), folder.name != name
+            return meta["reserve"], folder.name != name
     return None
+
+
+def reserve_dollars(raw: object) -> float | None:
+    """``meta_json.reserve`` in dollars; None when it isn't an amount."""
+    try:
+        return units.json_dollars_to_cents(raw) / 100
+    except ValueError:
+        return None
 
 
 def reserve_text(raw: object) -> str:
     """``meta_json.reserve`` as ``sim scenario show`` prints it."""
-    try:
-        return f"${units.json_dollars_to_cents(raw) / 100:,.2f}"
-    except ValueError:
-        return f"{raw!r} (invalid)"
+    dollars = reserve_dollars(raw)
+    return f"{raw!r} (invalid)" if dollars is None else f"${dollars:,.2f}"
 
 
 def stamped(path: Path | None) -> tuple[Path, datetime] | None:

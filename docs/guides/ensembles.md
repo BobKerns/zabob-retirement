@@ -1328,7 +1328,7 @@ you specified?
 sim ensemble draws my_recipe                 # the check, per row and factor
 sim ensemble draws my_recipe --node growth   # one row's draw in each member
 sim ensemble draws my_recipe --pair core_inflation,fuel_factor  # one pair's scores
-sim ensemble draws my_recipe --csv draws.csv # member x row, for a spreadsheet
+sim ensemble draws my_recipe --csv-file draws.csv  # member x row, for a spreadsheet
 ```
 
 It reads the ensemble's latest Monte Carlo batch, even when a sensitivity

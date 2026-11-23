@@ -61,7 +61,7 @@ Several views also have terminal equivalents that need no notebook or kernel:
 | two ensembles compared on risk: percentile, paired and tail-mean deltas, and each guard rail's change | `analysis sim ensemble compare <baseline> <variant> [--account NAME [--lot LOT]] [--log] [--chart]` |
 | a baseline ensemble against several others in one table, net worth and guard rails (`ensemble.ipynb`) | `analysis sim ensemble compare <baseline> <variant> <variant> ...` |
 | which varying rows matter, and when (`sensitivity.ipynb`) | `analysis sim ensemble sensitivity <recipe> [--row ROW] [--chart]` |
-| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv FILE] [--chart]` |
+| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv-file FILE] [--chart]` |
 
 Views with no terminal equivalent yet, and what the terminal shows that no notebook does yet, are listed in [TODO.md](../TODO.md), which also asks for a periodic review of both.
 
