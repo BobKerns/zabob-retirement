@@ -346,11 +346,17 @@ def test_spouses_filing_separately_each_keep_their_own_exclusion_of_social_secur
     ledger: sqlite3.Connection, post_transfer: Callable[..., None],
 ) -> None:
     """On one return filed separately, what the pension subtraction left
-    out of Bill's Social Security comes off his own."""
+    out of Bill's Social Security comes off his own: over the income, the
+    state taxes all of his, and his subtraction takes it and $20,000 less
+    it of his pension. Alice's, untaxed from 65, uses up her cap alone."""
     _pensions(ledger, post_transfer, alice=50_000_00, bill=50_000_00)
     aux = _aux(COLORADO, separate=True)
     aux[(registries.STATE_RETIREMENT_EXCLUSION, STATE)] = _pension_rows()
     federal, state = _returns(ledger, aux)
+    shares = _ss_shares(federal["ss_taxable"])
+    assert "separate_tax" in state.lines
+    assert state["separate_agi_bill"] == 50_000_00 - (20_000_00 - shares["bill"])
+    assert state["separate_agi_alice"] == 50_000_00 - (24_000_00 - shares["alice"])
     assert state["separate_agi_alice"] + state["separate_agi_bill"] == state["agi"]
 
 

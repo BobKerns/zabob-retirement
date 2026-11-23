@@ -565,7 +565,8 @@ class ExclusionGrant(NamedTuple):
     """One person's exclusion (#486), before the household income is known."""
     person: str
     income: tuple[str, ...]
-    """The ``STATE_EXCLUSION_INCOME`` kinds it covers, in the order it uses them."""
+    """The ``STATE_EXCLUSION_INCOME`` kinds it covers, and ``STATE_EXCLUSION_SS``
+    where Social Security uses up its cap (#613), in the order it uses them."""
     cap: int | None
     """The most it excludes; None for all of it."""
     income_limit: int | None
@@ -590,13 +591,14 @@ class RetirementExclusion(NamedTuple):
     grants: tuple[ExclusionGrant, ...] = ()
     net_gain: int = 0
 
-    def excluded(self, ordinary: int, ltcg: int) -> tuple[int, int]:
+    def excluded(self, ordinary: int, ltcg: int,
+                 ss: Mapping[str, tuple[int, int]] | None = None) -> tuple[int, int]:
         """How much of ``ordinary`` income and ``ltcg`` the exclusions take
         off (``split``, without its short-term part)."""
-        return self.split(ordinary, ltcg)[:2]
+        return self.split(ordinary, ltcg, ss=ss)[:2]
 
-    def split(self, ordinary: int, ltcg: int,
-              net_gain: int | None = None) -> tuple[int, int, int]:
+    def split(self, ordinary: int, ltcg: int, net_gain: int | None = None,
+              ss: Mapping[str, tuple[int, int]] | None = None) -> tuple[int, int, int]:
         """How much of ``ordinary`` income and ``ltcg`` the exclusions take
         off, with household income ``ordinary + ltcg`` for their income
         tests, and how much of the ordinary part is short-term gain;
@@ -605,8 +607,10 @@ class RetirementExclusion(NamedTuple):
         actually leaves out, so a later one can cover what an earlier one's
         test denied. Gain beyond the net capital gain (a loss offset it)
         isn't left out at all; the rest comes off the long-term gain first,
-        and never more than there is."""
-        return self.split_by_person(ordinary, ltcg, net_gain)[:3]
+        and never more than there is. ``ss`` is each person's Social
+        Security, for a grant covering it (:meth:`split_by_person`); without
+        it such a grant finds none, and its cap is left whole for the rest."""
+        return self.split_by_person(ordinary, ltcg, net_gain, ss)[:3]
 
     def split_by_person(
         self, ordinary: int, ltcg: int, net_gain: int | None = None,

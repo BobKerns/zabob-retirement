@@ -377,7 +377,8 @@ class StateTablesYear(FederalStateYear):
         # be left out; gain added isn't in anyone's income by kind.
         net_gain = min(self._exclusion.net_gain, capital.stcg + self._taxed_ltcg(gain, extra))
         off_ordinary, off_ltcg, off_short, grants, off_ss = self._exclusion.split_by_person(
-            ordinary, ltcg, net_gain, self._exclusion_ss(basis))
+            ordinary, ltcg, net_gain,
+            self._exclusion_ss(basis) if self._exclusion_covers_ss else None)
         retirement = _Exclusion("retirement_exclusion", ordinary=off_ordinary - off_short,
                                 stcg=off_short, ltcg=off_ltcg, ss=sum(off_ss.values()),
                                 grants=grants, ss_grants=off_ss)
@@ -393,6 +394,12 @@ class StateTablesYear(FederalStateYear):
             own.append(Adjustment(line, ordinary=amount))
         return (*([refund] if refund.ordinary else []), exclusion,
                 *([swap] if self._gains_bands else []), retirement, ss, *own)
+
+    @cached_property
+    def _exclusion_covers_ss(self) -> bool:
+        """Whether any exclusion grant covers Social Security (#613), so
+        :meth:`_exclusion_ss` is worth figuring."""
+        return any(registries.STATE_EXCLUSION_SS in g.income for g in self._exclusion.grants)
 
     def _exclusion_ss(self, basis: Basis) -> dict[str, tuple[int, int]]:
         """Each person's Social Security as a retirement exclusion covering
@@ -623,10 +630,19 @@ class StateTablesYear(FederalStateYear):
         # With rows by age (#581) each spouse's taxable share is their own.
         ss_by = common.apportion(income.ss + retirement.ss, self._taxable_ss_by_person(basis)
                                  if self._ss_tiers is not None else self._ss_weights)
-        # What the exclusion left out of each spouse's own (#613).
-        for p, off in ss_grants.items():
-            if p in ss_by:
-                ss_by[p] = max(0, ss_by[p] - off)
+        # What the exclusion left out of each spouse's own (#613). A cent
+        # the two splits round apart, past a spouse's share, comes
+        # off the other's, so the separate AGIs still add up to the joint.
+        short = 0
+        for p in people:
+            off = ss_grants.get(p, 0)
+            take = min(off, max(0, ss_by[p]))
+            ss_by[p] -= take
+            short += off - take
+        for p in people:
+            take = min(short, max(0, ss_by[p]))
+            ss_by[p] -= take
+            short -= take
         # The exclusion's gain goes to the spouses whose grants covered
         # gain, the rest to those whose grants covered other income.
         gain_weights = {p: grants.get(p, (0, 0))[1] for p in people}
