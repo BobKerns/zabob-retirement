@@ -3329,6 +3329,9 @@ def ensemble_draws(
                                "name one")
     if graph_file is not None and node is not None and pair is not None:
         raise click.UsageError("--chart-file writes one chart: --node or --pair, not both")
+    if csv_file is not None and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for --csv-file separately")
     pair_names = _parse_pair(pair) if pair is not None else None
     data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
@@ -3357,8 +3360,6 @@ def ensemble_draws(
         with open_draws_db(batch_dir) as con:
             con.row_factory = sqlite3.Row
             _emit_draws(con, path, node, pair_names)
-        if csv_file is not None:
-            output.note("--csv-file isn't written with --csv/--json: ask for it separately")
         return
     _hold_tables()
     with open_draws_db(batch_dir) as con:
@@ -3897,7 +3898,11 @@ def _report_attribution(
         draw(fig)
     if output.machine():
         # One row per year and key, a column per quantile, as each year's table.
-        frame = pd.concat({f"@{q:g}": t.loc[[y for y in years if y in t.index]].stack()
+        # A key one quantile's table lacks is 0 there, as the table prints it;
+        # --relative's NaN (a base near zero) stays missing.
+        keys = list(dict.fromkeys(k for t in tables for k in t.columns))
+        frame = pd.concat({f"@{q:g}": t.reindex(columns=keys, fill_value=0.0)
+                           .loc[[y for y in years if y in t.index]].stack(future_stack=True)
                            for q, t in by_quantile.items()}, axis=1)
         frame.index.names = ["year", "key"]
         output.emit(frame, title=f"attribution {scenario_name}", batch=batch_dir.name, row=row,
@@ -15553,6 +15558,9 @@ def chain_show_command(
         raise click.UsageError("use one of --mermaid, --graph and --graph-file")
     if depth is not None and not (as_mermaid or as_graph or graph_file is not None):
         raise click.UsageError("--depth needs --mermaid, --graph or --graph-file")
+    if as_mermaid and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for the Mermaid source separately")
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, scenario)
     with open_scenario(data, ref.name, scenarios_dir=ref.scenarios_dir) as scn:
@@ -15581,9 +15589,6 @@ def chain_show_command(
         output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
         return
     if output.machine():
-        if as_mermaid:
-            raise click.UsageError(f"--{output.current()} prints the data alone; "
-                                   "ask for the Mermaid source separately")
         output.emit(_chain_tables(cmap, roots), title=f"chains in {ref.name}", scenario=ref.name)
         return
     if as_mermaid:

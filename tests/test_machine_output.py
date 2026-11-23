@@ -344,10 +344,34 @@ def test_chain_show_json_gives_shares_as_fractions(test_data_dir: Path) -> None:
 
 
 def test_chain_show_mermaid_with_json_is_refused(test_data_dir: Path) -> None:
-    result = _sim("chain", "show", "--scenario", "retire_alice", "--data-dir", str(test_data_dir),
-                  "--mermaid", "--json")
+    # Before the scenario is read: one with no chains would otherwise print nothing.
+    result = _sim("chain", "show", "--scenario", "no_such_scenario", "--data-dir",
+                  str(test_data_dir), "--mermaid", "--json")
     assert result.exit_code == 2
     assert "--json prints the data alone" in result.output
+
+
+def test_draws_csv_file_with_json_is_refused(mc_batch: Path, runs_dir: Path, intent_dir: Path,
+                                             tmp_path: Path) -> None:
+    result = _ensemble(runs_dir, intent_dir, "draws", "--csv-file", str(tmp_path / "out.csv"), "--json")
+    assert result.exit_code == 2
+    assert "ask for --csv-file separately" in result.output
+
+
+def test_attribution_json_gives_zero_where_a_quantile_lacks_a_key(
+    oat_batch: Path, runs_dir: Path, intent_dir: Path,
+) -> None:
+    from zabob.retirement.sim import sensitivity
+
+    found = _json(_ensemble(runs_dir, intent_dir, "sensitivity", "--attribute", "gift",
+                            "--dollars", "nominal", "--json"))
+    by_q = sensitivity.oat_attribution(oat_batch, "gift", dollars=DollarMode.NOMINAL)
+    assert all(v is not None for row in found["rows"] for k, v in row.items() if k.startswith("@"))
+    for q, table in by_q.items():
+        column = f"@{q:g}"
+        for row in found["rows"]:
+            expected = table.loc[row["year"], row["key"]] if row["key"] in table.columns else 0.0
+            assert row[column] == pytest.approx(expected, abs=1e-6)
 
 
 def test_ensemble_factors_json_gives_the_tree_by_parent(test_data_dir: Path) -> None:
