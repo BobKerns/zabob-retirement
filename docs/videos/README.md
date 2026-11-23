@@ -43,6 +43,7 @@ container; both work on their own too.
 | `docs/videos/theme/templates/*.html` | Slide templates (Jinja2): `title` opens every video, `card` for breaks and endings, `figure` for a picture a command made, `window` for a screen the tapes can't record |
 | `docs/videos/youtube.toml` | The channel's settings and the wording around each description |
 | `docs/videos/assets/*.svg` | Reusable characters and props: Alice, Bill, their home |
+| `docs/videos/assets/zabob.png`, `host-scene.jpg` | Zabob, the host, and the scene behind him (from `docs/assets/brand/src/`) |
 | `src/zabob/retirement/videos/` | The builder |
 | `scripts/videos/tts_kokoro.py` | The narration worker (runs in its own environment) |
 
@@ -230,11 +231,14 @@ can't change one.
 A slide block is TOML: `template` names a file in `theme/templates/`, and the
 other keys are fields that template reads, overriding front matter of the
 same name. A template can show any asset with `{{ asset("alice") | safe }}`,
-which inlines the SVG so the theme's CSS can restyle it.
+which inlines the SVG so the theme's CSS can restyle it, and any picture
+(a `.png` or `.jpg` in `assets/`) with `{{ picture("zabob") }}`, a `data:`
+URI for an `<img src>` or a CSS `url()`.
 
 | Template | Fields |
 | --- | --- |
 | `title` | `series`, `episode`, `title`, `subtitle`, `cast` (assets to show; default home, Alice, Bill), `notice` (a boxed line under the rule, such as who can skip the video) |
+| `host` | `series`, `name` (default Zabob), `role` (default "your host"), `line` (optional, under the name), `host` and `scene` (pictures, default `zabob` and `host-scene`) |
 | `card` | `series`, `heading`, `body` (text, or a list shown one item per line), `speaker` (one asset, optional) |
 | `figure` | `series`, `heading` (the command, shown as typed), `demo_image` (a picture `setup.sh` made) |
 | `window` | `series`, `heading`, `title` (the title bar), `look` (`terminal`, `light`, `files`, `editor` or `code`), `lines`, `address` (`files`), `status` (`editor`, `code`), `code`, `language`, `first`, `marks` (`code`), `note` (below the window) |
@@ -289,7 +293,7 @@ re-renders exactly the scenes it affects.
 
 Narration is synthesized with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx),
 an open text-to-speech model that runs on a CPU. `[narration.<lang>]` in
-`theme.toml` picks the voice (`af_heart` for English), language and speed;
+`theme.toml` picks the voice (`bm_george` for English, `jm_kumo` for Japanese: Zabob, the host, narrates), language and speed;
 the [voice list](https://github.com/thewh1teagle/kokoro-onnx) covers English,
 Japanese, Chinese, Spanish, French, Hindi, Italian and Portuguese. Each
 scene's narration is synthesized one sentence at a time, which also times
