@@ -223,6 +223,12 @@ class StateYear(Prepared):
         credits is lower than the joint return's."""
         return None
 
+    def tax_lines(self, taxable: int, income: Income) -> Mapping[str, int]:
+        """Lines that show a part of :meth:`tax` on the joint return, at
+        the same ``taxable`` income and ``income`` (a benefit recapture,
+        #549); they report, and change nothing. None by default."""
+        return {}
+
     def excise(self, basis: Basis) -> tuple[Mapping[str, int], int]:
         """A tax the state levies apart from its income tax, on its own base
         (Washington's on capital gains, #489): its lines and the tax, which
@@ -271,6 +277,7 @@ class StateYear(Prepared):
         nol_used = common.nol_used(self._nol_in, before_nol, self._nol_limit)
         taxable = max(0, before_nol - nol_used)
         tax = self.tax(taxable, income)
+        tax_lines = self.tax_lines(taxable, income)
         # These credits can't take the tax below zero: a named line shows
         # what it took, in order, so the lines add up to the credits taken.
         # Asked once, and handed to a separate return as they are.
@@ -315,6 +322,7 @@ class StateYear(Prepared):
             **adjustments,
             **deductions,
             **others,
+            **tax_lines,
             **credit_lines,
             "taxable_income": taxable,
             "ordinary_taxable": ordinary_taxable,

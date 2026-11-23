@@ -130,6 +130,10 @@ class StateTablesYear(FederalStateYear):
         # every filing status (California's $1 million). A local income tax
         # is its own jurisdiction (local_bands, #508).
         self._surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series)
+        # A benefit recapture (#549) takes back the lower brackets' benefit
+        # as state AGI rises: an addition to tax by AGI, not a rate on
+        # taxable income, so its own rows rather than more bands.
+        self._recapture = common.recapture_rows(ty, series)
 
         # The state's own deductions and credits (#511, #488): a renter's
         # deduction, an exemption, a deduction for federal tax paid. Each is
@@ -165,6 +169,7 @@ class StateTablesYear(FederalStateYear):
         self._mfs_ltcg = common.rate_table(ty, params.ltcg_bracket_aux, series, SEPARATE)
         self._mfs_stcg = common.rate_table(ty, params.stcg_bracket_aux, series, SEPARATE)
         self._mfs_surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series, SEPARATE)
+        self._mfs_recapture = common.recapture_rows(ty, series, SEPARATE)
         self._mfs_standard = common.standard_deduction_row(
             ty, *self._standard_table(), SEPARATE)
         # Unclipped, so one spouse's business loss stays theirs rather than
@@ -485,7 +490,15 @@ class StateTablesYear(FederalStateYear):
         }
 
     def tax(self, taxable: int, income: Income) -> int:
-        return super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+        return (super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+                + common.recapture(self._recapture, income.agi))
+
+    def tax_lines(self, taxable: int, income: Income) -> Mapping[str, int]:
+        # A subclass's own tax step may not add the recapture (it may not
+        # call this one's), so only this one's shows the line.
+        if not self._recapture or type(self).tax is not StateTablesYear.tax:
+            return {}
+        return {"recapture": common.recapture(self._recapture, income.agi)}
 
     def separate(self, joint: Joint, basis: Basis) -> Separate | None:
         """Each spouse's tax filing separately on one return (#580): the
@@ -555,16 +568,16 @@ class StateTablesYear(FederalStateYear):
         """:meth:`tax` with the married-filing-separately tables (#580), so
         a subclass's own tax step applies to each spouse's return too."""
         saved = (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-                 self.stcg_brackets, self._surcharge)
+                 self.stcg_brackets, self._surcharge, self._recapture)
         self.ty, self.filing_status = self._mfs_ty, SEPARATE
         self.brackets, self.ltcg_brackets, self.stcg_brackets = (
             self._mfs_brackets, self._mfs_ltcg, self._mfs_stcg)
-        self._surcharge = self._mfs_surcharge
+        self._surcharge, self._recapture = self._mfs_surcharge, self._mfs_recapture
         try:
             yield
         finally:
             (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-             self.stcg_brackets, self._surcharge) = saved
+             self.stcg_brackets, self._surcharge, self._recapture) = saved
 
     def _spouse_income(self, income: Income, subtractions: Sequence[Adjustment],
                        basis: Basis) -> dict[str, Income]:

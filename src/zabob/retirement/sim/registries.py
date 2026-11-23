@@ -657,6 +657,14 @@ STATE_GAINS_DEDUCTION = "state_gains_deduction"
 """The aux kind of the standard deduction of a state's gains tax (#489),
 one figure per filing status like ``state_standard_deduction``."""
 
+STATE_RECAPTURE = "state_recapture"
+"""The aux kind of a state's benefit recapture (#549): an addition to tax
+that takes back the benefit of its lower brackets as state AGI rises,
+Connecticut's 2% phase-out add-back and tax recapture, New York's
+supplemental tax. Each row adds up to ``amount`` over ``width`` dollars of
+AGI above ``floor``, in a straight line or in whole ``step``s; the rows of
+a filing status add up to the ``state_recapture`` line."""
+
 STATE_HSA_TREATMENTS: tuple[str, ...] = ("federal", "taxable")
 """A ``state_hsa`` row's ``treatment``: ``federal`` follows the federal
 rules (the default, without a table); ``taxable`` is California's, which
@@ -778,7 +786,7 @@ STATE_KEYED_AUX_KINDS: frozenset[str] = frozenset({
     "state_brackets", STATE_ITEMIZED_LIMITS, STATE_STANDARD_DEDUCTION, STATE_LTCG_BRACKETS, STATE_STCG_BRACKETS,
     STATE_LTCG_EXCLUSION, STATE_SOCIAL_SECURITY, STATE_SURCHARGE, STATE_HSA,
     STATE_RETIREMENT_EXCLUSION, STATE_LOCAL_TAX, STATE_ADJUSTMENTS,
-    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN,
+    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN, STATE_RECAPTURE,
 })
 """The aux kinds keyed by state (or, for ``state_local_tax``, by county):
 a tax year reads the series where the household lives that year
@@ -786,11 +794,12 @@ a tax year reads the series where the household lives that year
 
 OPTIONAL_STATE_AUX_KINDS: frozenset[str] = frozenset({
     STATE_ITEMIZED_LIMITS, STATE_SURCHARGE, STATE_HSA, STATE_LOCAL_TAX, STATE_ADJUSTMENTS,
-    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN,
+    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN, STATE_RECAPTURE,
 })
 """The state tables a state may lack (#490, #487, #489, #542, #580): then it
 has no surcharge, local tax or gains tax, its HSA follows the federal rules,
-it figures no itemized lines from spending, and a couple files jointly."""
+it figures no itemized lines from spending, a couple files jointly, and no
+benefit is recaptured."""
 
 STATE_BAND_KINDS: frozenset[str] = frozenset({STATE_SURCHARGE, STATE_LOCAL_TAX, STATE_GAINS_TAX})
 """The state tables of bands (#490, #487, #489): a surcharge's and a local
@@ -816,6 +825,7 @@ TAX_GROWTH_SERIES_COLUMNS: dict[str, dict[str, str]] = {
     STATE_LOCAL_TAX: {"floor_series": "floor"},
     STATE_GAINS_TAX: {"floor_series": "floor"},
     STATE_GAINS_DEDUCTION: {"amount_series": "amount"},
+    STATE_RECAPTURE: {"floor_series": "floor", "amount_series": "amount"},
     "ltcg_brackets": {"floor_series": "floor"},
     STATE_LTCG_BRACKETS: {"floor_series": "floor"},
     STATE_STCG_BRACKETS: {"floor_series": "floor"},
@@ -890,6 +900,11 @@ AUX_KIND_COLUMNS: dict[str, tuple[str, ...]] = {
     STATE_GAINS_TAX:
         ("effective_date", "filing_status", "bracket_index", "floor", "marginal_rate"),
     STATE_GAINS_DEDUCTION: ("effective_date", "filing_status", "amount"),
+    # A state's benefit recapture (#549): each row adds to the tax up to
+    # `amount` over `width` dollars of state AGI above `floor`, in a
+    # straight line, or with `step` in whole steps, any part of one counting
+    # as a step (Connecticut's tables). The rows of one filing status add up.
+    STATE_RECAPTURE: ("effective_date", "filing_status", "floor", "width", "amount", "step"),
     # Federal long-term capital gain rates: the same shape as federal_brackets,
     # but a band's floor is the taxable income (ordinary income plus the gain,
     # stacked on top) at which its rate starts. Optional: without it long-term
@@ -1107,6 +1122,7 @@ AUX_MONEY_COLUMNS: dict[str, frozenset[str]] = {
     STATE_LOCAL_TAX: frozenset({"floor"}),
     STATE_GAINS_TAX: frozenset({"floor"}),
     STATE_GAINS_DEDUCTION: frozenset({"amount"}),
+    STATE_RECAPTURE: frozenset({"floor", "width", "amount", "step"}),
     "standard_deduction": frozenset({"amount"}),
     STATE_STANDARD_DEDUCTION: frozenset({
         "amount", "floor", "phaseout_start", "phaseout_end", "phaseout_step",
@@ -1137,6 +1153,7 @@ AUX_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
         "tag", "rate", "amount", "per_person", "min_age", "filing_status", "income_limit",
         "phaseout", "phaseout_rate", "less_ss", "refundable",
     }),
+    STATE_RECAPTURE: frozenset({"step"}),
 }
 """Columns of ``AUX_KIND_COLUMNS`` a file may leave out, by kind: a missing
 column or a blank cell is stored as None."""

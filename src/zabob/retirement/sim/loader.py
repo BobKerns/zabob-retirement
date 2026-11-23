@@ -1393,6 +1393,7 @@ def load_scenario(
     _validate_state_social_security(aux_rows, persons, issues, warnings)
     _validate_state_standard_deduction(aux_rows, issues)
     _validate_state_retirement_exclusions(aux_rows, issues)
+    _validate_state_recapture(aux_rows, issues)
     _validate_state_adjustments(
         aux_rows, issues, unused, tax_rows=tax_rows, residence_rows=residence_rows,
         tags=scenario_tags)
@@ -4969,6 +4970,29 @@ the engine's settlement adds beside them, which a ``state_adjustments``
 row can't be named (it would overwrite one, or be overwritten)."""
 
 _LINE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _validate_state_recapture(
+    aux_rows: list[tuple[str, str | None, dict[str, Any], str]], issues: list[str],
+) -> None:
+    """A ``state_recapture__<state>.csv`` row (#549) adds to the tax over a
+    band of income: it needs a width to spread over, and a step no wider
+    than the band."""
+    kind = registries.STATE_RECAPTURE
+    for row_kind, state, payload, effective in aux_rows:
+        if row_kind != kind:
+            continue
+        if not state:
+            issues.append(f"aux/{kind}.csv: name the state, as {kind}__CT.csv")
+            return
+        where = f"aux/{kind}__{state}.csv ({effective}, {payload.get('filing_status')})"
+        _check_filing_status(where, payload, issues)
+        _check_not_negative(where, payload, ("floor", "amount"), issues)
+        width, step = payload.get("width"), payload.get("step")
+        if width is None or width <= 0:
+            issues.append(f"{where}: width must be more than 0, the income the amount is spread over")
+        if step is not None and (step <= 0 or (width is not None and step > width)):
+            issues.append(f"{where}: step must be more than 0 and no more than width")
 
 
 def _validate_state_adjustments(

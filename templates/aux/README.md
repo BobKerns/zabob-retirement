@@ -164,6 +164,38 @@ effective_date,name,income,min_age,amount,filing_status,income_limit,phaseout,le
 2026-01,age,all,65,10000,Single,50000,10000,
 ```
 
+## Benefit recapture
+
+Some states take back the benefit of their lower brackets as income rises,
+by an addition to the tax rather than a higher rate: Connecticut's 2%
+phase-out add-back and tax recapture (CT-1040 Tables C and D), New York's
+supplemental tax. A `state_recapture__<state>.csv` says how. Each row of a
+filing status adds up to `amount` over the `width` dollars of state AGI
+above `floor`; the rows add up, and the total is added to the tax and
+shown as `state_recapture`.
+
+| Column | Meaning |
+| --- | --- |
+| `effective_date` | When the rows take effect; the rows of one date are the whole set. |
+| `filing_status` | The status the row is for. A status with no rows adds nothing. |
+| `floor` | The state AGI above which it starts. |
+| `width` | The AGI over which it rises to `amount`. |
+| `amount` | The most the row adds. |
+| `step` | Optional: it rises in whole steps of this much AGI, any part of a step counting as one, as Connecticut's tables do; blank rises in a straight line. |
+| `floor_series` / `amount_series` | Optional: inflation series that grow `floor` and `amount`, as above. |
+
+Connecticut's for a married couple filing jointly, from the 2024 CT-1040
+instructions (Table C, then Table D's three paces; check the year's
+figures and add the other statuses):
+
+```csv
+effective_date,filing_status,floor,width,amount,step
+2024-01,MFJ,100500,50000,500,5000
+2024-01,MFJ,210000,100000,500,10000
+2024-01,MFJ,400000,300000,5400,10000
+2024-01,MFJ,1000000,90000,900,10000
+```
+
 ## Per-scenario overrides
 
 A scenario can replace one of these files for itself (and its descendants) by
@@ -184,6 +216,7 @@ every other scenario.
 | `state_standard_deduction__<state>.csv` | The state's own standard deduction by filing status, for a state tax (`taxes/state.csv`), keyed by state like `state_brackets__<state>.csv`. `__CA` holds California's figures, from the same year as its brackets. Without one for the brackets' state, a state rule uses `standard_deduction.csv`'s federal figure, which for most states is far too high, and loading warns. Optional columns shrink it with income (#578): above `phaseout_start` of state AGI it falls to nothing at `phaseout_end`, or by `phaseout_rate` of each dollar over, but not below `floor`; with a rate, `phaseout_step` counts the income over in whole steps, a started one in full; with an end, `phaseout_steps` splits the span into that many equal steps; `phaseout_agi` `federal` tests federal AGI instead. `phaseout_start`, `phaseout_end` and `floor` may be indexed with `phaseout_start_series`, `phaseout_end_series` and `floor_series`, as `amount` is with `amount_series`; the start and end take the same series or none. |
 | `state_social_security__<state>.csv` | Optional: how the state taxes Social Security, keyed by state like `state_brackets__<state>.csv`. Without it (California, and most states) a state rule taxes none. With it, the state starts from the federally taxable amount and leaves out `exclusion_percent` of it, for each filing status. Optional `phaseout_start` (federal AGI) starts taking the exclusion away: evenly down to nothing at `phaseout_end` (the same figure for a cliff, as in New Mexico), or by `phaseout_rate` of each dollar over (a credit in a flat-rate state such as Utah: the credit's phase-out rate divided by the tax rate). A state that follows the federal amount (Montana) writes `0%`. `phaseout_start_series`/`phaseout_end_series` index the limits like `floor_series`. Optional `min_age` (#581) makes rows age tiers: each person's share of the taxable amount, divided by their benefits, takes the row with the highest `min_age` they reach by December 31 (blank: any age; `fra`: their own full retirement age from their birth year, 65 to 67), and none when they reach no row. People on one row are phased out together at the household's federal AGI; only one row of a date and filing status may have a `phaseout_rate`. Colorado's is a `55` row with its income cliff and a `65` row without; Rhode Island's an `fra` row with its cliff. Columns: `effective_date,filing_status,min_age,exclusion_percent,phaseout_start,phaseout_end,phaseout_rate`. Check the figures with the state's revenue department. |
 | `state_surcharge__<state>.csv` | A state's surcharge on high taxable income, in the columns of its brackets, whose rates add to the brackets' rates. Optional, keyed by state like `state_brackets__<state>.csv`. `__CA` is California's Behavioral Health Services Tax: 1% of taxable income over $1 million, the same for every filing status and not indexed, so its `floor_series` is blank. |
+| `state_recapture__<state>.csv` | Optional: a state's benefit recapture, an addition to its tax as state AGI rises, keyed by state; see "Benefit recapture" below. None ships. |
 | `state_local_tax__<state>.csv` | Optional: a local income tax (county, city, school district) on the state's taxable income, in the columns of its brackets: Maryland's county rate as one band, New York City's brackets, or a Portland-area tax as a 0% band below its threshold. Named for a county (`residence.csv` names the household's) or, for one table across the state, the state; paid by `taxes/local.csv` into its own `taxes_local` account, and shown as `local_tax` in `sim report tax`. Two local taxes on the same base, such as Portland's Metro and Multnomah County taxes, go in one table, their rates added. Needs a row for every filing status the state's brackets have. None ships. |
 | `state_gains_tax__<state>.csv` / `state_gains_deduction__<state>.csv` | Optional: a state's tax on long-term capital gains apart from its income tax, keyed by state; see "A state's gains tax" below. `__WA` ships Washington's. |
 | `state_hsa__<state>.csv` | How a state taxes a health savings account: `treatment` `taxable` or `federal`. Optional, keyed by state; without one the HSA follows the federal rules. `__CA` says `taxable`: California doesn't recognize HSAs and taxes one like a brokerage account, so a contribution isn't deducted, its dividends and interest are taxed the year they're paid, and a withdrawal is taxed on its gain over the account's cost basis. |
