@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -715,6 +716,10 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
         assert (repo_root / path).exists(), path
     assert {"src", "pyproject.toml", "uv.lock", "README.md", "templates", "historical_data",
             "prototype_data", "notebooks", "scripts/videos", "docs/videos"} <= mounts
+    # The tapes record the program installed from a wheel built from the
+    # mounted checkout, so all the sdist takes must be mounted too.
+    sdist = tomllib.loads((repo_root / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["sdist"]
+    assert set(sdist["only-include"]) <= mounts
     assert ".venv" not in mounts
     assert "context=docker/videos" in docker_sh
     dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()

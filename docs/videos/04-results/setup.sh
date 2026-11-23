@@ -9,10 +9,10 @@
 export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
 mkdir -p "$HOME"
 unset ANALYSIS_DATA_DIR
-sim init ~/retirement/data --id alice --display "Alice Example" --birthdate 1962-04-15 \
+sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/retirement/data/sim/activate-analysis > /dev/null
-cd ~/retirement/data
+source ~/zabob-retirement/sim/activate-analysis > /dev/null
+cd ~/zabob-retirement
 
 # Commit, run, and give the run a fixed time (its file name and its record),
 # so every recording shows the same run files and the scenes can name one.

@@ -34,7 +34,7 @@ futures drawn from the supplied templates.
 videos 3 and 5 type, then the ensembles the scenes make, tagging the data
 repo before each scene (`stage/<scene>`) so a tape can make on camera what
 later scenes already have. Both ensembles are run once at the end and their
-batches renamed to fixed times. The tapes work in `~/retirement/data/sim`,
+batches renamed to fixed times. The tapes work in `~/zabob-retirement/sim`,
 as in videos 3 to 5.
 
 ## Scene `title`: Title card
@@ -125,9 +125,9 @@ crisis. Each one is just a scenario, so you build on it like any other.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/create && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/create && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -150,9 +150,9 @@ is unchanged.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/varying && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/varying && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -181,9 +181,9 @@ plain forty thousand.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/run && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -220,9 +220,9 @@ their own, among them Alice and Bill's car.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -245,9 +245,9 @@ to that. A future with hot inflation usually pays more on cash, too.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/run && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -281,9 +281,9 @@ went negative. In those, the money ran out.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -307,9 +307,9 @@ reaches past ten million, and the bottom comes down close to zero.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -355,9 +355,9 @@ them.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/run && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -368,7 +368,7 @@ Enter
 Wait
 Sleep 6s
 Hide
-Type "git -C ~/retirement/data reset -q --hard stage/compared && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/compared && clear"
 Enter
 Sleep 1s
 Show
@@ -392,9 +392,9 @@ help is needed.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -414,7 +414,7 @@ of the worst five and twenty percent.
 ## Scene `nb-ensemble`: The ensemble notebook
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "ensemble.ipynb"
 RunAll

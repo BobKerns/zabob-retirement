@@ -116,9 +116,16 @@ file, the theme's terminal settings, and a hidden setup that:
   or the video's own data repo, to a fresh, committed scratch folder, after
   the video's `setup.sh` (if any) has run in it, and points
   `ANALYSIS_DATA_DIR` at it, so every recording starts from the same state;
-- puts this checkout's `sim`/`analysis` on `PATH`;
+- installs the program as a user would (`uv tool install zabob-retirement`,
+  as SETUP.md says), from a wheel built from this checkout, into `~/.local`
+  of the demo's home folder, and puts that on `PATH`, not the checkout's
+  venv: so `sim init` with no folder makes `~/zabob-retirement` with the
+  notebooks in it, as it does for a user. A `uv tool install
+  zabob-retirement` typed in a tape (video 2) installs that wheel again,
+  with `uv.lock`'s versions and this machine's uv cache, so it takes a
+  moment and records the same each time;
 - sets `ANALYSIS_NO_BUILDER=1`, so a recorded `sim init` (video 2) doesn't
-  link this checkout's `data/private` or turn on background builds;
+  turn on background builds;
 - sets the prompt (`alice@home $`, from the theme).
 
 Each tape starts from the same state, so a tape can't rely on an earlier
@@ -174,7 +181,7 @@ viewer would. It's written like a tape, one step per line, and a `#` starts a
 comment:
 
 ```text
-Set DataDir "home/retirement/data/sim"   # where the notebooks read data
+Set DataDir "home/zabob-retirement/sim"   # where the notebooks read data
 Hide
 Open "net_worth.ipynb"
 RunAll

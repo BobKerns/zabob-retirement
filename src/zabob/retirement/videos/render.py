@@ -6,6 +6,7 @@ from the cache; nothing here caches.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -447,6 +448,60 @@ _GIT_ENV = {
 }
 
 
+@functools.cache
+def _program_wheel() -> tuple[Path, str]:
+    """This checkout built as the wheel PyPI would serve, and its locked
+    versions as constraints, once per build process.
+
+    The tapes record the program as a user installs it (SETUP.md, `uv tool
+    install zabob-retirement`), not this checkout's editable venv, so `sim
+    init` with no folder makes ~/zabob-retirement and copies the notebooks,
+    as it does for a user. The wheel stands in for PyPI's (it may not be
+    published yet, and a tape should record this checkout's code), and the
+    lock's versions keep a recording from changing when a dependency does.
+    """
+    from zabob.retirement.resources import CHECKOUT_DIR
+
+    if CHECKOUT_DIR is None:
+        raise ScriptError("building videos needs a checkout of the code")
+    uv = need("uv", "install uv: https://docs.astral.sh/uv/")
+    out = Path(tempfile.mkdtemp(prefix="analysis-video-wheel-"))
+    run([uv, "build", "--wheel", "--quiet", "--out-dir", str(out / "wheels"), str(CHECKOUT_DIR)])
+    constraints = run([uv, "export", "--frozen", "--no-dev", "--no-hashes", "--no-emit-project",
+                       "--no-header", "--quiet"], cwd=CHECKOUT_DIR).stdout
+    (out / "constraints.txt").write_text(constraints, encoding="utf-8")
+    return out, uv
+
+
+def _uv_env(root: Path) -> dict[str, str]:
+    """What makes `uv tool install zabob-retirement`, typed in a tape whose
+    HOME is the demo's, install this checkout's wheel, quickly and the same
+    way each time: the wheel as a find-links source, the lock as
+    constraints, and this machine's uv cache and Pythons (a demo HOME would
+    start both empty, and download everything)."""
+    uv = _program_wheel()[1]
+    return {
+        "UV_FIND_LINKS": str(root / "wheels"),
+        "UV_CONSTRAINT": str(root / "constraints.txt"),
+        "UV_CACHE_DIR": run([uv, "cache", "dir"]).stdout.strip(),
+        "UV_PYTHON_INSTALL_DIR": run([uv, "python", "dir"]).stdout.strip(),
+    }
+
+
+def _install_program(root: Path) -> None:
+    """Install the program into the demo's home, as the user would have
+    (video 2's install scene removes it and installs it again on camera)."""
+    built, uv = _program_wheel()
+    shutil.copytree(built / "wheels", root / "wheels")
+    shutil.copy2(built / "constraints.txt", root / "constraints.txt")
+    home = root / "home"
+    home.mkdir(exist_ok=True)
+    env = {**os.environ, **_uv_env(root), "HOME": str(home), "UV_NO_PROGRESS": "1"}
+    for name in ("UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "XDG_BIN_HOME", "XDG_DATA_HOME", "VIRTUAL_ENV"):
+        env.pop(name, None)
+    run([uv, "tool", "install", "--quiet", "zabob-retirement"], cwd=root, env=env)
+
+
 def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
     """A fresh copy of the demo data, committed (the loader refuses dirty data)."""
     shutil.copytree(data, root / "data")
@@ -456,6 +511,9 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
     run([git, "add", "-A"], cwd=root / "data")
     run([git, "-c", "commit.gpgsign=false", "commit", "-q", "--no-verify", "-m", "demo data"],
         cwd=root / "data", env=env)
+    _install_program(root)
+    (root / "bin").mkdir()
+    (root / "bin" / "python").symlink_to(sys.executable)
     term = theme.data["terminal"]
     accent = _rgb(theme.data["palette"]["accent"])
     rc = root / ".videorc"
@@ -464,7 +522,12 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
             [
                 f"cd {root}",
                 f"export ANALYSIS_DATA_DIR={root / 'data'}",
-                f"export PATH={Path(sys.executable).parent}:$PATH",
+                # The installed program (see _program_wheel), where a user's
+                # uv puts it, and this checkout's python for setup scripts,
+                # but not the checkout's sim: a tape whose install failed
+                # must fail, not quietly record (and init) the checkout.
+                f"export PATH={root / 'home' / '.local' / 'bin'}:{root / 'bin'}:$PATH",
+                *(f"export {k}={v}" for k, v in _uv_env(root).items()),
                 *(f"export {k}={v}" for k, v in _GIT_ENV.items()),
                 # A recorded `sim init` mustn't link this checkout's data/private
                 # or start background builds.
@@ -480,6 +543,8 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
                 # are) and show the household's repo name in the prompt.
                 "unset ANALYSIS_USER ANALYSIS_DATA_REPO_NAME ANALYSIS_REPO_DIR "
                 "VIRTUAL_ENV VIRTUAL_ENV_PROMPT",
+                # So uv puts a tool where it would for the user: in ~/.local.
+                "unset UV_TOOL_DIR UV_TOOL_BIN_DIR XDG_BIN_HOME XDG_DATA_HOME",
                 f"PS1='\\[\\e[38;2;{accent}m\\]{term['prompt']}\\[\\e[0m\\] $ '",
                 "",
             ]

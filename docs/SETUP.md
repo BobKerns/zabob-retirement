@@ -25,7 +25,9 @@ sim init                                          # in ~/zabob-retirement, askin
 source ~/zabob-retirement/sim/activate-analysis   # in each new shell
 ```
 
-`sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
+`sim init` saves a first version with git: on macOS, if a window offers to
+install the command-line developer tools (which include git), let it finish,
+then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
 notebooks, in its `notebooks/`; `analysis jupyter` opens them.
@@ -75,23 +77,26 @@ walks through this ([日本語](https://youtu.be/zeTFTujsWwI)).
    it asks.
 2. Ubuntu opens after the restart and asks for a Linux user name (one word,
    lowercase; it needn't match your Windows name) and a password. Nothing
-   shows as you type the password. Linux asks for it with `sudo`, and the
-   installer needs it once, to install a compiler.
+   shows as you type the password. Linux asks for it with `sudo`, when it
+   installs software (the one-line installer above needs it once, to
+   install a compiler).
 3. Open Ubuntu again from the Start menu, or from Windows Terminal's
    new-tab arrow. In Windows Terminal's Settings, **Startup**, **Default
    profile** makes Ubuntu the tab it opens.
-4. Paste the install line above into the Ubuntu terminal (Ctrl+V in Windows
-   Terminal).
+4. In the Ubuntu terminal, install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+   and then the program, as in [Install the program](#install-the-program)
+   (Ctrl+V pastes in Windows Terminal).
 
-Keep the code and data in your Linux home folder, where the installer puts
-them, not under `/mnt/c` (your C: drive): it's much faster, and git behaves.
+Keep your data repo in your Linux home folder, where `sim init` puts it, not
+under `/mnt/c` (your C: drive): it's much faster, and git behaves.
 To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For the notebooks, and a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` and `--chart` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
-extension, and open the code from Ubuntu with `code ~/retirement/analysis`.
+extension, and open a folder from Ubuntu with `code .` (in a clone of the
+code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
 Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
 the chart as a PNG and prints its path (see
