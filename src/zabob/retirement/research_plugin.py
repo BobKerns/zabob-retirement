@@ -14,7 +14,7 @@ only, no tax state. A household's choices live in the data repo, in
 An installed plugin runs wherever Claude Code does, usually with no data repo
 in sight, and Claude Code's own plugin options don't reach skill text. So the
 choices are fixed when the plugin is rendered: ``render`` copies the neutral
-plugin to ``out/finance-research/``, rewrites each skill's "Defaults for this
+plugin to ``out/finance-research/`` (installed: the user's data folder), rewrites each skill's "Defaults for this
 installation" block from ``defaults/<skill>.md.j2``, and adds the overlay
 files (``overlays/<language>/<skill>/``, ``overlays/state/<code>/<skill>/``)
 to the skill's ``references/``. ``install`` renders, then installs that copy
@@ -39,9 +39,11 @@ from typing import Any
 import click
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+from zabob.retirement.resources import CHECKOUT_DIR, data_home, shipped
+
 PLUGIN_NAME = "finance-research"
-SOURCE_DIR = REPO_ROOT / "plugins" / PLUGIN_NAME
+# A checkout's own plugins/, or the copy shipped in an installed wheel (#676).
+SOURCE_DIR = shipped("plugins") / PLUGIN_NAME
 
 
 def _main_checkout(root: Path) -> Path:
@@ -58,7 +60,14 @@ def _main_checkout(root: Path) -> Path:
 
 
 def default_out_dir() -> Path:
-    return _main_checkout(REPO_ROOT) / "out" / PLUGIN_NAME
+    """Where the rendered plugin goes: a checkout's main ``out/``, else the
+    user's data folder. Not the cache: Claude Code reads the installed copy
+    in place, so it must stay put until the next render."""
+    if CHECKOUT_DIR is not None:
+        return _main_checkout(CHECKOUT_DIR) / "out" / PLUGIN_NAME
+    return data_home(PLUGIN_NAME)
+
+
 CONFIG_FILENAME = "research.yaml"
 # The marketplace the rendered copy is installed from; distinct from the
 # repo's own "analysis" marketplace, which lists the neutral plugin.
@@ -363,7 +372,9 @@ _config_option = click.option(
 )
 _out_option = click.option(
     "--out", "out_dir", type=click.Path(file_okay=False, path_type=Path), default=None,
-    help="Where to write the rendered plugin (default: out/finance-research in the main checkout).",
+    help="Where to write the rendered plugin (default: out/finance-research in the main checkout, "
+         "or, installed, zabob-retirement/finance-research in your data folder: $XDG_DATA_HOME, "
+         "by default ~/.local/share).",
 )
 
 
@@ -387,8 +398,10 @@ def render_command(data_dir: Path | None, config_file: Path | None, out_dir: Pat
                    skill_zips: bool, neutral: bool) -> None:
     """Write the plugin configured by the data repo's research.yaml."""
     if neutral:
+        if CHECKOUT_DIR is None:
+            raise click.ClickException("--neutral rewrites the code checkout's plugin; this program is installed")
         changed = update_neutral()
-        click.echo("Updated " + ", ".join(str(p.relative_to(REPO_ROOT)) for p in changed) if changed
+        click.echo("Updated " + ", ".join(str(p.relative_to(CHECKOUT_DIR)) for p in changed) if changed
                    else "The repo's plugin is already a neutral render.")
         return
     config, where = _resolve_config(data_dir, config_file)

@@ -42,7 +42,7 @@ env_volume=analysis-videos-env
 # The checkout, mounted read-only over the image's /repo: piece by piece,
 # so the host's .venv (perhaps for another OS) stays out.
 MOUNTS=(src pyproject.toml uv.lock README.md PYPI.md LICENSE hatch_build.py .python-version templates historical_data
-        prototype_data notebooks scripts/videos docs/videos)
+        prototype_data notebooks plugins scripts/videos docs/videos)
 
 usage() {
     sed -n '2,23s/^# \{0,1\}//p' "$0"

@@ -1,6 +1,6 @@
 """Build hook: what a wheel needs that a checkout has beside ``src/`` (#662).
 
-- The checkout's ``templates/``, ``notebooks/`` and ``prototype_data/`` go into
+- The checkout's ``templates/``, ``notebooks/``, ``prototype_data/`` and ``plugins/`` go into
   the wheel as ``zabob/retirement/_shipped/``, where
   ``zabob.retirement.resources`` finds them when there is no checkout.
 - ``zabob/retirement/_build_info.py`` records the git commit the build came
@@ -22,7 +22,7 @@ from typing import Any
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
-SHIPPED = ("templates", "notebooks", "prototype_data")
+SHIPPED = ("templates", "notebooks", "prototype_data", "plugins")
 # The code a build's commit stamp vouches for; changes elsewhere (docs,
 # tests) don't make a build dirty.
 STAMPED = ("src", *SHIPPED, "pyproject.toml", "hatch_build.py")

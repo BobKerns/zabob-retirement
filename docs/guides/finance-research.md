@@ -26,14 +26,19 @@ That's why the plugin is opt-in: nothing loads until you install it.
 .venv/bin/analysis research-plugin install
 ```
 
+Installed with `uv tool install`, the command is `analysis research-plugin
+install`.
+
 `scripts/setup.sh` offers this once, defaulting to no, when `claude` is on
 your `PATH` (never under CI or an agent). The command reads your data repo's
 `research.yaml` (below), writes a configured copy of the plugin to
-`out/finance-research/` in the main checkout, and installs it for your user
-from there. It says which settings it used.
+`out/finance-research/` in the main checkout (installed with `uv tool
+install`, to `zabob-retirement/finance-research/` in your data folder:
+`$XDG_DATA_HOME`, by default `~/.local/share`), and
+installs it for your user from there. It says which settings it used.
 
-Claude Code reads the installed plugin in place, so don't delete
-`out/finance-research/`. After changing `research.yaml`, run the command
+Claude Code reads the installed plugin in place, so don't delete that
+folder. After changing `research.yaml`, run the command
 again (setup does, once the plugin is installed) and start a new Claude Code
 session.
 

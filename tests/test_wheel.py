@@ -24,7 +24,7 @@ def test_wheel_ships_the_checkout_folders(built_wheel: Path, repo_root: Path) ->
     with zipfile.ZipFile(built_wheel) as wheel:
         names = set(wheel.namelist())
         info = wheel.read("zabob/retirement/_build_info.py").decode()
-    for folder in ("templates", "notebooks", "prototype_data"):
+    for folder in ("templates", "notebooks", "prototype_data", "plugins"):
         tracked = subprocess.run(["git", "ls-files", folder], cwd=repo_root, capture_output=True, text=True,
                                  check=True).stdout.split()
         # Every tracked file ships (a link to a folder ships what it leads to).
@@ -32,6 +32,7 @@ def test_wheel_ships_the_checkout_folders(built_wheel: Path, repo_root: Path) ->
     assert SHIPPED + "templates/scenarios/t_empty/scenario.csv" in names
     assert SHIPPED + "notebooks/net_worth.ipynb" in names
     assert SHIPPED + "notebooks/docs/user-guide.md" in names
+    assert SHIPPED + "plugins/finance-research/skills/fund-tear-sheet/SKILL.md" in names
     assert not any("__pycache__" in n or ".ipynb_checkpoints" in n for n in names)
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True,
                           check=True).stdout.strip()
