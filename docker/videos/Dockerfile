@@ -99,12 +99,15 @@ RUN set -eu; \
         curl -fsSL -o "$ANALYSIS_VIDEO_CACHE/$f" "$KOKORO_RELEASE/$f"; \
     done
 
-# Chromium's system libraries, from the npm package of the Playwright the
-# project uses; Chromium itself goes in the volume (the entrypoint installs
-# it). /opt/pw-browsers/chromium is where the builder looks for it, and VHS
-# finds `chromium` on PATH: both point into the volume.
-RUN npx --yes "playwright@$PLAYWRIGHT_VERSION" install-deps chromium \
- && rm -rf /var/lib/apt/lists/* /root/.npm \
+# Chromium's system libraries, from the Python package of the Playwright the
+# project locks, at that exact version (#685: npm's playwright can lag PyPI's,
+# as 1.65.2 did), run with a throwaway uv cache and Python, since the image's
+# own uv paths are in the volume. Chromium itself goes in the volume (the
+# entrypoint installs it). /opt/pw-browsers/chromium is where the builder
+# looks for it, and VHS finds `chromium` on PATH: both point into the volume.
+RUN UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+        uvx --python 3.14 --from "playwright==$PLAYWRIGHT_VERSION" playwright install-deps chromium \
+ && rm -rf /var/lib/apt/lists/* /tmp/uv-cache /tmp/uv-python \
  && mkdir -p /opt/pw-browsers \
  && ln -s /opt/env/pw-browsers/chromium /opt/pw-browsers/chromium \
  && ln -s /opt/env/pw-browsers/chromium /usr/local/bin/chromium
