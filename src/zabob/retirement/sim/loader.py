@@ -5050,6 +5050,15 @@ def _validate_state_adjustments(
         # row's cap, so it needs one.
         if _check_yes(where, payload, "refundable", issues) and step != "credit":
             issues.append(f"{where}: refundable is for a credit; step is {step!r}")
+        # #610: an add-on to the standard deduction (DC's and Kansas's at
+        # 65) is figured before the year's income is known, so it takes no
+        # income test of its own: the standard deduction's phase-out applies.
+        if _check_yes(where, payload, "standard", issues):
+            if step != "deduction":
+                issues.append(f"{where}: standard is for a deduction; step is {step!r}")
+            if payload.get("income_limit") is not None:
+                issues.append(f"{where}: a standard deduction row takes no income_limit; "
+                              "the standard deduction's own phase-out applies to it")
         if _check_yes(where, payload, "less_ss", issues):
             if base != "income":
                 issues.append(f"{where}: less_ss is for base income; base is {base!r}")

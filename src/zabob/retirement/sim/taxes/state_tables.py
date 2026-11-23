@@ -216,8 +216,18 @@ class StateTablesYear(FederalStateYear):
         if not ty.has_table(itemized_aux):
             itemized_aux = "federal_deductions"
         itemized = common.itemized_deduction(ty, itemized_aux)
-        return {"standard_deduction": standard, "itemized_deduction": itemized,
+        # A table line that is part of the standard deduction (#610): DC's
+        # and Kansas's extra at 65 counts before the comparison, so it can
+        # make the standard deduction the larger, and a household that
+        # itemizes never gets it. Its own line shows what it added.
+        addons = self._standard_addons
+        standard += sum(addons.values())
+        return {**addons, "standard_deduction": standard, "itemized_deduction": itemized,
                 "deduction": max(standard, itemized)}
+
+    @property
+    def _standard_addons(self) -> dict[str, int]:
+        return {a.name: a.figure for a in self._adjustments if a.standard}
 
     def deductions_at(self, income: Income, basis: Basis) -> Mapping[str, int]:
         """:meth:`deductions`, with :meth:`itemized_lines` at the year's
@@ -397,7 +407,7 @@ class StateTablesYear(FederalStateYear):
         ``income``: of credits, the ``refundable`` ones or the others."""
         out = {}
         for a in self._adjustments:
-            if a.step != step or a.refundable != refundable:
+            if a.step != step or a.refundable != refundable or a.standard:
                 continue
             figure = a.figure
             if a.base == "federal_tax":
@@ -519,6 +529,8 @@ class StateTablesYear(FederalStateYear):
         itemized = deductions.get("itemized_deduction", 0)
         beside = common.split_cents(max(0, deductions["deduction"] - max(standard, itemized)), 2)
         itemized_by = common.apportion(itemized, agi)
+        addon_shares = {line: self._line_shares(line, amount)
+                        for line, amount in self._standard_addons.items()}
         others_by = dict.fromkeys(people, 0)
         for line, amount in joint.others.items():
             for p, share in self._line_shares(line, amount).items():
@@ -531,6 +543,9 @@ class StateTablesYear(FederalStateYear):
             # A state without a standard deduction of its own (only
             # exemptions) gives a spouse none either.
             own = self._spouse_standard(agi[p], fed_agi[p]) if has_standard else 0
+            # Each spouse's part of the joint return's add-ons to it (#610),
+            # by whose they are.
+            own += sum(addon_shares[line].get(p, 0) for line in addon_shares)
             deduction = max(own, itemized_by[p]) + beside[i]
             before_nol = agi[p] - deduction - others_by[p]
             used = common.nol_used(nol_left, before_nol, self._nol_limit)
