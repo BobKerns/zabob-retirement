@@ -980,7 +980,7 @@ Two mechanisms cover this, both posting **balance-neutral** `transfer_event` row
 | column | type | required | notes |
 | --- | --- | --- | --- |
 | `name` | text | ✓ | unique within scenario; identifies the row for `reason_id` provenance |
-| `from_account` | text | ✓ | mirrors `one_off_transfer`'s `account_1`. For a pure tax-bucket adjustment with no natural real-world transfer (e.g. a loss carryforward), use the same account for `from_account` and `to_account` — self-canceling, contributes only to the tax_character sum |
+| `from_account` | text | ✓ | mirrors `one_off_transfer`'s `account_1`. For a pure tax-bucket adjustment with no natural real-world transfer (e.g. a loss carryforward), use the same account for `from_account` and `to_account` — self-canceling, contributes only to the tax_character sum. A row from an `hsa` account's lot to the same lot with `ltcg` or `stcg` is instead that lot's withdrawal gain over basis ([#605](https://github.com/BobKerns/zabob-retirement/issues/605)), a loss negative: an `hsa_gain` row (`reason_kind='ytd'`), not a transfer, so only a state that taxes an HSA sees it, as it would the withdrawal's own (ADR-002) |
 | `from_lot` | text | | the lot of `from_account`, as for `from_lot` in §4.6 |
 | `to_account` | text | ✓ | mirrors `one_off_transfer`'s `account_2` |
 | `to_lot` | text | | the lot of `to_account` |
@@ -1429,9 +1429,9 @@ roll's first), and one of a year before that is dropped. So the
 rolled run taxes those years as the old one did; the rows are a projection,
 to be replaced with the actual figures (`sim ytd edit`), and carry no rule's
 tags or person. An HSA withdrawal's gain (`hsa_gain`, which only a state that
-taxes an HSA taxes) is not among them: no year-to-date row can carry one yet,
-so in such a state those months' HSA gains are missing from its tax of the
-year. Without them (no run reaches the month, or declined), it
+taxes an HSA taxes) is among them too, summed by year, lot and character, as
+a row from the HSA lot to itself
+([#605](https://github.com/BobKerns/zabob-retirement/issues/605)). Without them (no run reaches the month, or declined), it
 lists, within the same year, the year-to-date rows and `ytd_amount`s that
 now cover too few months, and for a start in a later year by April, what
 the prior year's April tax needs. A projected row stays the roll's only
@@ -1746,3 +1746,4 @@ Each entry changed this ADR's design. The sections it names were rewritten in pl
 - [#657](https://github.com/BobKerns/zabob-retirement/issues/657): `accounts.csv` gains the action `split` and `lot_splits.csv` divides one outside number among an account's lots; a new lot name at the holdings question can rename the account's one `default` lot (§4.17).
 - [#347](https://github.com/BobKerns/zabob-retirement/issues/347): `scenario edit` asks before making a scenario mix-in only, also given as options; removing every parent gives the mix-in description; `sim run` suggests only runnable scenarios; `ensemble create` notes mix-in only parents (§4.5).
 - [#297](https://github.com/BobKerns/zabob-retirement/issues/297): `scenario|ensemble rename` refuse, and don't complete, template scenarios (§7).
+- [#605](https://github.com/BobKerns/zabob-retirement/issues/605): a `year_to_date.csv` row from an HSA lot to itself with `ltcg`/`stcg` is an `hsa_gain`; `sim scenario roll` projects the skipped months' HSA gains that way (§4.10, §7).
