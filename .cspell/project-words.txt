@@ -228,6 +228,7 @@ kokoro
 Kolmogorov
 KPERS
 kstest
+kumo
 labelbottom
 labelcolor
 labelleft
