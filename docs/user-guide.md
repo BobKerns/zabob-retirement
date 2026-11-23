@@ -2419,8 +2419,11 @@ bar per class split by the group with `--by`, and a line per class with
 
 `--csv` or `--json` prints the rows behind the table instead, for a
 spreadsheet, a script or an AI assistant to read exactly. Every list and report
-above takes them, and so do `sim explain`, `sim compare`, `sim ensemble
-summary|compare|guard-rails|drift|spending` and `sim strategy log`. The fields
+above takes them, and so do `sim explain`, `sim compare`, `sim items`, every
+`sim ensemble` report (`summary`, `compare`, `guard-rails`, `drift`, `spending`,
+`sensitivity`, `draws`, `factors`), `sim scenario show`, `sim chain show`,
+`sim tags`, `sim lifespan tables|check`, `sim strategy kinds|log`,
+`sim tax kinds` and `sim builder status|log`. The fields
 are the table's column names, and the values aren't rounded: dollars to the
 cent, and shares and rates as fractions (`0.25`, not `25%`). A value read
 straight from one of your CSV files, such as a calendar row's amount, comes as

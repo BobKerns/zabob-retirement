@@ -248,7 +248,7 @@ def test_sim_ensemble_draws_lists_a_node_and_writes_csv(
     mc_batch: Path, runs_dir: Path, intent_dir: Path, tmp_path: Path,
 ) -> None:
     csv = tmp_path / "draws.csv"
-    output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--csv", str(csv))
+    output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--csv-file", str(csv))
     assert "0 (base)" in output and "$20,000" in output
     assert "wrote 7 member(s)" in output
     header = csv.read_text().splitlines()[0].split(",")

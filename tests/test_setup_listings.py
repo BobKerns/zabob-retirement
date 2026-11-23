@@ -4,6 +4,7 @@ scenario's merged rows with where they are defined."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -239,7 +240,7 @@ def test_scenario_show_marks_inherited_settings_and_finds_the_latest_run(
         "t_empty", "t_inflation_factors", "t_inflation_series", "t_market_factors", "t_market_series",
         "base", "retire_alice", "recipe", "child",
     ]
-    assert shown.reserve == ("$250,000.00", True)
+    assert shown.reserve == ("250000.00", True)  # as written; shown as $250,000.00
     assert shown.ensemble_size is not None and shown.ensemble_size.inherited
     assert shown.seed is not None and (shown.seed.value, shown.seed.inherited) == (7, False)
     assert shown.latest_run is not None
@@ -247,6 +248,8 @@ def test_scenario_show_marks_inherited_settings_and_finds_the_latest_run(
     output = sim("scenario", "show", "child", "--runs-dir", str(runs_dir)).output
     assert "ensemble size: 80 (inherited)" in output
     assert "reserve: $250,000.00 (inherited)" in output
+    (row,) = json.loads(sim("scenario", "show", "child", "--runs-dir", str(runs_dir), "--json").stdout)["rows"]
+    assert (row["reserve"], row["reserve_inherited"], row["ensemble_size"]) == (250000, True, 80)
     assert "seed: 7\n" in output
     assert "A child of the recipe." in output
 

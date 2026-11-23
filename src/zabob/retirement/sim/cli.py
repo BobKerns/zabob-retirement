@@ -3146,6 +3146,7 @@ def _echo_ensemble_rail_deltas(
          "give N, or put --top after SCENARIO_NAME, so the name isn't read as N.",
 )
 @_graph_options("the notebook's charts for it", after="the tables")
+@output.output_options
 def ensemble_sensitivity(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     mode: str | None, dollars: str, relative: bool, measure: str, years: str | None,
@@ -3280,7 +3281,7 @@ def ensemble_sensitivity(
          "values and scores.",
 )
 @click.option(
-    "--csv", "csv_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
+    "--csv-file", "csv_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
     help="Write the drawn members' values (member x node, display units) to this CSV.",
 )
 @click.option("--rebuild", is_flag=True, default=False,
@@ -3288,6 +3289,7 @@ def ensemble_sensitivity(
 @_graph_options("--node's draws and --pair's scores as the notebook's charts",
                 written="the chart (one --node or one --pair; in a pool, the first component's)",
                 after="the tables")
+@output.output_options
 def ensemble_draws(
     scenario_name: str | None, runs_dir: Path | None, intent_dir: Path | None,
     data_dir: Path | None, batch: str | None, mode: str | None, node: str | None,
@@ -3351,6 +3353,13 @@ def ensemble_draws(
             build_draws_db(batch_dir, intent_batch_dir(resolved_intent_dir, batch_dir))
         except EnsembleError as exc:
             raise click.ClickException(str(exc)) from None
+    if output.machine():
+        with open_draws_db(batch_dir) as con:
+            con.row_factory = sqlite3.Row
+            _emit_draws(con, path, node, pair_names)
+        if csv_file is not None:
+            output.note("--csv-file isn't written with --csv/--json: ask for it separately")
+        return
     _hold_tables()
     with open_draws_db(batch_dir) as con:
         con.row_factory = sqlite3.Row
@@ -3378,6 +3387,7 @@ def ensemble_draws(
               help="Print the tree's Mermaid source (to paste into markdown) instead.")
 @_graph_options("the factor tree", written="the factor tree", after="the table")
 @_ENSEMBLE_DATA_DIR_OPTION
+@output.output_options
 def ensemble_factors(
     scenario: str | None, with_varying: bool, as_mermaid: bool,
     as_graph: bool, graph_file: Path | None, data_dir: Path | None,
@@ -3402,11 +3412,14 @@ def ensemble_factors(
         raise click.UsageError("use one of --mermaid, --chart and --chart-file")
     if as_mermaid and with_varying:
         raise click.UsageError("--varying lists rows in a table; --mermaid prints only the tree")
+    if as_mermaid and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for the Mermaid source separately")
     data = _resolve_data_dir(data_dir)
     with _intent_db(data, scenario) as (con, name):
         tree = ft.factor_tree(con)
     if not tree.factors and not (with_varying and tree.varying):
-        click.echo(f"no latent factors in {name}")
+        output.note(f"no latent factors in {name}")
         return
     if as_mermaid:
         click.echo(ft.mermaid(tree))
@@ -3420,6 +3433,9 @@ def ensemble_factors(
     under: dict[str | None, list[ft.Varying]] = {}
     for node in tree.varying:
         under.setdefault(tree.factor_of(node.name), []).append(node)
+    if output.machine():
+        _emit_factor_tree(tree, under, name, with_varying=with_varying)
+        return
     table = Table(title=f"Factors in {escape(name)}", title_justify="left")
     for column in ("Factor", "ρ", "Rows", "Description"):
         table.add_column(column, justify="right" if column in ("ρ", "Rows") else "left")
@@ -3453,6 +3469,33 @@ def ensemble_factors(
             rows.add_section()
     click.echo()
     _print_wide(rows)
+
+
+def _emit_factor_tree(tree: Any, under: dict[str | None, list[Any]], name: str, *,
+                      with_varying: bool) -> None:
+    """``ensemble factors``' --csv or --json (#682): each factor with its
+    parent (the tree's shape, which the table draws by indenting), and with
+    ``with_varying`` each varying row with its factor and tree."""
+    factors = output.Rows(["factor", "parent", "via", "rho", "nu", "rows", "description"])
+    for factor, _depth in tree.walk():
+        factors.add(factor=factor.name, parent=factor.parent, via=list(factor.via), rho=factor.rho,
+                    nu=factor.nu, rows=len(under.get(factor.name, [])),
+                    description=factor.description or None)
+    tables: dict[str, output.Table] = {"factors": factors}
+    if with_varying:
+        rows = output.Rows(["row", "tree", "factor", "via", "rho_to_factor", "rho_to_tree",
+                            "varies", "distribution"])
+        for owner, nodes in under.items():
+            root = None if owner is None else tree.root(owner)
+            for node in nodes:
+                link = tree.links.get(node.name)
+                rows.add(row=node.name, tree=root, factor=owner,
+                         via=None if link is None or link.parent == owner else link.parent,
+                         rho_to_factor=None if owner is None else tree.rho(node.name, owner),
+                         rho_to_tree=None if root is None else tree.rho(node.name, root),
+                         varies=node.varies, distribution=node.distribution)
+        tables["varying"] = rows
+    output.emit(tables, title=f"factors in {name}", scenario=name)
 
 
 def _parse_pair(pair: str) -> tuple[str, str]:
@@ -3516,6 +3559,98 @@ def _draw_cell(unit: str, value: Any, *, spread: bool = False) -> str:
     if unit == "years":
         return f"{value:.1f}"
     return f"{value:+.2f}" if not spread else f"{value:.2f}"
+
+
+def _draw_value(unit: str, value: Any) -> Any:
+    """A display-unit value (``node_display``, ``draw_display``) as
+    --csv/--json give it: a percent as a fraction, as they give every rate
+    (#196); dollars, years and dates as displayed."""
+    return value / 100 if unit == "percent" and value is not None else value
+
+
+def _emit_draws(con: sqlite3.Connection, path: Path, node: str | None,
+                pair: tuple[str, str] | None) -> None:
+    """``ensemble draws``' --csv or --json (#682): the summary's checks,
+    pairs and scales, or --node's and --pair's draws."""
+    tables: dict[str, output.Table] = {}
+    if node is not None:
+        _check_draws_node(con, node)
+        draws = output.Rows(["component", "member", "is_base", "value", "u", "z", "noise", "quantile"])
+        for r in con.execute("SELECT * FROM draw_display WHERE node = ? "
+                             "ORDER BY component, member_index", (node,)):
+            draws.add(component=r["component"], member=r["member_index"], is_base=bool(r["is_base"]),
+                      value=_draw_value(r["unit"], r["value"]), u=r["u"], z=r["z"],
+                      noise=r["noise"], quantile=r["quantile"])
+        tables["draws"] = draws
+        tables["node"] = _draw_nodes(con, "name = ?", (node,))
+    if pair is not None:
+        a, b = pair
+        found = _check_draws_pair(con, a, b)
+        units = {r["name"]: r["unit"] for r in con.execute("SELECT name, unit FROM node_display")}
+        members = output.Rows(["component", "member", "is_base", "a_value", "a_score",
+                               "b_value", "b_score"])
+        for p in found:
+            for r in _pair_rows(con, a, b, p["component"]):
+                members.add(component=p["component"], member=r["member_index"],
+                            is_base=bool(r["is_base"]),
+                            a_value=_draw_value(units.get(a, ""), r["a_value"]), a_score=r["a_z"],
+                            b_value=_draw_value(units.get(b, ""), r["b_value"]), b_score=r["b_z"])
+        tables["pair_members"] = members
+        tables["pair"] = _draw_pairs(found)
+    if tables:
+        # The members' draws first: --csv prints the first table.
+        order = [t for t in ("draws", "pair_members", "node", "pair") if t in tables]
+        output.emit({t: tables[t] for t in order}, title="ensemble draws", node=node,
+                    a=pair and pair[0], b=pair and pair[1])
+        return
+    batch = con.execute("SELECT * FROM batch").fetchone()
+    members_ = con.execute("SELECT count(*), sum(status = 'succeeded') FROM member").fetchone()
+    # The pairs the table shows: every authored link, and an implied pair
+    # only when the batch missed it.
+    pairs = con.execute(
+        "SELECT * FROM node_pair WHERE kind = 'link' OR implied_rho < achieved_low "
+        "OR implied_rho > achieved_high ORDER BY component, kind = 'implied', a, b").fetchall()
+    implied = con.execute("SELECT count(*) FROM node_pair WHERE kind = 'implied'").fetchone()[0]
+    if implied:
+        output.note(f"({implied} implied pair(s) in all, in node_pair; given only when outside "
+                    "their interval)")
+    scales = output.from_rows(["tree", "members", "min", "mean", "max"], con.execute(
+        "SELECT tree_root, count(*), min(scale), avg(scale), max(scale) FROM tail_scale "
+        "WHERE year IS NULL GROUP BY tree_root ORDER BY tree_root").fetchall())
+    output.emit({"nodes": _draw_nodes(con, "1", ()), "pairs": _draw_pairs(pairs),
+                 "tail_scales": scales},
+                title="ensemble draws", ensemble=batch["ensemble_name"], batch=batch["batch"],
+                mode=batch["mode"], members=members_[0], succeeded=members_[1] or 0,
+                seed=batch["master_seed"], database=str(path))
+
+
+def _draw_nodes(con: sqlite3.Connection, where: str, args: tuple[Any, ...]) -> output.Rows:
+    """Each node (``where`` picks them) with its distribution and the check
+    of its draws: the expected median and SD beside the drawn members'."""
+    shown = output.Rows(["component", "node", "node_kind", "distribution", "unit", "median",
+                         "correlate_with", "rho", "n", "expected_p50", "drawn_p50",
+                         "expected_sd", "drawn_sd", "ks_u_p"])
+    checks = {(r["component"], r["node"]): r for r in con.execute("SELECT * FROM draw_check_display")}
+    for n in con.execute(f"SELECT * FROM node_display WHERE {where} "
+                         "ORDER BY component, node_kind = 'factor', name", args):
+        unit = n["unit"]
+        c = checks.get((n["component"], n["name"]))
+        checked = {k: None if c is None else _draw_value(unit, c[k])
+                   for k in ("expected_p50", "drawn_p50", "expected_sd", "drawn_sd")}
+        shown.add(component=n["component"], node=n["name"], node_kind=n["node_kind"],
+                  distribution=n["distribution"], unit="fraction" if unit == "percent" else unit,
+                  median=_draw_value(unit, n["median"]), correlate_with=n["correlate_with"],
+                  rho=n["rho"], n=None if c is None else c["n"], **checked,
+                  ks_u_p=None if c is None else c["ks_u_p"])
+    return shown
+
+
+def _draw_pairs(pairs: Iterable[sqlite3.Row]) -> output.Rows:
+    shown = output.Rows(["component", "a", "b", "kind", "implied_rho", "achieved_rho",
+                         "achieved_low", "achieved_high"])
+    for p in pairs:
+        shown.add(**{c: p[c] for c in shown.columns})
+    return shown
 
 
 def _echo_draws_summary(con: sqlite3.Connection, path: Path) -> None:
@@ -3613,12 +3748,19 @@ def _echo_component_draws(
                    "their interval)")
 
 
-def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
+def _check_draws_node(con: sqlite3.Connection, node: str) -> list[sqlite3.Row]:
+    """``node``'s rows of ``node_display``, one per pool component; a usage
+    error when the batch doesn't draw it."""
     found = con.execute("SELECT * FROM node_display WHERE name = ? ORDER BY component",
                         (node,)).fetchall()
     if not found:
         known = [name for (name,) in con.execute("SELECT DISTINCT name FROM node ORDER BY name")]
         raise click.UsageError(f"--node: {node!r} isn't drawn in this batch; it draws {', '.join(known)}")
+    return found
+
+
+def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
+    found = _check_draws_node(con, node)
     pooled = con.execute("SELECT count(DISTINCT component) FROM member").fetchone()[0] > 1
     for n in found:
         unit = n["unit"]
@@ -3636,9 +3778,9 @@ def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
         ])
 
 
-def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
-    """--pair: the pair's implied and achieved rho, then each member's
-    values and scores, per pool component that correlates them."""
+def _check_draws_pair(con: sqlite3.Connection, a: str, b: str) -> list[sqlite3.Row]:
+    """The pair's rows of ``node_pair``, one per pool component that
+    correlates them; a usage error, saying what each pairs with, when none does."""
     found = con.execute(
         "SELECT * FROM node_pair WHERE (a = ? AND b = ?) OR (a = ? AND b = ?) ORDER BY component",
         (a, b, b, a)).fetchall()
@@ -3652,6 +3794,26 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
             "WHERE a = ? OR b = ? ORDER BY kind = 'implied', other", (a, a, a))]
         hint = f"; {a} pairs with {', '.join(partners)}" if partners else f"; {a} pairs with nothing"
         raise click.UsageError(f"--pair: {a!r} and {b!r} aren't a correlated pair in this batch{hint}")
+    return found
+
+
+def _pair_rows(con: sqlite3.Connection, a: str, b: str, component: str) -> list[sqlite3.Row]:
+    """Each member's values and scores of ``a`` and ``b`` in ``component``."""
+    return con.execute(
+        "SELECT member_index, max(is_base) AS is_base, "
+        "max(CASE WHEN node = ? THEN value END) AS a_value, "
+        "max(CASE WHEN node = ? THEN z END) AS a_z, "
+        "max(CASE WHEN node = ? THEN value END) AS b_value, "
+        "max(CASE WHEN node = ? THEN z END) AS b_z "
+        "FROM draw_display WHERE component = ? AND node IN (?, ?) "
+        "GROUP BY member_index ORDER BY member_index",
+        (a, a, b, b, component, a, b)).fetchall()
+
+
+def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
+    """--pair: the pair's implied and achieved rho, then each member's
+    values and scores, per pool component that correlates them."""
+    found = _check_draws_pair(con, a, b)
     pooled = con.execute("SELECT count(DISTINCT component) FROM member").fetchone()[0] > 1
     units = {r["name"]: r["unit"] for r in con.execute("SELECT name, unit FROM node_display")}
     for p in found:
@@ -3660,15 +3822,7 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
                     f", achieved {p['achieved_rho']:+.2f} "
                     f"(95% interval {p['achieved_low']:+.2f} to {p['achieved_high']:+.2f})")
         click.echo(f"{a} ~ {b}{where}: {p['kind']}, implied rho {p['implied_rho']:+.2f}{achieved}")
-        rows = con.execute(
-            "SELECT member_index, max(is_base) AS is_base, "
-            "max(CASE WHEN node = ? THEN value END) AS a_value, "
-            "max(CASE WHEN node = ? THEN z END) AS a_z, "
-            "max(CASE WHEN node = ? THEN value END) AS b_value, "
-            "max(CASE WHEN node = ? THEN z END) AS b_z "
-            "FROM draw_display WHERE component = ? AND node IN (?, ?) "
-            "GROUP BY member_index ORDER BY member_index",
-            (a, a, b, b, p["component"], a, b)).fetchall()
+        rows = _pair_rows(con, a, b, p["component"])
         _echo_table(["member", a, b, f"{a} score", f"{b} score"], [
             [f"{r['member_index']}{' (base)' if r['is_base'] else ''}",
              _draw_cell(units.get(a, ""), r["a_value"]), _draw_cell(units.get(b, ""), r["b_value"]),
@@ -3741,6 +3895,14 @@ def _report_attribution(
         except EnsembleError as exc:
             raise click.ClickException(str(exc)) from None
         draw(fig)
+    if output.machine():
+        # One row per year and key, a column per quantile, as each year's table.
+        frame = pd.concat({f"@{q:g}": t.loc[[y for y in years if y in t.index]].stack()
+                           for q, t in by_quantile.items()}, axis=1)
+        frame.index.names = ["year", "key"]
+        output.emit(frame, title=f"attribution {scenario_name}", batch=batch_dir.name, row=row,
+                    by=by, dollars=dollar_mode.value, relative=relative)
+        return
     unit = "% of base" if relative else (
         "CPI-constant $" if dollar_mode == DollarMode.CPI_CONSTANT else "nominal $"
     )
@@ -3781,12 +3943,12 @@ def _report_correlation(
     table, by = report.table, report.by
     n = int(table["n"].iloc[0])
     years = _report_years(batch_dir, [int(y) for y in table["year"].unique()], years)
-    click.echo(
+    output.note(
         f"correlation {scenario_name} ({batch_dir.name}): {measure}, {n} drawn member(s) "
         "(member 0 excluded)"
     )
     if report.correlated:
-        click.echo(
+        output.note(
             "  note: this batch's rows are correlated (ADR-008), so a row's rho includes its "
             "correlates' effects; rows are ranked and pinned by SRRC, which holds the others fixed"
         )
@@ -3795,10 +3957,21 @@ def _report_correlation(
     # there's no fixed count to warn against; its intervals speak for it.
     needed = sensitivity.required_members(negligible)
     if by == "rho" and n < needed:
-        click.echo(
+        output.note(
             f"  warning: {n} members can't call a row negligible at {negligible:.0%}; "
             f"that needs about {needed} -- expect 'inconclusive'"
         )
+    if output.machine():
+        status = sensitivity.classify(table, negligible, by=by)
+        statuses = output.Rows(["row", "status"])
+        for name, value in status.items():
+            statuses.add(row=name, status=value)
+        output.emit({"rows": table[table["year"].isin(years)], "scores": report.scores,
+                     "status": statuses},
+                    title=f"correlation {scenario_name}", batch=batch_dir.name, measure=measure,
+                    dollars=dollar_mode.value, members=n, correlated=report.correlated,
+                    ranked_by=by, negligible=negligible)
+        return
     if not report.scores.empty:
         click.echo("\n  correlations achieved (rho from the scores' Kendall tau) vs expected:")
         for _, pair in report.scores.iterrows():
@@ -3875,6 +4048,18 @@ def _report_oat(
     failed = sorted(stem for stem, status in statuses.items() if status != "succeeded")
     years = _report_years(batch_dir, [int(y) for y in deltas["year"].unique()], years)
     factors = sensitivity.factor_rows(deltas)
+    if output.machine():
+        rows = pd.concat({year: sensitivity.oat_table(deltas, year, measure=measure, relative=relative)
+                          for year in years}, names=["year", "row"])
+        ranks = sensitivity.rank_by_year(deltas, measure=measure, relative=relative, value="rank")
+        ranks = ranks.rename_axis("row").rename(columns=str)
+        output.emit({"rows": rows, "ranks": ranks},
+                    title=f"sensitivity {scenario_name}", batch=batch_dir.name, measure=measure,
+                    dollars=dollar_mode.value, relative=relative,
+                    succeeded=len(statuses) - len(failed), failed={s: statuses[s] for s in failed},
+                    negligible=negligible,
+                    pin_candidates=sensitivity.pin_candidates(deltas, negligible, measure=measure))
+        return
     unit = "% of base" if relative else (
         "CPI-constant $" if dollar_mode == DollarMode.CPI_CONSTANT else "nominal $"
     )
@@ -3962,6 +4147,13 @@ def _report_row(
     )
     label = sensitivity.row_label(row, sensitivity.factor_rows(deltas))
     target = mine["target"].iloc[0]
+    if output.machine():
+        frame = grid.reindex(index=shown).rename_axis("year", axis=0).rename_axis(None, axis=1)
+        frame.columns = [f"@{q:g}" for q in frame.columns]
+        output.emit(frame, title=f"row {scenario_name}", batch=batch_dir.name, row=row,
+                    target=target, measure=measure, dollars=dollar_mode.value, relative=relative,
+                    moved_to={f"{q:g}": v for q, v in moved_to.items()})
+        return
     click.echo(f"row {scenario_name} ({batch_dir.name}): {label} ({target}), "
                f"{measure} vs. the base, {unit}")
     click.echo("  moved to: " + ", ".join(f"q={q:g} {v}" for q, v in moved_to.items()))
@@ -5711,6 +5903,7 @@ def switch_command(scenario: str | None, data_dir: Path | None) -> None:
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Directory to search for the latest run.")
+@output.output_options
 def items(
     accounts: tuple[str, ...],
     lot: str | None,
@@ -5789,14 +5982,22 @@ def items(
         )
     subkinds = known["subkind"].to_dict()
 
-    click.echo(f"run: {runfile}")
+    output.note(f"run: {runfile}")
     window = f"{first or 'start'} through {end or 'end'}"
     if len(accounts) == 1:
-        click.echo(f"account: {accounts[0]}{f' (lot {lot})' if lot else ''}  window: {window}")
+        output.note(f"account: {accounts[0]}{f' (lot {lot})' if lot else ''}  window: {window}")
     else:
-        click.echo(f"accounts: {', '.join(accounts) or 'all'}  window: {window}")
+        output.note(f"accounts: {', '.join(accounts) or 'all'}  window: {window}")
     if table.empty:
-        click.echo("(no matching ledger events)")
+        output.note("(no matching ledger events)")
+        return
+    if output.machine():
+        shown = table if not limit else table.head(limit)
+        output.emit(shown, title="ledger events", run=str(runfile), events=len(table),
+                    accounts=list(accounts), lot=lot, start=first and first.isoformat(), end=end)
+        if len(shown) < len(table):
+            output.note(f"gave the first {len(shown):,} of {len(table):,} events: narrow them "
+                        "with the filters, or pass --limit 0 for all")
         return
 
     from rich.table import Table
@@ -15333,6 +15534,7 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+@output.output_options
 def chain_show_command(
     names: tuple[str, ...], as_mermaid: bool, as_graph: bool, graph_file: Path | None,
     with_rules: bool, depth: chain_map.Depth | None, scenario: str | None, data_dir: Path | None,
@@ -15376,7 +15578,13 @@ def chain_show_command(
     if not names:
         roots = sorted(cmap.steps)
     if not roots:
-        click.echo(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        return
+    if output.machine():
+        if as_mermaid:
+            raise click.UsageError(f"--{output.current()} prints the data alone; "
+                                   "ask for the Mermaid source separately")
+        output.emit(_chain_tables(cmap, roots), title=f"chains in {ref.name}", scenario=ref.name)
         return
     if as_mermaid:
         click.echo(chain_map.mermaid(cmap, roots, rules=with_rules, depth=depth or "all"))
@@ -15391,6 +15599,46 @@ def chain_show_command(
         console.print(chain_map.chain_tree(cmap, root))
         for use in cmap.uses.get(root, []):
             console.print(f"  {chain_map.use_text(cmap, use)}", style="dim", markup=False)
+
+
+def _chain_tables(cmap: chain_map.ChainMap, roots: list[str]) -> dict[str, output.Table]:
+    """What ``sim chain show`` draws as trees, as tables (#682): the steps
+    of ``roots`` and every chain under them, the policies of the lots they
+    reach, and what uses each root. A share is a fraction of what's left."""
+    def label(chain: str | None) -> str | None:
+        return None if chain is None else cmap.label(chain)
+
+    def dollars(cents: int | None) -> float | None:
+        return None if cents is None else cents / 100
+
+    reached = list(dict.fromkeys(node for root in roots for node in cmap.descendants(root)))
+    steps = output.Rows(["chain", "role", "step", "target", "target_is_chain", "share",
+                         "maximum", "series", "cadence"])
+    lots = output.Rows(["lot_chain", "account", "lot", "minimum", "maximum", "refill_chain",
+                        "refill_target", "refill_amount", "overflow_chain"])
+    for node in reached:
+        for step in cmap.steps.get(node, ()):
+            steps.add(chain=node, role=cmap.roles.get(node), step=step.order,
+                      target=cmap.label(step.target), target_is_chain=cmap.is_interior(step.target),
+                      share=step.percent_micros / 1_000_000,
+                      maximum=dollars(step.maximum_cents), series=step.series, cadence=step.cadence)
+        if node in cmap.leaves:
+            account, lot = cmap.leaves[node]
+            policy = cmap.policies.get(node)
+            lots.add(lot_chain=cmap.label(node), account=account, lot=lot,
+                     **({} if policy is None else dict(
+                         minimum=policy.minimum_cents / 100, maximum=dollars(policy.maximum_cents),
+                         refill_chain=label(policy.refill_chain),
+                         refill_target=dollars(policy.refill_target_cents),
+                         refill_amount=dollars(policy.refill_amount_cents),
+                         overflow_chain=label(policy.overflow_chain))))
+    uses = output.Rows(["chain", "use", "by", "detail"])
+    for root in roots:
+        for use in cmap.uses.get(root, []):
+            uses.add(chain=root, use=use.kind, by=use.by,
+                     detail=(cmap.label(use.detail) if use.kind in ("draw", "sweep") else use.detail)
+                     or None)
+    return {"steps": steps, "lots": lots, "uses": uses}
 
 
 def _draw_chain_graph(source: str, graph_file: Path | None) -> None:
@@ -17064,6 +17312,7 @@ def scenario_create(
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
 @click.option("--role", default=None, help="Restrict to a single role.")
+@output.output_options
 def tags_group_command(
     ctx: click.Context,
     scenario: str | None,
@@ -17077,7 +17326,10 @@ def tags_group_command(
     with open_scenario(data_dir_p, _resolve_scenario(data_dir_p, scenario).name) as sc:
         df = sc.list_tags(role=role)
     if df.empty:
-        click.echo("(no tags)")
+        output.note("(no tags)")
+        return
+    if output.machine():
+        output.emit(df, title="tags", role=role)
         return
     click.echo(f"{'tag':<40}  {'accts':>5}  {'sched':>5}  {'cal':>4}")
     for r in named_rows(df, index=False):
@@ -17093,6 +17345,7 @@ def tags_group_command(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def tags_items(
     tag_token: str | None,
     scenario: str | None,
@@ -17108,7 +17361,7 @@ def tags_items(
     if tag_token is None:
         choices = names.tag_tokens(data_dir_p, scenario_name)
         while len(answer := _ask_tags((), choices)) != 1:
-            click.echo("  one tag: role:name, or role:* for the whole role")
+            output.note("  one tag: role:name, or role:* for the whole role")
         tag_token = answer[0]
     role, _, name = tag_token.partition(":")
     if name != "*":
@@ -17120,18 +17373,23 @@ def tags_items(
             raise click.ClickException("exactly one tag token expected")
     elif not role:
         raise click.ClickException("wildcard needs a role, e.g. 'estimate:*'")
+    shown = output.Rows(["item", "name", "date"])
     with open_scenario(data_dir_p, scenario_name) as sc:
-        found = False
         for it in ("account", "scheduled", "calendar_event"):
             df = sc.items(it, tags=tag_token)  # type: ignore[arg-type]
-            if df.empty:
-                continue
-            found = True
-            label_col = "date" if it == "calendar_event" else "name"
             for row in named_rows(df, index=False):
-                click.echo(f"{it:<14}  {getattr(row, label_col)}")
-        if not found:
-            click.echo(f"(tag {tag_token} not present)")
+                # A calendar event is known by its date (its name is optional).
+                shown.add(item=it, name=getattr(row, "name", None) or None,
+                          date=getattr(row, "date", None) if it == "calendar_event" else None)
+    if not shown:
+        output.note(f"(tag {tag_token} not present)")
+        return
+    if output.machine():
+        output.emit(shown, title=f"items tagged {tag_token}", scenario=scenario_name, tag=tag_token)
+        return
+    for row in shown.rows:
+        label = row["date"] if row["item"] == "calendar_event" else row["name"]
+        click.echo(f"{row['item']:<14}  {label}")
 
 
 # ---------- renames shared across scenarios (#177) ----------
@@ -19445,6 +19703,7 @@ def _life_tables(data: Path) -> list[tuple[Any, str, dict[str, Any], dict[str, l
 
 @lifespan_tables_group_command.command("tables")
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def lifespan_tables_command(data_dir: Path | None) -> None:
     """List every life table and its values at each age.
 
@@ -19461,6 +19720,20 @@ def lifespan_tables_command(data_dir: Path | None) -> None:
     from zabob.retirement.sim.lifespan_tables import SEXES
 
     found = _life_tables(_resolve_data_dir(data_dir))
+    if output.machine():
+        # The values one row per table, sex and age, rather than a column
+        # per table and sex: the fields stay the same whatever tables there are.
+        listed = output.Rows(["table", "location", "effective", "ages"])
+        by_age = output.Rows(["table", "location", "sex", "age", "q", "expected"])
+        for each, effective, by_sex, expected in found:
+            listed.add(table=each.label, location=each.location, effective=effective,
+                       ages=max(len(t.q) for t in by_sex.values()))
+            for sex, table in by_sex.items():
+                for age, q in enumerate(table.q):
+                    by_age.add(table=each.label, location=each.location, sex=SEXES[sex], age=age, q=q,
+                               expected=expected[sex][age])
+        output.emit({"files": listed, "values": by_age}, title="life tables")
+        return
     files = Table(title="life tables", header_style="bold")
     for column in ("Table", "Location", "Effective", "Ages"):
         files.add_column(column)
@@ -19489,6 +19762,7 @@ def lifespan_tables_command(data_dir: Path | None) -> None:
 @lifespan_tables_group_command.command("check")
 @click.argument("age", type=float, required=False)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def lifespan_check_command(age: float | None, data_dir: Path | None) -> None:
     """Show each life table's values at AGE, for each sex.
 
@@ -19504,13 +19778,20 @@ def lifespan_check_command(age: float | None, data_dir: Path | None) -> None:
 
     data = _resolve_data_dir(data_dir)
     if age is None:
-        age = click.prompt("age", type=float)
+        age = click.prompt("age", type=float, err=output.machine())
     if not 0 <= age <= registries.MAX_AGE_AT_DEATH:
         raise click.BadParameter(f"must be from 0 to {registries.MAX_AGE_AT_DEATH:g}",
                                  param_hint="AGE")
     frame = at_age_frame(data, age)
     if frame.empty:
         raise click.ClickException(f"no life tables under templates/aux or {data}")
+    if output.machine():
+        # A row per table and sex: the fields stay the same whatever sexes a table has.
+        shown = (frame.stack("sex", future_stack=True).dropna(how="all")
+                 .rename(columns={"years left": "years_left"}).rename_axis(None, axis=1))
+        output.emit(shown[["q", "expected", "years_left"]], title=f"life tables at age {age:g}",
+                    age=age)
+        return
     table = Table(title=f"life tables at age {age:g}", header_style="bold")
     for column in ("Table", "Location"):
         table.add_column(column)
@@ -21791,6 +22072,7 @@ def deduction_delete(
 @_LISTING_DATA_DIR_OPTION
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Where run files are (default: state/runs beside the data repo).")
+@output.output_options
 def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None) -> None:
     """Show scenario NAME (default: the current one): its description,
     lineage, dates, seed, ensemble size, reserve, and latest run.
@@ -21800,6 +22082,9 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, name)
     shown = setup_listings.scenario_show(data, ref.path, _resolve_runs_dir(runs_dir, data))
+    if output.machine():
+        _emit_scenario_show(shown)
+        return
 
     def mark(value: object, inherited: bool) -> str:
         return f"{value} (inherited)" if inherited else str(value)
@@ -21819,7 +22104,7 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     size = shown.ensemble_size
     click.echo(f"  ensemble size: {mark(size.value, size.inherited) if size else '0 (not an ensemble)'}")
     reserve = shown.reserve
-    click.echo(f"  reserve: {mark(*reserve) if reserve else '(not set)'}")
+    click.echo(f"  reserve: {mark(setup_listings.reserve_text(reserve[0]), reserve[1]) if reserve else '(not set)'}")
     if shown.latest_run is None:
         click.echo("  latest run: none")
     else:
@@ -21831,6 +22116,37 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     if shown.description:
         click.echo()
         click.echo(readme.relevel_heading(shown.description, 1))
+
+
+def _emit_scenario_show(shown: setup_listings.ScenarioShow) -> None:
+    """``scenario show``'s --csv or --json: one row, its fields named as
+    ``scenario list``'s are (#682)."""
+    reserve, reserve_inherited = shown.reserve or (None, False)
+    row = output.Rows([
+        "scenario", "folder", "parent", "mixins", "load_order", "start", "start_inherited",
+        "end", "end_inherited", "seed", "seed_inherited", "ensemble_size",
+        "ensemble_size_inherited", "reserve", "reserve_inherited", "latest_run",
+        "latest_run_time", "latest_batch", "latest_batch_time", "description",
+    ])
+    run, run_time = shown.latest_run or (None, None)
+    batch, batch_time = shown.latest_batch or (None, None)
+    row.add(
+        scenario=shown.name, folder=str(shown.path), parent=shown.parent, mixins=shown.mixins,
+        load_order=shown.load_order,
+        start=shown.start and shown.start.month, start_inherited=bool(shown.start and shown.start.inherited),
+        end=shown.end and shown.end.month, end_inherited=bool(shown.end and shown.end.inherited),
+        seed=shown.seed and shown.seed.value, seed_inherited=bool(shown.seed and shown.seed.inherited),
+        ensemble_size=shown.ensemble_size and shown.ensemble_size.value,
+        ensemble_size_inherited=bool(shown.ensemble_size and shown.ensemble_size.inherited),
+        # An amount in dollars; one that isn't an amount, as written.
+        reserve=None if reserve is None else
+        (dollars if (dollars := setup_listings.reserve_dollars(reserve)) is not None else str(reserve)),
+        reserve_inherited=reserve_inherited,
+        latest_run=run and str(run), latest_run_time=run_time,
+        latest_batch=batch and str(batch), latest_batch_time=batch_time,
+        description=shown.description or None,
+    )
+    output.emit(row, title=f"scenario {shown.name}")
 
 
 # ---------- sim invest (#217) ----------
@@ -22503,6 +22819,7 @@ def builder_series(scenario_name: str | None, data_dir: Path | None) -> None:
 
 @builder_group.command(name="status")
 @_BUILDER_DATA_DIR
+@output.output_options
 def builder_status(data_dir: Path | None) -> None:
     """What the builder is doing: running or not, why it's off, the build in
     progress, the queue, what waits on dirty data, and recent failures."""
@@ -22510,65 +22827,91 @@ def builder_status(data_dir: Path | None) -> None:
 
     resolved = _builder_data_dir(data_dir)
     paths = builder.BuilderPaths.for_data(resolved)
+    jobs = output.Rows(["job", "state", "since", "detail"])
     if builder.read_config(paths) is None:
+        if output.machine():
+            output.emit({"jobs": jobs}, title="builder status", installed=False)
+            return
         click.echo("background builds aren't installed here (sim builder install)")
         return
-    if builder.switched_off():
-        click.echo("background builds are off here (ANALYSIS_BUILDER=off)")
+    switched_off = builder.switched_off()
+    if switched_off:
+        output.note("background builds are off here (ANALYSIS_BUILDER=off)")
     config = builder.read_config(paths) or {}
     from zabob.retirement.resources import home_checkout
 
     code = home_checkout(config.get("code_dir") or "")
     trees, reason = builder.main_check(builder.config_branch(config), code)
     if trees is None:
-        click.echo(f"disabled: {reason}")
+        output.note(f"disabled: {reason}")
     # Said whether or not it is on: pulling is what brings the newer code (#306).
     if behind := builder.behind_upstream(builder.config_branch(config), code):
-        click.echo(f"behind: {behind.describe()} (git pull, on {behind.branch}, to build with it)")
+        output.note(f"behind: {behind.describe()} (git pull, on {behind.branch}, to build with it)")
     status = builder.read_status(paths)
     alive = builder.daemon_alive(paths)
+    if alive:
+        if current := status.get("current"):
+            jobs.add(job=current.get("job") or current["scenario"], state="building",
+                     since=datetime.fromtimestamp(current["started"], UTC))
+        for queued in status.get("queue") or []:
+            jobs.add(job=queued, state="queued")
+    for name, why in sorted((status.get("waiting") or {}).items()):
+        jobs.add(job=name, state="waiting", detail=why)
+    for name, failed in sorted((status.get("failed") or {}).items()):
+        jobs.add(job=name, state="failed", detail=failed.get("message"))
+    schedules = _builder_schedules(config, resolved)
+    if output.machine():
+        output.emit(
+            {"jobs": jobs}, title="builder status", installed=True, switched_off=switched_off,
+            disabled=reason if trees is None else None,
+            behind=behind.describe() if behind else None, running=alive,
+            state=status.get("state", "running") if alive else "not running",
+            pid=status.get("pid") if alive else None, **schedules, log=str(paths.log_dir))
+        return
     state = f"{status.get('state', 'running')}, pid {status.get('pid')}" if alive else "not running"
     click.echo(f"builder: {state}")
     if alive:
-        current = status.get("current")
-        if current:
-            started = datetime.fromtimestamp(current["started"], UTC).strftime("%H:%M:%SZ")
-            click.echo(f"building: {current.get('job') or current['scenario']} (since {started})")
-        queue = status.get("queue") or []
+        for job in jobs.rows:
+            if job["state"] == "building":
+                started = datetime.fromisoformat(job["since"]).strftime("%H:%M:%SZ")
+                click.echo(f"building: {job['job']} (since {started})")
+        queue = [job["job"] for job in jobs.rows if job["state"] == "queued"]
         click.echo(f"queue: {', '.join(queue) if queue else '(empty)'}")
-    for name, why in sorted((status.get("waiting") or {}).items()):
-        click.echo(f"waiting: {name} ({why})")
-    for name, failed in sorted((status.get("failed") or {}).items()):
-        click.echo(f"failed: {name}: {failed.get('message')}")
-    from zabob.retirement.sim import price_schedule
+    for job in jobs.rows:
+        if job["state"] in ("waiting", "failed"):
+            click.echo(f"waiting: {job['job']} ({job['detail']})" if job["state"] == "waiting"
+                       else f"failed: {job['job']}: {job['detail']}")
+    for lines in schedules.values():
+        for line in lines:
+            click.echo(line)
+    click.echo(f"log: {paths.log_dir} (sim builder log)")
+
+
+def _builder_schedules(config: dict[str, Any], data: Path) -> dict[str, list[str]]:
+    """``builder status``'s lines on fetching prices, rolling and research,
+    by schedule."""
+    from zabob.retirement.sim import price_schedule, research_schedule, roll_schedule
 
     if price_schedule.enabled(config):
-        for line in price_schedule.describe(price_schedule.read_state(resolved), datetime.now(UTC)):
-            click.echo(line)
+        prices = list(price_schedule.describe(price_schedule.read_state(data), datetime.now(UTC)))
     elif price_schedule.switched_off():
-        click.echo(f"prices: not fetched ({price_schedule.SWITCH_ENV}=off)")
+        prices = [f"prices: not fetched ({price_schedule.SWITCH_ENV}=off)"]
     else:
-        click.echo("prices: not fetched (sim builder install --prices to start)")
-    from zabob.retirement.sim import roll_schedule
-
+        prices = ["prices: not fetched (sim builder install --prices to start)"]
     if roll_schedule.enabled(config):
-        for line in roll_schedule.describe(roll_schedule.read_state(resolved), config, resolved):
-            click.echo(line)
+        roll = list(roll_schedule.describe(roll_schedule.read_state(data), config, data))
     elif roll_schedule.switched_off():
-        click.echo(f"roll: off ({roll_schedule.SWITCH_ENV}=off)")
+        roll = [f"roll: off ({roll_schedule.SWITCH_ENV}=off)"]
     else:
-        click.echo("roll: off (sim builder install --roll to start)")
-    from zabob.retirement.sim import research_schedule
-
+        roll = ["roll: off (sim builder install --roll to start)"]
     if research_schedule.enabled(config):
-        for line in research_schedule.describe(research_schedule.read_state(resolved), resolved,
-                                               datetime.now(UTC), claude=config.get("claude")):
-            click.echo(line)
+        research = list(research_schedule.describe(research_schedule.read_state(data), data,
+                                                   datetime.now(UTC), claude=config.get("claude")))
     elif research_schedule.switched_off():
-        click.echo(f"research: off ({research_schedule.SWITCH_ENV}=off)")
+        research = [f"research: off ({research_schedule.SWITCH_ENV}=off)"]
     else:
-        click.echo("research: off (sim builder install --research to start)")
-    click.echo(f"log: {paths.log_dir} (sim builder log)")
+        research = ["research: off (sim builder install --research to start)"]
+    return {"prices": prices, "roll": roll, "research": research}
 
 
 @builder_group.command(name="log")
@@ -22583,6 +22926,7 @@ def builder_status(data_dir: Path | None) -> None:
               help="Show each build's output (the indented lines).")
 @click.option("-f", "--follow", is_flag=True, default=False,
               help="Oldest first, then print what is added until Ctrl-C.")
+@output.output_options
 def builder_log(
     data_dir: Path | None, count: int | None, since: str | None,
     show_all: bool, verbose: bool, follow: bool,
@@ -22599,6 +22943,9 @@ def builder_log(
 
     if show_all and (count is not None or since is not None):
         raise click.UsageError("--all shows every record; leave out -n and --since")
+    if follow and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the records there are; "
+                               "--follow waits for more")
     window = None
     if not show_all and (since is not None or count is None):
         try:
@@ -22615,11 +22962,19 @@ def builder_log(
     if count is not None:
         chosen = chosen[-count:]
     if not records and not follow:
-        click.echo(f"(no log yet: {paths.log_dir})")
+        output.note(f"(no log yet: {paths.log_dir})")
         return
     if not chosen and not follow:
         older = "-n N or -a" if window is not None else "-a"
-        click.echo(f"(nothing in the log since {since or '1 hour'} ago; {older} shows older records)")
+        output.note(f"(nothing in the log since {since or '1 hour'} ago; {older} shows older records)")
+        return
+    if output.machine():
+        shown = output.Rows(["at", "event", "output"])
+        for i, record in reversed(chosen):
+            # The lines the table shows under the event, without its indent.
+            lines = blog.render(record, verbose, tails.get(i))[1:]
+            shown.add(at=record.at, event=record.text, output=[ln.removeprefix(blog.INDENT) for ln in lines])
+        output.emit(shown, title="builder log", log=str(paths.log_dir))
         return
     for i, record in (chosen if follow else reversed(chosen)):
         for line in blog.render(record, verbose, tails.get(i)):
@@ -22649,22 +23004,45 @@ def _strategy_kinds(data: Path) -> strategy_code.StrategyKinds:
 @strategy_group_command.command("kinds")
 @click.argument("kind", required=False, type=completion.STRATEGY_KIND)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def strategy_kinds_command(kind: str | None, data_dir: Path | None) -> None:
     """List the strategy kinds: the built-ins and the data repo's
     strategies/ modules, each with what it does and its parameters. With
     KIND, just that one."""
     kinds = _strategy_kinds(_resolve_data_dir(data_dir))
     _echo_kinds(kinds, kind, "strategy",
-                lambda cls: f"hooks: {', '.join(sorted(cls.hooks))}")
+                lambda cls: f"hooks: {', '.join(sorted(cls.hooks))}",
+                lambda cls: {"hooks": sorted(cls.hooks)})
 
 
-def _echo_kinds(kinds: Any, kind: str | None, what: str, about: Callable[[Any], str]) -> None:
+def _echo_kinds(kinds: Any, kind: str | None, what: str, about: Callable[[Any], str],
+                facts: Callable[[Any], dict[str, Any]]) -> None:
     """``sim strategy kinds`` and ``sim tax kinds``: each kind, where it
-    comes from, ``about`` it, its docstring and its parameters."""
+    comes from, ``about`` it, its docstring and its parameters. With --csv
+    or --json, ``facts`` about it are its fields beside those."""
     chosen = [kind] if kind else sorted(kinds.kinds)
-    for i, name in enumerate(chosen):
+    for name in chosen:
         if name not in kinds.kinds:
             raise click.ClickException(f"no {what} kind {name!r}; kinds: {', '.join(sorted(kinds.kinds))}")
+    if output.machine():
+        listed: output.Rows | None = None
+        params = output.Rows(["kind", "name", "unit", "default", "required", "doc"])
+        for name in chosen:
+            cls = kinds.kinds[name]
+            extra = facts(cls)
+            if listed is None:
+                listed = output.Rows(["kind", "origin", *extra, "description"])
+            listed.add(kind=name, origin=kinds.origin[name], **extra,
+                       description=strategy_guide.describe_kind(cls) or None)
+            for p in strategy_guide.kind_params(cls):
+                # "blank" is how the table says an optional one has no default.
+                params.add(kind=name, name=p.name, unit=p.unit,
+                           default=None if p.default in (None, "blank") else p.default,
+                           required=p.default is None, doc=p.doc or None)
+        output.emit({"kinds": listed or output.Rows(["kind", "origin", "description"]),
+                     "parameters": params}, title=f"{what} kinds")
+        return
+    for i, name in enumerate(chosen):
         cls = kinds.kinds[name]
         if i:
             click.echo("")
@@ -23486,6 +23864,7 @@ def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @tax_group_command.command("kinds")
 @click.argument("kind", required=False, type=completion.TAX_KIND)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def tax_kinds_command(kind: str | None, data_dir: Path | None) -> None:
     """List the tax calculator kinds: the built-ins and the data repo's
     taxes/ modules, each with the tax it computes, the returns it builds
@@ -23498,7 +23877,8 @@ def tax_kinds_command(kind: str | None, data_dir: Path | None) -> None:
         built_on = f", on {', '.join(cls.upstream)}" if cls.upstream else ""
         return f"the {cls.jurisdiction} tax{built_on}"
 
-    _echo_kinds(kinds, kind, "tax calculator", about)
+    _echo_kinds(kinds, kind, "tax calculator", about,
+                lambda cls: {"jurisdiction": cls.jurisdiction, "upstream": list(cls.upstream)})
 
 
 @tax_group_command.command("check")

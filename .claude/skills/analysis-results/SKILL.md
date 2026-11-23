@@ -122,9 +122,11 @@ latest run; add `</dev/null`. Charts marked † take `--graph` (in the pane) or
 `sim networth`, `account history`, the reports and `report guard-rails` have
 no chart yet (#327): for those pictures, open the notebook.
 
-**Read figures with `--json`.** The list and report commands above (and
-`sim explain`, `sim compare`, `sim ensemble summary|compare|guard-rails|drift|spending`,
-`sim allocation`, `sim account holdings|holders`, `sim strategy log`, `sim prices show`)
+**Read figures with `--json`.** The list, show and report commands above (and
+`sim explain`, `sim compare`, `sim items`, every `sim ensemble` report including
+`sensitivity`, `draws` and `factors`, `sim allocation`,
+`sim account holdings|holders`, `sim strategy log`, `sim prices show`,
+`sim scenario show`, `sim chain show`, `sim builder status`)
 take `--json` (or `--csv`): the rows behind the table, under the table's
 column names, unrounded (dollars to the cent, shares and rates as
 fractions), with the heading's facts (title, dollars, run) as fields and a
