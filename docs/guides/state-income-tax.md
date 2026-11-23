@@ -163,8 +163,10 @@ on interest and dividends ended with 2024.
   income: **table**, `state_social_security` rows by `min_age`
   ([#581](https://github.com/BobKerns/zabob-retirement/issues/581)).
 - From 55 to 64 over that income, taxable Social Security shares the
-  pension subtraction's cap instead. `state_retirement_exclusion` covers
-  no Social Security, so that part is **not supported**.
+  pension subtraction's cap instead, and at every age the Social Security
+  subtracted shrinks what the cap leaves for pensions: **table**, a
+  `state_retirement_exclusion` row covering `ss` first
+  ([#613](https://github.com/BobKerns/zabob-retirement/issues/613)).
 
 ### Connecticut
 

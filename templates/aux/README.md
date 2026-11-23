@@ -136,7 +136,7 @@ year. Each row is one exclusion, or one age tier of one:
 | --- | --- |
 | `effective_date` | When the rows take effect; the rows of one date are the whole set. |
 | `name` | The exclusion. Rows with the same name are its age tiers: each person gets the one with the highest `min_age` they have reached. |
-| `income` | What it covers, separated by `;`: `pension`, `retirement_account` (IRA and 401(k) draws), `interest`, `dividend`, `capital_gain`, `other`, or `all`. It uses them up in that order. |
+| `income` | What it covers, separated by `;`: `pension`, `retirement_account` (IRA and 401(k) draws), `interest`, `dividend`, `capital_gain`, `other`, or `all` (all of those), and `ss`, the person's taxable Social Security (not in `all`). It uses them up in the order listed. |
 | `min_age` | The age it starts at by December 31, such as `59.5`; blank for any age. |
 | `amount` | The most it leaves out per person, in dollars; blank for all of it. |
 | `amount_series` | Optional: an inflation series that grows `amount` each year, as above. |
@@ -163,6 +163,26 @@ effective_date,name,income,min_age,amount,filing_status,income_limit,phaseout,le
 2026-01,age,all,65,10000,MFJ,100000,20000,
 2026-01,age,all,65,10000,Single,50000,10000,
 ```
+
+An exclusion that lists `ss` counts the person's Social Security against
+its cap: their share, by benefits, of the federally taxable amount uses the
+cap up, but it leaves out only what the `state_social_security` table left
+taxed, so a state that exempts Social Security in its table still has its
+pension cap shrink by it. Colorado's pension and annuity subtraction counts
+Social Security first, $20,000 a person from 55 and $24,000 from 65, beside
+a `state_social_security__CO.csv` with a `55` row and its income cliff and
+a `65` row (check the figures against the year's DR 0104AD instructions):
+
+```csv
+effective_date,name,income,min_age,amount
+2026-01,pension_subtraction,ss;pension;retirement_account,55,20000
+2026-01,pension_subtraction,ss;pension;retirement_account,65,24000
+```
+
+From 65, and from 55 below the income, the table leaves all Social
+Security out and it only shrinks the cap; from 55 to 64 over the income
+the subtraction leaves Social Security out, sharing the $20,000 with the
+pension.
 
 ## Per-scenario overrides
 

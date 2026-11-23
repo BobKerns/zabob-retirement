@@ -41,6 +41,8 @@ class _Exclusion(Adjustment):
     person's grants (total, and how much of it is gain), which reach a
     separate return on :class:`Joint` with the subtractions."""
     grants: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+    ss_grants: Mapping[str, int] = field(default_factory=dict)
+    """What it left out of each person's Social Security (#613)."""
 
 
 class StateTablesYear(FederalStateYear):
@@ -374,10 +376,11 @@ class StateTablesYear(FederalStateYear):
         # Gain taken away (the drawdown estimate replaces posted gain) can't
         # be left out; gain added isn't in anyone's income by kind.
         net_gain = min(self._exclusion.net_gain, capital.stcg + self._taxed_ltcg(gain, extra))
-        off_ordinary, off_ltcg, off_short, grants = self._exclusion.split_by_person(
-            ordinary, ltcg, net_gain)
+        off_ordinary, off_ltcg, off_short, grants, off_ss = self._exclusion.split_by_person(
+            ordinary, ltcg, net_gain, self._exclusion_ss(basis))
         retirement = _Exclusion("retirement_exclusion", ordinary=off_ordinary - off_short,
-                                stcg=off_short, ltcg=off_ltcg, grants=grants)
+                                stcg=off_short, ltcg=off_ltcg, ss=sum(off_ss.values()),
+                                grants=grants, ss_grants=off_ss)
         ss = Adjustment("ss_difference", ss=income.ss - self._taxable_ss(basis))
         # The table's subtractions come off ordinary income, tested against
         # the income before them, and never take it below zero.
@@ -390,6 +393,24 @@ class StateTablesYear(FederalStateYear):
             own.append(Adjustment(line, ordinary=amount))
         return (*([refund] if refund.ordinary else []), exclusion,
                 *([swap] if self._gains_bands else []), retirement, ss, *own)
+
+    def _exclusion_ss(self, basis: Basis) -> dict[str, tuple[int, int]]:
+        """Each person's Social Security as a retirement exclusion covering
+        ``ss`` reads it (#613): their share of the federally taxable amount,
+        by benefits, and what of it the state still taxes after its
+        ``state_social_security`` table."""
+        people = sorted(common.household(self.ty))
+        if not people:
+            return {}
+        benefits = self._ss_benefits
+        federal = common.apportion(basis.federal["ss_taxable"],
+                                   {p: benefits.get(p, 0) for p in people})
+        if self._ss_tiers is None:
+            return {p: (federal[p], 0) for p in people}
+        state = (self._taxable_ss_by_person(basis) if set(self._ss_tiers) <= set(people)
+                 else common.apportion(self._taxable_ss(basis), {p: benefits.get(p, 0)
+                                                                 for p in people}))
+        return {p: (federal[p], state.get(p, 0)) for p in people}
 
     def _adjusted(self, step: str, income: int, basis: Basis, *,
                   refundable: bool = False) -> dict[str, int]:
@@ -580,10 +601,12 @@ class StateTablesYear(FederalStateYear):
         # line is no one's in particular, and stays in the income divided.
         retirement: Adjustment = Adjustment("retirement_exclusion")
         grants: Mapping[str, tuple[int, int]] = {}
+        ss_grants: Mapping[str, int] = {}
         subtracted: dict[str, int] = {}
         for adjustment in subtractions:
             if isinstance(adjustment, _Exclusion):
                 retirement, grants = adjustment, adjustment.grants
+                ss_grants = adjustment.ss_grants
             elif (found := self._adjustment_named.get(adjustment.line)) is not None \
                     and found.step == "subtraction":
                 subtracted[adjustment.line] = adjustment.ordinary
@@ -598,8 +621,12 @@ class StateTablesYear(FederalStateYear):
         stcg_by = common.apportion(stcg, self._gain_weights)
         ltcg_by = common.apportion(income.ltcg + retirement.ltcg, self._gain_weights)
         # With rows by age (#581) each spouse's taxable share is their own.
-        ss_by = common.apportion(income.ss, self._taxable_ss_by_person(basis)
+        ss_by = common.apportion(income.ss + retirement.ss, self._taxable_ss_by_person(basis)
                                  if self._ss_tiers is not None else self._ss_weights)
+        # What the exclusion left out of each spouse's own (#613).
+        for p, off in ss_grants.items():
+            if p in ss_by:
+                ss_by[p] = max(0, ss_by[p] - off)
         # The exclusion's gain goes to the spouses whose grants covered
         # gain, the rest to those whose grants covered other income.
         gain_weights = {p: grants.get(p, (0, 0))[1] for p in people}

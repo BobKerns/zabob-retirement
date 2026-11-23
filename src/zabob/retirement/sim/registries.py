@@ -676,7 +676,18 @@ in the order a row that covers several uses them up: ordinary income from a
 ``dividend``, ``qualified_dividend`` legs); a
 ``retirement_account`` distribution (``tax_deferred_out``, ``roth_nonqualified``);
 a ``capital_gain`` (``stcg``/``ltcg``); and ``other``, the rest of the state's
-taxable income. ``all`` in a row stands for every one of them."""
+taxable income. ``all`` in a row stands for every one of them.
+
+A row may also cover ``ss`` (:data:`STATE_EXCLUSION_SS`, #613), which
+``all`` doesn't stand for."""
+
+STATE_EXCLUSION_SS = "ss"
+"""The Social Security a ``state_retirement_exclusion`` row may cover
+(#613): Colorado's pension subtraction counts each person's taxable Social
+Security against its cap. It uses up the cap by the person's federally
+taxable Social Security, but leaves out only what the
+``state_social_security`` table left taxed, so the two never subtract the
+same dollar."""
 
 STATE_ADJUSTMENTS = "state_adjustments"
 """The aux kind of a state's own deductions and credits (#511, #488), keyed
