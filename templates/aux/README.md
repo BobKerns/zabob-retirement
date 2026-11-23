@@ -177,16 +177,15 @@ shown as `state_recapture`.
 | Column | Meaning |
 | --- | --- |
 | `effective_date` | When the rows take effect; the rows of one date are the whole set. |
-| `filing_status` | The status the row is for. A status with no rows adds nothing. |
+| `filing_status` | The status the row is for. Every status the state brackets have needs rows at each date (a row with `amount` 0 for a status it doesn't recapture), and the loader refuses a table missing one: a survivor's `Single` year would otherwise recapture nothing. Where spouses may file separately, `MFS` rows too. |
 | `floor` | The state AGI above which it starts. |
 | `width` | The AGI over which it rises to `amount`. |
 | `amount` | The most the row adds. |
 | `step` | Optional: it rises in whole steps of this much AGI, any part of a step counting as one, as Connecticut's tables do; blank rises in a straight line. |
 | `floor_series` / `amount_series` | Optional: inflation series that grow `floor` and `amount`, as above. |
 
-Connecticut's for a married couple filing jointly, from the 2024 CT-1040
-instructions (Table C, then Table D's three paces; check the year's
-figures and add the other statuses):
+Connecticut's, from the 2024 CT-1040 instructions (for each status,
+Table C, then Table D's three paces; check the year's figures):
 
 ```csv
 effective_date,filing_status,floor,width,amount,step
@@ -194,6 +193,14 @@ effective_date,filing_status,floor,width,amount,step
 2024-01,MFJ,210000,100000,500,10000
 2024-01,MFJ,400000,300000,5400,10000
 2024-01,MFJ,1000000,90000,900,10000
+2024-01,Single,56500,50000,250,5000
+2024-01,Single,105000,50000,250,5000
+2024-01,Single,200000,150000,2700,5000
+2024-01,Single,500000,45000,450,5000
+2024-01,MFS,50250,25000,250,2500
+2024-01,MFS,105000,50000,250,5000
+2024-01,MFS,200000,150000,2700,5000
+2024-01,MFS,500000,45000,450,5000
 ```
 
 ## Per-scenario overrides

@@ -3324,6 +3324,7 @@ def _validate_optional_state_tables(
     bracket_statuses = {str(payload.get("filing_status")) for kind, _s, payload, _e in aux_rows
                         if kind == "state_brackets"}
     band_statuses: dict[tuple[str, str, str], set[str]] = {}
+    recapture_statuses: dict[tuple[str, str], set[str]] = {}
     separate: dict[str, dict[str, bool]] = {}
     nameless: set[str] = set()
     for kind, state, payload, effective in aux_rows:
@@ -3346,12 +3347,20 @@ def _validate_optional_state_tables(
         if kind in registries.STATE_BAND_KINDS:
             band_statuses.setdefault((kind, state, effective), set()).add(
                 str(payload.get("filing_status")))
+        if kind == registries.STATE_RECAPTURE:
+            recapture_statuses.setdefault((file, effective), set()).add(
+                str(payload.get("filing_status")))
     _check_filing_statuses(
         {(f"aux/{kind}__{state}.csv", effective): found
          for (kind, state, effective), found in band_statuses.items()},
         bracket_statuses, "the state brackets have",
         "a year filed that way would tax nothing here (add a 0% band for a status it doesn't tax)",
         issues)
+    # A recapture (#549) the survivor's Single return lacked would vanish.
+    _check_filing_statuses(
+        recapture_statuses, bracket_statuses, "the state brackets have",
+        "a year filed that way would recapture nothing (add a row with amount 0 for a status "
+        "it doesn't recapture)", issues)
     _check_separate_return_tables(aux_rows, separate, issues)
 
 
@@ -3383,6 +3392,7 @@ def _check_separate_return_tables(
                   (registries.STATE_LTCG_BRACKETS, state, yes),
                   (registries.STATE_STCG_BRACKETS, state, yes),
                   (registries.STATE_STANDARD_DEDUCTION, state, yes),
+                  (registries.STATE_RECAPTURE, state, yes),
                   ("standard_deduction", None, [] if own else yes)]
         for kind, series, when in tables:
             file = f"aux/{kind}__{series}.csv" if series else f"aux/{kind}.csv"
@@ -3398,7 +3408,7 @@ def _check_separate_return_tables(
 
 _SEPARATE_RETURN_TABLES = frozenset({
     "state_brackets", registries.STATE_LTCG_BRACKETS, registries.STATE_STCG_BRACKETS,
-    registries.STATE_STANDARD_DEDUCTION, "standard_deduction"})
+    registries.STATE_STANDARD_DEDUCTION, registries.STATE_RECAPTURE, "standard_deduction"})
 
 
 def _intervals(flags: Mapping[str, bool]) -> list[tuple[str, str | None]]:
@@ -4962,7 +4972,7 @@ _STATE_LINES: frozenset[str] = frozenset({
     "capital_loss_lapsed", "nol_lapsed", "business_net", "hobby_disallowed",
     "dividends_as_ordinary", "hsa_addback", "hsa_dividends", "muni_interest",
     "capital_gain_difference", "ltcg_exclusion", "retirement_exclusion", "ss_difference",
-    "ltcg_for_gains_base", "gains_base", "gains_deduction", "gains_tax",
+    "ltcg_for_gains_base", "gains_base", "gains_deduction", "gains_tax", "recapture",
     "drawdown_tax", "drawdown_base", "tax_paid", "tax_due", "tax_overpaid",
 })
 """The lines the built-in state calculator writes itself, and the buckets
@@ -4983,8 +4993,7 @@ def _validate_state_recapture(
         if row_kind != kind:
             continue
         if not state:
-            issues.append(f"aux/{kind}.csv: name the state, as {kind}__CT.csv")
-            return
+            continue  # _validate_optional_state_tables says to name the state
         where = f"aux/{kind}__{state}.csv ({effective}, {payload.get('filing_status')})"
         _check_filing_status(where, payload, issues)
         _check_not_negative(where, payload, ("floor", "amount"), issues)
