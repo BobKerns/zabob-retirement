@@ -1608,7 +1608,10 @@ sim ytd add loss_2025 Income_CapitalGain Income_CapitalGain \
 
 Leave out anything and you are asked for it. A negative amount goes after
 `--`, so it isn't read as an option. Using the same account on both sides
-changes only a tax total, as a loss carried forward does. `--year` is for a
+changes only a tax total, as a loss carried forward does. On an HSA lot, an
+`ltcg` or `stcg` row is instead a withdrawal's gain over basis that only a
+state taxing the HSA sees (California's, say), which a roll writes for the
+months it skips; the federal return never sees it. `--year` is for a
 fact from a whole earlier tax year; leave it out for the scenario's first
 year. `sim ytd edit` changes a row and `sim ytd delete` removes one, and
 `sim ytd list` shows them all. A payment that one scheduled rule already

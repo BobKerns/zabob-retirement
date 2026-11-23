@@ -1430,7 +1430,8 @@ rolled run taxes those years as the old one did; the rows are a projection,
 to be replaced with the actual figures (`sim ytd edit`), and carry no rule's
 tags or person. An HSA withdrawal's gain (`hsa_gain`, which only a state that
 taxes an HSA taxes) is among them too, summed by year, lot and character, as
-a row from the HSA lot to itself
+a row from the HSA lot to itself, including one a tax settlement's withdrawal
+realized, which is new income in the year it was paid
 ([#605](https://github.com/BobKerns/zabob-retirement/issues/605)). Without them (no run reaches the month, or declined), it
 lists, within the same year, the year-to-date rows and `ytd_amount`s that
 now cover too few months, and for a start in a later year by April, what

@@ -371,12 +371,12 @@ def test_a_roll_keeps_the_skipped_months_in_their_tax_year(
 @pytest.mark.uses_current_scenario_write
 def test_a_roll_keeps_an_hsa_withdrawals_gain_in_its_states_tax_year(
     test_data_dir: Path, latest_test_run: Callable[[str], Path],
-    add_hsa: Callable[[str], None], retire_alice_csv: Callable[[str], Path],
+    add_hsa: Callable[[str], str], retire_alice_csv: Callable[[str], Path],
 ) -> None:
     """#605: an HSA withdrawal in the skipped months has a gain over basis
     that only California taxes; it projects as a row from the HSA lot to
     itself, which the rolled run records as that gain again."""
-    add_hsa("2026-07-31")
+    hsa = add_hsa("2026-07-31")
     old = latest_test_run("retire_alice")
 
     result = _sim(test_data_dir, "scenario", "roll", "retire_alice", "2026-09", "--no-keep", "--yes")
@@ -385,7 +385,7 @@ def test_a_roll_keeps_an_hsa_withdrawals_gain_in_its_states_tax_year(
 
     with retire_alice_csv("year_to_date.csv").open(newline="", encoding="utf-8") as fh:
         gains = [row for row in csv.DictReader(fh)
-                 if row["from_account"] == row["to_account"] == "Asset_HSA_Alice"]
+                 if row["from_account"] == row["to_account"] == hsa]
     assert [row["tax_character"] for row in gains] == ["ltcg"]
 
     def state(run: Path) -> dict[str, int]:

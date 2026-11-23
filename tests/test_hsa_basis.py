@@ -28,9 +28,9 @@ def _query(db: Path, sql: str, *args: Any) -> list[tuple]:
 
 
 @pytest.fixture
-def hsa_scenario(add_hsa: Callable[[str], None]) -> None:
+def hsa_scenario(add_hsa: Callable[[str], str]) -> None:
     """Alice's HSA in California (``add_hsa``), withdrawn from in June 2027."""
-    add_hsa("2027-06-30")
+    assert add_hsa("2027-06-30") == HSA
 
 
 def _lot(run: Path, month: str) -> tuple[int, int]:

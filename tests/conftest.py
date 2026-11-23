@@ -1626,13 +1626,13 @@ HSA_ALICE = "Asset_HSA_Alice"
 @pytest.fixture(scope="function")
 def add_hsa(retire_alice_csv: Callable[[str], Path], write_series: Callable[[str, str], Path],
             add_state_tax: Callable[..., None],
-            append_calendar_row: Callable[..., None]) -> Callable[[str], None]:
-    """``add_hsa(withdrawal_date)``: Alice's HSA (``HSA_ALICE``) in the
+            append_calendar_row: Callable[..., None]) -> Callable[[str], str]:
+    """``add_hsa(withdrawal_date)``: Alice's HSA, whose name it returns, in the
     private retire_alice copy, in California, which taxes it like a
     brokerage account (#497): $10,000 with a $6,000 basis, growing 6% a year
     at ``hsa_fund``, 2% of it paid out as interest, and a $3,000 qualified
     medical withdrawal on ``withdrawal_date``."""
-    def _add(withdrawal_date: str) -> None:
+    def _add(withdrawal_date: str) -> str:
         add_state_tax()
         accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
         accounts.loc[len(accounts)] = {
@@ -1653,6 +1653,7 @@ def add_hsa(retire_alice_csv: Callable[[str], Path], write_series: Callable[[str
             date=withdrawal_date, kind="one_off_transfer", account_1=HSA_ALICE, lot_1="default",
             account_2="Expense_Healthcare", amount="3000.00", tax_character="none",
             description="a qualified medical expense")
+        return HSA_ALICE
     return _add
 
 
