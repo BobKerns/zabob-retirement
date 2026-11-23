@@ -214,6 +214,27 @@ def test_slide_html_fills_template_inlines_assets_and_escapes(videos_root: Path)
         render.slide_html(theme, {}, {"template": "nope"}, "en")
 
 
+def test_slide_html_inlines_pictures_as_data_uris(videos_root: Path) -> None:
+    theme = themes.load(videos_root)
+    (theme.assets / "portrait.png").write_bytes(b"\x89PNG fake")
+    page = theme.templates / "pic.html"
+    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}')
+    html = render.slide_html(theme, {}, {"template": "pic"}, "en")
+    assert '<img src="data:image/png;base64,iVBORyBmYWtl">' in html
+    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}')
+    with pytest.raises(scripts.ScriptError, match="no picture 'nobody'"):
+        render.slide_html(theme, {}, {"template": "pic"}, "en")
+
+
+def test_host_slide_shows_zabob_over_the_scene(videos_root: Path) -> None:
+    theme = themes.load(videos_root)
+    html = render.slide_html(theme, {"series": "S"}, {"template": "host"}, "en")
+    assert "<h1>Zabob</h1>" in html and "your host" in html
+    assert "data:image/png;base64," in html and "data:image/jpeg;base64," in html
+    html = render.slide_html(theme, {}, {"template": "host", "role": "案内役", "line": "A <b>"}, "ja")
+    assert "案内役" in html and "A &lt;b&gt;" in html
+
+
 def test_captions_are_timed_per_sentence_and_split_long_ones() -> None:
     long = "They're planning their retirement, and they want to know one thing: will the money last?"
     cues = captions.scene_cues(["Short.", long], [1.0, 4.0], start=10.0, gap=0.5)

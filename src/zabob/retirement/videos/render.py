@@ -6,6 +6,7 @@ from the cache; nothing here caches.
 
 from __future__ import annotations
 
+import base64
 import functools
 import hashlib
 import json
@@ -315,6 +316,9 @@ def highlight_code(text: str, language: str = "python", marks: Sequence[int] = (
         for n, parts in enumerate(lines, first)))
 
 
+_PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg"}
+
+
 def slide_html(theme: Theme, meta: dict[str, Any], fields: dict[str, Any], lang: str) -> str:
     """The slide's page: its template filled from front matter, then the slide's fields."""
     env = Environment(loader=FileSystemLoader(theme.templates), autoescape=select_autoescape(["html"]))
@@ -326,10 +330,19 @@ def slide_html(theme: Theme, meta: dict[str, Any], fields: dict[str, Any], lang:
             raise ScriptError(f"no asset {name!r} ({path})")
         return path.read_text(encoding="utf-8")
 
+    def picture(name: str) -> str:
+        # Pictures that aren't drawings (a portrait, a rendered scene) go in
+        # as data: URIs, so the slide's cache key covers their bytes.
+        for suffix, mime in _PICTURE_TYPES.items():
+            path = theme.assets / f"{name}{suffix}"
+            if path.is_file():
+                return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+        raise ScriptError(f"no picture {name!r} ({theme.assets / name}.png or .jpg)")
+
     name = fields["template"]
     if not (theme.templates / f"{name}.html").is_file():
         raise ScriptError(f"no slide template {name!r} in {theme.templates}")
-    context = {**meta, **fields, "lang": lang, "theme_css": theme.css(), "asset": asset}
+    context = {**meta, **fields, "lang": lang, "theme_css": theme.css(), "asset": asset, "picture": picture}
     return env.get_template(f"{name}.html").render(context)
 
 

@@ -36,6 +36,18 @@ recording the ones before it.
 
 Notebooks are left to video 4, until the pipeline can record them.
 
+## Scene `host`: Your host
+
+```slide
+template = "host"
+```
+
+Hello, I'm Zabob, and I'll be your host for this course. Together we'll
+plan a retirement the way you'd plan your own: one household, one plan, and
+many possible futures. The tool shares my name: Zabob Retirement. It's free
+and open source, and it runs on your own computer, so your numbers never
+leave it. Our example household is Alice and Bill. Let's meet them.
+
 ## Scene `title`: Title card
 
 ```slide
@@ -44,7 +56,7 @@ template = "title"
 
 Planning with the simulator. Video one: what it does, and how it works.
 
-Meet Alice and Bill. Alice plans to retire in 2028, and Bill two years
+Alice plans to retire in 2028, and Bill two years
 later. Like most people at that point, they have savings in a few different
 kinds of accounts, and a lot of questions.
 
