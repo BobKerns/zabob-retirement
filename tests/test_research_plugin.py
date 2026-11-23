@@ -238,3 +238,10 @@ def test_an_installed_program_refuses_to_rewrite_the_neutral_plugin(monkeypatch)
     result = CliRunner().invoke(rp.research_plugin_command, ["render", "--neutral"])
     assert result.exit_code != 0
     assert "installed" in result.output
+
+
+def test_a_relative_xdg_data_home_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", "relative/data")
+    assert rp.default_out_dir() == tmp_path / ".local" / "share" / "zabob-retirement" / rp.PLUGIN_NAME

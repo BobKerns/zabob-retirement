@@ -33,7 +33,8 @@ install`.
 your `PATH` (never under CI or an agent). The command reads your data repo's
 `research.yaml` (below), writes a configured copy of the plugin to
 `out/finance-research/` in the main checkout (installed with `uv tool
-install`, to `~/.local/share/zabob-retirement/finance-research/`), and
+install`, to `zabob-retirement/finance-research/` in your data folder:
+`$XDG_DATA_HOME`, by default `~/.local/share`), and
 installs it for your user from there. It says which settings it used.
 
 Claude Code reads the installed plugin in place, so don't delete that

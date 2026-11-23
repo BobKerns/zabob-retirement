@@ -373,7 +373,8 @@ _config_option = click.option(
 _out_option = click.option(
     "--out", "out_dir", type=click.Path(file_okay=False, path_type=Path), default=None,
     help="Where to write the rendered plugin (default: out/finance-research in the main checkout, "
-         "or, installed, finance-research in your data folder, ~/.local/share/zabob-retirement).",
+         "or, installed, zabob-retirement/finance-research in your data folder: $XDG_DATA_HOME, "
+         "by default ~/.local/share).",
 )
 
 

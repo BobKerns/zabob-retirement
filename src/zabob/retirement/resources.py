@@ -51,16 +51,22 @@ def cache_dir(name: str) -> Path:
     (``$XDG_CACHE_HOME``, by default ``~/.cache``), in ``zabob-retirement``."""
     if CHECKOUT_DIR is not None:
         return CHECKOUT_DIR / name
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / "zabob-retirement" / name
+    return _xdg("XDG_CACHE_HOME", Path.home() / ".cache") / "zabob-retirement" / name
 
 
 def data_home(name: str) -> Path:
     """``name`` under the user's data folder (``$XDG_DATA_HOME``, by default
     ``~/.local/share``), in ``zabob-retirement``: for what an installed
     program writes and must keep, which has no checkout to go in."""
-    base = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
-    return Path(base) / "zabob-retirement" / name
+    return _xdg("XDG_DATA_HOME", Path.home() / ".local" / "share") / "zabob-retirement" / name
+
+
+def _xdg(var: str, default: Path) -> Path:
+    """An XDG base folder: the variable's value when it is an absolute
+    path, else ``default``. The spec says to ignore a relative one, which
+    would put files wherever the command happened to run."""
+    value = os.environ.get(var)
+    return Path(value) if value and Path(value).is_absolute() else default
 
 
 # -- the program a data repo is paired with ---------------------------------
