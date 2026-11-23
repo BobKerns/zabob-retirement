@@ -5053,9 +5053,14 @@ def _validate_state_adjustments(
         # #610: an add-on to the standard deduction (DC's and Kansas's at
         # 65) is figured before the year's income is known, so it takes no
         # income test of its own: the standard deduction's phase-out applies.
+        # Its base must be one figured then too: a federal one or the gains
+        # tax is known only once the return is.
         if _check_yes(where, payload, "standard", issues):
             if step != "deduction":
                 issues.append(f"{where}: standard is for a deduction; step is {step!r}")
+            if base not in ("filers", "spending", "income"):
+                issues.append(f"{where}: a standard deduction row's base is filers, spending "
+                              f"or income, figured before the return; base is {base!r}")
             if payload.get("income_limit") is not None:
                 issues.append(f"{where}: a standard deduction row takes no income_limit; "
                               "the standard deduction's own phase-out applies to it")

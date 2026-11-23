@@ -344,6 +344,7 @@ def test_a_standard_add_on_counts_before_the_comparison_with_itemizing(
 @pytest.mark.parametrize(("row", "message"), [
     ("x,credit,filers,,,100.00,,,,,,,,,yes", "standard is for a deduction"),
     ("x,deduction,filers,,,100.00,,,,50000.00,,,,,yes", "takes no income_limit"),
+    ("x,deduction,federal_tax,,,100.00,,,,,,,,,yes", "base is filers, spending or income"),
 ])
 def test_the_loader_checks_a_standard_add_on(
     add_state_tax: Callable[..., None], write_aux: Callable[[str, str], Path],

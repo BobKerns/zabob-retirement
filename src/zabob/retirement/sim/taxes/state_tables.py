@@ -31,6 +31,11 @@ ITEMIZED_LINES_API = 5
 SEPARATE_API = 6
 """The API version that added :meth:`StateTablesYear.separate` (#580)."""
 
+STANDARD_ADDONS_API = 8
+"""The API version that moved a ``standard`` ``state_adjustments`` row from
+:meth:`StateTablesYear.other_deductions` into :meth:`StateTablesYear.deductions`'
+standard deduction (#610)."""
+
 SEPARATE = "MFS"
 """The filing status of each spouse filing separately on one return (#580)."""
 
@@ -41,6 +46,16 @@ class _Exclusion(Adjustment):
     person's grants (total, and how much of it is gain), which reach a
     separate return on :class:`Joint` with the subtractions."""
     grants: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+
+
+def _addon_cut(amount: int, phased: int, addons: int) -> int:
+    """What a phase-out (#578) takes off a standard deduction of ``amount``
+    phased to ``phased``, with ``addons`` (#610) on it: the same share of
+    the add-ons as of the deduction, so both are gone where it is."""
+    cut = amount - phased
+    if cut <= 0 or not amount:
+        return max(0, cut)
+    return cut + addons * cut // amount
 
 
 class StateTablesYear(FederalStateYear):
@@ -191,6 +206,12 @@ class StateTablesYear(FederalStateYear):
             ty, _filing_status_in=lambda year: SEPARATE if year == ty.year
             else joint_status_in(year))
         self._adjustment_named = {a.name: a for a in self._adjustments}
+        # A filer's add-on to their own standard deduction (#610) is the
+        # MFS row's, as their standard deduction is: one filer's worth.
+        self._mfs_addon_each = {
+            a.name: a.figure // a.units
+            for a in common.state_adjustments(self._mfs_ty, params.adjustments_aux, series)
+            if a.standard and a.base == "filers" and a.units}
 
     def _standard_table(self) -> tuple[str, str | None]:
         """The standard deduction table the year reads, and its series: a
@@ -225,8 +246,19 @@ class StateTablesYear(FederalStateYear):
         return {**addons, "standard_deduction": standard, "itemized_deduction": itemized,
                 "deduction": max(standard, itemized)}
 
-    @property
+    @cached_property
+    def _addons_in_standard(self) -> bool:
+        """Whether the table's ``standard`` rows are part of the standard
+        deduction (#610). A household module written for API 7 or before
+        that writes its own :meth:`deductions` never adds them there, so
+        they stay plain deductions in :meth:`other_deductions`, as they were
+        when it was written."""
+        return not self._written_before(("deductions",), STANDARD_ADDONS_API)
+
+    @cached_property
     def _standard_addons(self) -> dict[str, int]:
+        if not self._addons_in_standard:
+            return {}
         return {a.name: a.figure for a in self._adjustments if a.standard}
 
     def deductions_at(self, income: Income, basis: Basis) -> Mapping[str, int]:
@@ -275,12 +307,15 @@ class StateTablesYear(FederalStateYear):
         """The ``standard`` deduction :meth:`deductions` gave, phased out at
         the year's AGI (#578), the state's or, as its row's ``phaseout_agi``
         says, the federal. The cut comes off what it gave, so a subclass's
-        own additions to it stay."""
+        own additions to it stay. The table's add-ons to it (#610) phase out
+        with it, in the same proportion."""
         row = self._phase_out
         if row is None or standard is None:
             return standard
         agi = basis.federal.agi if row.get("phaseout_agi") == "federal" else income.agi
-        cut = int(row["amount"]) - common.phased_standard_deduction(row, agi)
+        amount = int(row["amount"])
+        cut = _addon_cut(amount, common.phased_standard_deduction(row, agi),
+                         sum(self._standard_addons.values()))
         return max(0, standard - cut) if cut > 0 else standard
 
     def itemized_lines(self) -> common.Itemized | None:
@@ -407,7 +442,8 @@ class StateTablesYear(FederalStateYear):
         ``income``: of credits, the ``refundable`` ones or the others."""
         out = {}
         for a in self._adjustments:
-            if a.step != step or a.refundable != refundable or a.standard:
+            if (a.step != step or a.refundable != refundable
+                    or (a.standard and self._addons_in_standard)):
                 continue
             figure = a.figure
             if a.base == "federal_tax":
@@ -529,8 +565,16 @@ class StateTablesYear(FederalStateYear):
         itemized = deductions.get("itemized_deduction", 0)
         beside = common.split_cents(max(0, deductions["deduction"] - max(standard, itemized)), 2)
         itemized_by = common.apportion(itemized, agi)
-        addon_shares = {line: self._line_shares(line, amount)
-                        for line, amount in self._standard_addons.items()}
+        # Each spouse's add-ons to their standard deduction (#610): a
+        # ``filers`` line's MFS figure for each who reached its age, any
+        # other line's joint figure divided by whose it is.
+        addons_by = dict.fromkeys(people, 0)
+        for line, amount in self._standard_addons.items():
+            each = self._mfs_addon_each.get(line)
+            shares = ({p: each * self._adjustment_named[line].shares.get(p, 0) for p in people}
+                      if each is not None else self._line_shares(line, amount))
+            for p in people:
+                addons_by[p] += shares.get(p, 0)
         others_by = dict.fromkeys(people, 0)
         for line, amount in joint.others.items():
             for p, share in self._line_shares(line, amount).items():
@@ -542,10 +586,13 @@ class StateTablesYear(FederalStateYear):
         for i, p in enumerate(people):
             # A state without a standard deduction of its own (only
             # exemptions) gives a spouse none either.
-            own = self._spouse_standard(agi[p], fed_agi[p]) if has_standard else 0
-            # Each spouse's part of the joint return's add-ons to it (#610),
-            # by whose they are.
-            own += sum(addon_shares[line].get(p, 0) for line in addon_shares)
+            # Their add-ons phase out with it (#610).
+            if has_standard:
+                amount = int(self._mfs_standard["amount"])
+                own = amount + addons_by[p] - _addon_cut(
+                    amount, self._spouse_standard(agi[p], fed_agi[p]), addons_by[p])
+            else:
+                own = addons_by[p]
             deduction = max(own, itemized_by[p]) + beside[i]
             before_nol = agi[p] - deduction - others_by[p]
             used = common.nol_used(nol_left, before_nol, self._nol_limit)
