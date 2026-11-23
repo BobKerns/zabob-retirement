@@ -2314,6 +2314,16 @@ After tax is what shows a Roth conversion's or a taxable sale's real effect.
 Before tax, tax paid now looks like a loss, while the tax a traditional
 balance still owes doesn't show at all.
 
+A credit that ends at an income limit (a cliff, like DC's property tax
+credit) can make after-tax net worth lower in a scenario that has it than
+in one that doesn't, even though it pays less tax. Without its IRA draws,
+the household's income would be under the limit, and drawing the IRA
+loses the credit. So each drawdown year's share is charged the credit,
+even in years when the run's own withdrawals already lose it. That really
+is what the IRA money costs, but the measure can't see that the household
+with the credit is better off when it has less. To compare two scenarios
+that differ by such a credit, use tax paid and pre-tax net worth.
+
 **Video.** *Comparing what-ifs* builds two what-ifs on Alice and Bill's
 base scenario, runs them, and compares them with `sim compare` and
 `scenario_compare.ipynb`: [English](https://www.youtube.com/watch?v=gq3mAFwscMI),
