@@ -40,7 +40,7 @@ simple model already answers useful questions. You add detail only when a
 question needs it.
 
 The software runs on your computer and sends nothing to its developer; see the
-[privacy policy](./docs/PRIVACY.md).
+[privacy policy](./PRIVACY.md).
 
 The repository also holds an Amazon expense categorizer. Both tools work from
 a CLI and from Jupyter notebooks, on Python 3.14+ with uv.
