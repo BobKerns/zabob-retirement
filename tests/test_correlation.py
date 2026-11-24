@@ -674,6 +674,7 @@ def correlated_mc_batch(
     return batch
 
 
+@pytest.mark.slow
 def test_parameters_show_parents_rho_and_factors(correlated_mc_batch: Path) -> None:
     from zabob.retirement.sim import sensitivity
 
@@ -723,6 +724,7 @@ def test_monte_carlo_report_ranks_by_srrc_and_shows_factors_and_scores(
     assert "free_rate" not in set(report.scores["a"]) | set(report.scores["b"])
 
 
+@pytest.mark.slow
 def test_uncorrelated_batch_has_no_correlation_note(mc_batch: Path) -> None:
     from zabob.retirement.sim import sensitivity
 

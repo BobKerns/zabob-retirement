@@ -214,6 +214,7 @@ def test_the_drift_widget_draws_a_run(
         rc.close()
 
 
+@pytest.mark.slow
 def test_the_ensemble_drift_widget_draws_a_batch(
     strategy_ensemble_batch: Path, strategy_scenarios: Path, runs_dir: Path,
     capsys: pytest.CaptureFixture[str],

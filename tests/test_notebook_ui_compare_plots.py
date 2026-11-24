@@ -6,6 +6,7 @@ from pathlib import Path
 
 import matplotlib
 import pandas as pd
+import pytest
 
 matplotlib.use("Agg")
 
@@ -217,6 +218,7 @@ def test_account_balance_diffs_show_accounts_an_empty_scenario_lacks_as_zero(
         dollar_mode.value = DollarMode.CPI_CONSTANT  # redraws; the empty run has no CPI rows
 
 
+@pytest.mark.slow
 def test_guard_rails_compare_widget_shows_each_rail_by_scenario(
     retire_alice_run: RunConnection, variant_a_run: RunConnection, monkeypatch,
 ) -> None:
@@ -280,6 +282,7 @@ def test_guard_rails_compare_past_color_leaves_deltas_plain() -> None:
     assert cp._past_color(1.0, "four_percent", "negative") == ""
 
 
+@pytest.mark.slow
 def test_ss_and_tax_widgets_take_what_show_passes(
     retire_alice_run: RunConnection, variant_a_run: RunConnection,
 ) -> None:

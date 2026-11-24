@@ -74,6 +74,7 @@ def test_uncommitted_code_always_reruns(
     assert _skipped(sim_all()) == []
 
 
+@pytest.mark.slow
 def test_installed_from_a_wheel_an_upgrade_reruns(
     sim_all: Callable[..., str], installed_build: Callable[[str | None], Callable[[Path], None]],
     runs_dir: Path,

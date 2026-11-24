@@ -474,6 +474,7 @@ def test_a_reader_waiting_on_a_cancelled_build_says_so(
                          "opening its latest results, which are out of date")
 
 
+@pytest.mark.slow
 def test_a_reader_waits_for_a_job_its_run_turned_up(
     running_daemon: BuilderPaths, builder_on: None,
 ) -> None:
