@@ -113,7 +113,7 @@ Five gates should pass before reporting any change done, plus a sixth for
 changes to the simulator or its loader:
 
 ```sh
-.venv/bin/python -m pytest -q -n auto -m "not slow"  # tests, less the slow ones
+.venv/bin/python scripts/affected_tests.py        # tests the change needs, less the slow ones
 .venv/bin/python -m ruff check src tests plugins  # lint
 .venv/bin/ty check                                # types (ty; src, tests, plugins: pyproject.toml)
 npm run spell                                     # spelling (cspell)
@@ -129,6 +129,21 @@ with every test including the slow ones, and the blocked-keyword check on every
 pull request that isn't a draft and every push to `main`. It skips the tests,
 lint and types when a change touches only prose or editor settings (the list is
 in the workflow).
+
+`scripts/affected_tests.py` compares the working tree with `origin/main`
+(`--base` for another branch) and runs only the tests whose area the change
+touches, per [`tests/areas.toml`](../tests/areas.toml); a change to a path no
+area owns (the engine, the loader, taxes, the CLI, `tests/conftest.py`) runs
+the whole suite, which is most changes. `--list` shows the choice without
+running it; arguments after `--` go to pytest. When a test starts reading a
+path an area owns, add it to that area; `tests/test_affected_tests.py` fails
+on a pattern that no longer matches anything.
+
+For quicker reruns while iterating, `pytest-testmon` (not a dependency;
+`uv pip install pytest-testmon`) reruns only the tests whose code changed:
+`pytest -n auto --testmon`. Its first run in a worktree takes half again as
+long as a plain one. It tracks Python only, so a changed CSV, notebook or
+script selects nothing; the gate above is still the one to pass.
 
 Tests marked `@pytest.mark.slow` (about a second or more each) are left out of
 the everyday local run. When a change touches a slow test or the code it
