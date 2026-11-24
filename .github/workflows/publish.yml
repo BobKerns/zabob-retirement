@@ -96,11 +96,30 @@ jobs:
           name: dist
           path: dist/
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # zabob-retirement goes up first, on its own: zabob-retire depends on
+      # it, and a pending trusted publisher can create only one project, so
+      # zabob-retire's can be added only once zabob-retirement exists (#699).
+      # (zabob_retire-* doesn't match zabob_retirement-*.)
+      - name: Split the two packages
+        run: |
+          mkdir -p dist-retirement dist-retire
+          mv dist/zabob_retirement-* dist-retirement/
+          mv dist/zabob_retire-* dist-retire/
+
+      - name: Upload zabob-retirement
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: dist-retirement/
           repository-url: https://test.pypi.org/legacy/
           # A release's tag push and the manual run before it can carry
           # one version twice; TestPyPI keeps the first.
+          skip-existing: true
+
+      - name: Upload zabob-retire
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-retire/
+          repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
   pypi:
@@ -119,4 +138,21 @@ jobs:
           name: dist
           path: dist/
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # zabob-retirement first, as for TestPyPI.
+      - name: Split the two packages
+        run: |
+          mkdir -p dist-retirement dist-retire
+          mv dist/zabob_retirement-* dist-retirement/
+          mv dist/zabob_retire-* dist-retire/
+
+      - name: Upload zabob-retirement
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-retirement/
+          # A re-run after zabob-retire failed finds this one already there.
+          skip-existing: true
+
+      - name: Upload zabob-retire
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-retire/
