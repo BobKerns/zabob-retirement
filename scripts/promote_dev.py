@@ -7,6 +7,11 @@ issues they close. "Fixes #N" in a pull request into dev closes nothing,
 because GitHub acts on it only in a pull request into the default branch, so
 the promotion's body repeats each one and merging it closes them all.
 
+A pull request whose merge was reverted on dev, and not restored, is listed
+apart, without its "Fixes" lines. Its commits still reach main, though, so
+an issue one of their messages names with a closing keyword closes anyway;
+the body names those to reopen.
+
 Merge the promotion with a merge commit, never a squash: dev's merges then
 stay on main's history, where scripts/bisect_dev.py and
 `git log --first-parent` find them. Needs `gh`, signed in.
@@ -16,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from functools import cache
 import json
 from pathlib import Path
 import re
@@ -25,70 +31,102 @@ import sys
 REPO = Path(__file__).resolve().parent.parent
 TITLE = "Promote dev to main"
 
-# GitHub's merge commit, and a squash merge's "Title (#N)".
-_MERGED_PR = re.compile(r"^Merge pull request #(\d+) |\(#(\d+)\)$")
-# `git revert`'s message, for a merge (-m 1) or a plain commit.
+# GitHub's merge commit. Squash merges are off in this repo, and a plain
+# commit's "(#N)" names an issue, not a pull request.
+_MERGED_PR = re.compile(r"^Merge pull request #(\d+) ")
+# `git revert`'s message, for a merge (-m 1) or a plain commit, whatever its
+# subject says (git titles a revert of a revert "Reapply ...").
 _REVERTS = re.compile(r"^This reverts commit ([0-9a-f]{7,40})\b", re.MULTILINE)
 # GitHub's closing keywords.
 _CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
+class Merge:
+    """A pull request's merge on dev's first-parent line."""
+    number: int
+    sha: str
+    present: bool  # its change is still on dev: not reverted, or restored
+    commit_closes: tuple[int, ...]  # what its commits' messages close
+
+
+@dataclass(frozen=True)
 class Pull:
     number: int
     title: str
-    closes: tuple[int, ...]
-
-
-def pull_numbers(subjects: list[str]) -> list[int]:
-    """The pull requests that dev's first-parent commit subjects merged, oldest first."""
-    numbers = []
-    for subject in subjects:
-        if m := _MERGED_PR.search(subject):
-            number = int(m.group(1) or m.group(2))
-            if number not in numbers:
-                numbers.append(number)
-    return numbers
+    closes: tuple[int, ...]  # from the title and body, and the commits' messages
+    commit_closes: tuple[int, ...] = ()
 
 
 def closed_issues(text: str) -> tuple[int, ...]:
-    """The issues a pull request's title and body say it closes, in order."""
+    """The issues a text names with GitHub's closing keywords, in order."""
     return tuple(dict.fromkeys(int(n) for n in _CLOSES.findall(text)))
 
 
-def reverted_commits(messages: list[str]) -> list[str]:
-    """The commits that the revert commits among these messages undo."""
-    shas: list[str] = []
-    for message in messages:
-        shas += _REVERTS.findall(message)
-    return shas
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True).stdout
 
 
-def reverted_pulls(subjects: list[str]) -> set[int]:
-    """The pull requests that reverting the commits with these subjects takes
-    out of dev. Each revert toggles its pull request: reverting a merge takes
-    it out, and reverting that revert (a "Revert "Revert ..."" subject) puts
-    it back."""
-    out: set[int] = set()
-    for subject in subjects:
-        while subject.startswith('Revert "') and subject.endswith('"'):
-            subject = subject[len('Revert "'):-1]
-        out ^= set(pull_numbers([subject]))
-    return out
+def dev_merges(root: Path = REPO, base: str = "origin/main", tip: str = "origin/dev") -> list[Merge]:
+    """The pull requests merged on tip's first-parent line since base, oldest
+    first, and whether each one's change is still there.
+
+    A revert undoes the commit it names, and every commit a merge brought in
+    when it names a merge. A commit's change is there unless a revert whose
+    own change is there undid it, so reverting a revert, however it was done
+    (git revert of the revert commit, or of the merge of a pull request that
+    reverted), restores it."""
+    commits = _git(root, "rev-list", f"{base}..{tip}").split()
+    undone_by: dict[str, list[str]] = {}
+    for sha in commits:
+        for named in _REVERTS.findall(_git(root, "log", "-1", "--format=%B", sha)):
+            target = _git(root, "rev-parse", f"{named}^{{commit}}").strip()
+            undone_by.setdefault(target, []).append(sha)
+            for brought in _brought_in(root, target):
+                undone_by.setdefault(brought, []).append(sha)
+
+    @cache
+    def there(sha: str) -> bool:
+        # Reverts come after what they revert, so this recursion ends.
+        return not any(there(r) for r in undone_by.get(sha, ()))
+
+    merges = []
+    for line in _git(root, "log", "--first-parent", "--reverse", "--format=%H %s", f"{base}..{tip}").splitlines():
+        sha, _, subject = line.partition(" ")
+        if m := _MERGED_PR.match(subject):
+            messages = "\n".join(_git(root, "log", "-1", "--format=%B", c) for c in _brought_in(root, sha))
+            merges.append(Merge(int(m.group(1)), sha, there(sha), closed_issues(messages)))
+    return merges
+
+
+def _brought_in(root: Path, sha: str) -> list[str]:
+    """The commits a merge brought in (none for a plain commit)."""
+    parents = _git(root, "rev-list", "--parents", "-n", "1", sha).split()[1:]
+    if len(parents) < 2:
+        return []
+    return _git(root, "rev-list", f"{parents[0]}..{parents[1]}").split()
 
 
 def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = ()) -> str:
+    def issues(numbers: tuple[int, ...] | list[int]) -> str:
+        return ", ".join(f"#{n}" for n in numbers)
+
     lines = [f"Promotes dev to main: {len(pulls)} pull request{'s' if len(pulls) != 1 else ''}.", "",
              "Merge with a merge commit, not a squash, so dev's merges stay on main's history.", ""]
-    lines += [f"- #{p.number} {p.title}" + (f" (closes {', '.join(f'#{n}' for n in p.closes)})" if p.closes else "")
-              for p in pulls]
+    lines += [f"- #{p.number} {p.title}" + (f" (closes {issues(p.closes)})" if p.closes else "") for p in pulls]
+    fixes = dict.fromkeys(n for p in pulls for n in p.closes)
     if reverted:
-        lines += ["", "Reverted on dev, so left out, with the issues they would close:", ""]
-        lines += [f"- #{p.number} {p.title}" + (f" ({', '.join(f'#{n}' for n in p.closes)} stay open)"
-                                                 if p.closes else "") for p in reverted]
-    issues = dict.fromkeys(n for p in pulls for n in p.closes)
-    if issues:
-        lines += ["", *(f"Fixes #{n}" for n in issues)]
+        lines += ["", "Reverted on dev, so left out:", ""]
+        lines += [f"- #{p.number} {p.title}" + (f" (would close {issues(p.closes)})" if p.closes else "")
+                  for p in reverted]
+        # A commit message's closing keyword acts once the commit is on main,
+        # reverted or not.
+        reopen = [n for p in reverted for n in p.commit_closes if n not in fixes]
+        if reopen:
+            lines += ["", f"Their commits' messages close {issues(list(dict.fromkeys(reopen)))} anyway when this "
+                      "merges: reopen them afterwards."]
+    if fixes:
+        lines += ["", *(f"Fixes #{n}" for n in fixes)]
     return "\n".join(lines) + "\n"
 
 
@@ -100,28 +138,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dry-run", action="store_true", help="print the body instead of opening the pull request")
     args = parser.parse_args(argv)
-
-    _run("git", "fetch", "--quiet", "origin")
     try:
-        _run("git", "rev-parse", "--verify", "--quiet", "origin/dev")
-    except subprocess.CalledProcessError:
+        return _promote(args.dry_run)
+    except subprocess.CalledProcessError as e:
+        print(f"{' '.join(e.cmd)} failed:\n{e.stderr}", file=sys.stderr)
+        return 1
+
+
+def _promote(dry_run: bool) -> int:
+    _run("git", "fetch", "--quiet", "origin")
+    if subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/dev"], cwd=REPO,
+                      capture_output=True).returncode != 0:
         print("There is no origin/dev to promote.", file=sys.stderr)
         return 2
-    subjects = _run("git", "log", "--first-parent", "--reverse", "--format=%s", "origin/main..origin/dev").splitlines()
-    if not subjects:
-        print("dev has nothing main lacks.", file=sys.stderr)
+    merges = dev_merges()
+    if not merges:
+        print("dev has no pull requests main lacks.", file=sys.stderr)
         return 0
-    # A merge reverted on dev never reaches main: its issues must stay open.
-    messages = _run("git", "log", "--format=%B%x00", "origin/main..origin/dev").split("\0")
-    undone = reverted_pulls([_run("git", "log", "-1", "--format=%s", sha).strip()
-                             for sha in reverted_commits(messages)])
     pulls, reverted = [], []
-    for number in pull_numbers(subjects):
-        data = json.loads(_run("gh", "pr", "view", str(number), "--json", "title,body"))
-        pull = Pull(number, data["title"], closed_issues(f"{data['title']}\n{data['body']}"))
-        (reverted if number in undone else pulls).append(pull)
+    for merge in merges:
+        data = json.loads(_run("gh", "pr", "view", str(merge.number), "--json", "title,body"))
+        closes = closed_issues(f"{data['title']}\n{data['body']}") + merge.commit_closes
+        pull = Pull(merge.number, data["title"], tuple(dict.fromkeys(closes)), merge.commit_closes)
+        (pulls if merge.present else reverted).append(pull)
     body = promotion_body(pulls, reverted)
-    if args.dry_run:
+    if dry_run:
         print(body, end="")
         return 0
     existing = _run("gh", "pr", "list", "--base", "main", "--head", "dev", "--state", "open",

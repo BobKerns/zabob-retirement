@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
 import sys
 from types import ModuleType
 
@@ -30,14 +31,77 @@ def bisect(repo_root: Path) -> ModuleType:
     return _load(repo_root, "bisect_dev")
 
 
-def test_pull_numbers_come_from_merge_and_squash_subjects(promote: ModuleType) -> None:
-    subjects = [
-        "Merge pull request #714 from BobKerns/issue/706-test-areas",
-        "Fix a typo (#716)",
-        "Merge branch 'main' into dev",
-        "Merge pull request #714 from BobKerns/issue/706-test-areas",
-    ]
-    assert promote.pull_numbers(subjects) == [714, 716]
+class _Repo:
+    """A scratch git repo with main and dev, to merge and revert pull requests in."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.email", "test@example.com")
+        self.git("config", "user.name", "Test")
+        self.commit("base", "base")
+        self.git("branch", "dev")
+
+    def git(self, *args: str) -> str:
+        return subprocess.run(["git", "-C", str(self.root), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def commit(self, content: str, message: str) -> str:
+        (self.root / "file.txt").write_text(content)
+        self.git("add", "file.txt")
+        self.git("commit", "-q", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def merge_pull(self, number: int, make) -> str:
+        """Merge, as GitHub does, a branch off dev on which make() commits."""
+        self.git("checkout", "-q", "-b", f"pr{number}", "dev")
+        make()
+        self.git("checkout", "-q", "dev")
+        self.git("merge", "-q", "--no-ff", "-m", f"Merge pull request #{number} from x/pr{number}", f"pr{number}")
+        return self.git("rev-parse", "HEAD")
+
+    def revert(self, sha: str) -> None:
+        parents = self.git("rev-list", "--parents", "-n", "1", sha).split()[1:]
+        self.git("revert", "--no-edit", *(["-m", "1"] if len(parents) > 1 else []), sha)
+
+    def presence(self, promote: ModuleType) -> dict[int, bool]:
+        return {m.number: m.present for m in promote.dev_merges(self.root, "main", "dev")}
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> _Repo:
+    return _Repo(tmp_path)
+
+
+def test_merges_list_pull_requests_and_what_their_commits_close(promote: ModuleType, repo: _Repo) -> None:
+    repo.merge_pull(714, lambda: repo.commit("714", "Test areas\n\nCloses #706"))
+    repo.git("checkout", "-q", "dev")
+    repo.commit("hotfix", "Fix the loader (#712)")  # a plain commit names an issue, not a pull request
+    [merge] = promote.dev_merges(repo.root, "main", "dev")
+    assert (merge.number, merge.present, merge.commit_closes) == (714, True, (706,))
+
+
+def test_a_merge_reverted_through_a_pull_request_is_left_out(promote: ModuleType, repo: _Repo) -> None:
+    m714 = repo.merge_pull(714, lambda: repo.commit("714", "Test areas"))
+    repo.merge_pull(800, lambda: repo.revert(m714))
+    assert repo.presence(promote) == {714: False, 800: True}
+
+
+def test_reverting_the_revert_pull_request_restores_the_merge(promote: ModuleType, repo: _Repo) -> None:
+    m714 = repo.merge_pull(714, lambda: repo.commit("714", "Test areas"))
+    m800 = repo.merge_pull(800, lambda: repo.revert(m714))
+    repo.merge_pull(801, lambda: repo.revert(m800))
+    assert repo.presence(promote) == {714: True, 800: False, 801: True}
+
+
+def test_a_chain_of_reverts_and_reapplies_on_dev(promote: ModuleType, repo: _Repo) -> None:
+    m714 = repo.merge_pull(714, lambda: repo.commit("714", "Test areas"))
+    repo.revert(m714)
+    assert repo.presence(promote) == {714: False}
+    repo.revert(repo.git("rev-parse", "HEAD"))  # git titles this one "Reapply ..."
+    assert repo.presence(promote) == {714: True}
+    repo.revert(repo.git("rev-parse", "HEAD"))
+    assert repo.presence(promote) == {714: False}
 
 
 def test_closed_issues_follow_github_keywords(promote: ModuleType) -> None:
@@ -54,20 +118,12 @@ def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
     assert body.endswith("\nFixes #706\nFixes #707\n")
 
 
-def test_a_reverted_merge_is_left_out_until_its_revert_is_reverted(promote: ModuleType) -> None:
-    sha = "0123456789abcdef0123456789abcdef01234567"
-    message = f'Revert "Merge pull request #714 from x/y"\n\nThis reverts commit {sha}, reversing\nchanges.\n'
-    assert promote.reverted_commits(["Plain commit\n", message]) == [sha]
-    merge = "Merge pull request #714 from x/y"
-    assert promote.reverted_pulls([merge]) == {714}
-    assert promote.reverted_pulls([merge, f'Revert "{merge}"']) == set()
-    assert promote.reverted_pulls(["Fix a typo (#716)", "Unrelated commit"]) == {716}
-
-
-def test_promotion_body_names_reverted_pulls_and_keeps_their_issues_open(promote: ModuleType) -> None:
-    body = promote.promotion_body([promote.Pull(716, "Typo", ())], [promote.Pull(714, "Test areas", (706,))])
-    assert "- #714 Test areas (#706 stay open)" in body
-    assert "Fixes #706" not in body
+def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(promote: ModuleType) -> None:
+    reverted = [promote.Pull(714, "Test areas", (706, 705), commit_closes=(705,))]
+    body = promote.promotion_body([promote.Pull(716, "Typo", ())], reverted)
+    assert "- #714 Test areas (would close #706, #705)" in body
+    assert "Fixes #706" not in body and "Fixes #705" not in body
+    assert "close #705 anyway when this merges: reopen them afterwards." in body
 
 
 @pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (2, 1), (4, 1), (5, 1), (-9, 128)])

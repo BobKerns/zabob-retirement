@@ -185,13 +185,16 @@ jobs:
         id: tests
         env:
           DEPTH: ${{ steps.depth.outputs.depth }}
-          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ "$DEPTH" = full ]; then
               echo "Full gates: the whole suite."
               run=true groups='[1, 2, 3, 4]' paths=tests
           else
-              selection=$(python scripts/affected_tests.py --list --base "$BASE")
+              # HEAD is GitHub's merge of the pull request into dev, and HEAD^1
+              # the dev it merged into, so this is the change as merged. Not
+              # base.sha: a label or ready event can come after dev moved on,
+              # and base.sha would add dev's newer changes to the selection.
+              selection=$(python scripts/affected_tests.py --list --base HEAD^1)
               if [ -z "$selection" ]; then
                   echo "No test reads what this change touched."
                   run=false groups='[1]' paths=''
