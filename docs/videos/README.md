@@ -518,12 +518,13 @@ a new link); delete the old one in Studio.
 
 ### API quota
 
-The YouTube Data API allows a project 10,000 units a day unless Google
-grants more, and resets it at midnight Pacific (#695). An upload costs
-about 2,100: 1,600 for the video (its title, description and settings go
-in the same call), 400 for captions, 50 for the thumbnail and about 50 for
-the playlist. Updating a description costs 50. So the default quota fits
-four uploads a day.
+The YouTube Data API allows a project 10,000 units a day, plus 100 uploads
+in a bucket of their own, unless Google grants more; both reset at midnight
+Pacific (#695). An upload takes one of the 100 and about 500 units: 400 for
+captions, 50 for the thumbnail and about 50 for the playlist (its title,
+description and settings go in the upload itself). Updating a description
+costs 50. So the default quota fits about 19 uploads a day, or a little
+more than half the course in both languages.
 
 To spend less, `publish` keeps a hash of each video's title, description
 and tags in `published.toml` (`snippet`) and sends an update only when it

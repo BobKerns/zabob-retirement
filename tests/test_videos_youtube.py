@@ -230,7 +230,7 @@ def test_dry_run_counts_the_quota_units(videos_root: Path, tmp_path: Path) -> No
     youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, dry_run=True,
                     worker=lambda *_: pytest.fail("sent"), log=lines.append)
     # Two uploads with playlist, then en's description gains ja's link.
-    assert lines[-1].startswith(f"About {2 * 2102 + 50:,} API quota units")
+    assert lines[-1].startswith(f"About {2 * 502 + 50:,} API quota units of 10,000 a day, and 2 of 100 uploads")
 
 
 def test_the_quota_resets_at_midnight_pacific() -> None:

@@ -492,10 +492,13 @@ def built(s: Script, out_dir: Path) -> Built:
     return Built(video, srt, thumb, lengths)
 
 
-# What each call costs against the YouTube Data API's daily quota (10,000
-# units unless Google grants more), from its published quota table (#695).
+# What each call costs against the YouTube Data API's daily quota of 10,000
+# units (unless Google grants more), from its quota table as of 2026-11-12
+# (#695). videos.insert isn't among them: uploads have their own bucket of
+# 100 a day, one per upload. Captions are what an upload costs most.
 DAILY_QUOTA = 10_000
-UNITS = {"upload": 1600, "thumbnail": 50, "captions": 400, "playlist": 52, "update": 50}
+DAILY_UPLOADS = 100
+UNITS = {"thumbnail": 50, "captions": 400, "playlist": 52, "update": 50}  # playlist: list, list, insert
 QUOTA_TZ = "America/Los_Angeles"  # the quota resets at midnight Pacific
 
 
@@ -549,7 +552,7 @@ def publish(
     """
     secrets = str(secrets_dir())
     cache: dict[Path, Published] = {}
-    units = 0
+    units = uploads = 0
 
     def lookup(folder: Path) -> Published:
         key = folder.resolve()
@@ -593,8 +596,8 @@ def publish(
                 continue
             b = built(s, out_dir)
             meta = metadata(s, b.lengths, published=lookup)
-            units += UNITS["upload"] + UNITS["thumbnail"] + UNITS["captions"] + (UNITS["playlist"] if meta.playlist
-                                                                                   else 0)
+            uploads += 1
+            units += UNITS["thumbnail"] + UNITS["captions"] + (UNITS["playlist"] if meta.playlist else 0)
             if dry_run:
                 log(f"{folder.name} [{lang}]: would upload {b.video.name} as {meta.privacy}, with its "
                     f"thumbnail and captions{f', to playlist {meta.playlist!r}' if meta.playlist else ''}:")
@@ -653,8 +656,8 @@ def publish(
         published.update(lang, snippet=sent)
         log(f"{folder.name} [{lang}]: title and description updated ({video_url(video)})")
     if dry_run:
-        log(f"About {units:,} API quota units (YouTube allows {DAILY_QUOTA:,} a day unless it grants more; "
-            "it resets at midnight Pacific).")
+        log(f"About {units:,} API quota units of {DAILY_QUOTA:,} a day, and {uploads} of {DAILY_UPLOADS} uploads "
+            "(unless YouTube grants more; both reset at midnight Pacific).")
 
 
 def published_folders(videos_root: Path) -> list[Path]:
