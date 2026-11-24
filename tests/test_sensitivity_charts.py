@@ -64,6 +64,7 @@ def test_attribution_figure_returns_its_numbers(oat_batch: Path) -> None:
 # --- the command ------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("args", [
     (),
     ("--row", "gift"),

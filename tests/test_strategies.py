@@ -597,6 +597,7 @@ def _ira_by_lot_key(strategy_scenarios: Path, strategy_csv: Callable[[str, str],
     )
 
 
+@pytest.mark.slow
 def test_a_lot_key_follows_an_account_rename(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     load_test_scenario: Callable[[str], Path],
@@ -609,6 +610,7 @@ def test_a_lot_key_follows_an_account_rename(
     load_test_scenario("alice_rebalance")
 
 
+@pytest.mark.slow
 def test_a_lot_key_follows_a_lot_rename(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     load_test_scenario: Callable[[str], Path],
@@ -775,12 +777,14 @@ def test_log_explain_and_drift_read_the_run(
     assert "<svg" in chart.read_text()  # a line per asset class (#327)
 
 
+@pytest.mark.slow
 def test_strategy_check_runs_twice(strategy_scenarios: Path) -> None:
     result = _cli(strategy_scenarios, "strategy", "check", "alice_last_leaf")
     assert result.exit_code == 0, result.output
     assert "the same in both runs" in result.output
 
 
+@pytest.mark.slow
 def test_strategy_check_finds_a_strategy_that_reads_the_clock(
     strategy_scenarios: Path, strategy_module: Callable[[str, str], Path],
     strategy_csv: Callable[[str, str], Path],
@@ -792,6 +796,7 @@ def test_strategy_check_finds_a_strategy_that_reads_the_clock(
     assert "decided differently in" in result.output
 
 
+@pytest.mark.slow
 def test_strategy_check_finds_a_strategy_that_depends_on_hash_order(
     strategy_scenarios: Path, strategy_module: Callable[[str, str], Path],
     strategy_csv: Callable[[str, str], Path],
@@ -805,6 +810,7 @@ def test_strategy_check_finds_a_strategy_that_depends_on_hash_order(
     assert "decided differently in" in result.output
 
 
+@pytest.mark.slow
 def test_target_set_list_and_delete(strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path]) -> None:
     result = _cli(strategy_scenarios, "target", "set", "main", "stock_us=70", "--as-of", "2030-01",
                   "--scenario", "alice_rebalance")

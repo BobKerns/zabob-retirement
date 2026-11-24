@@ -123,6 +123,7 @@ def test_store_says_what_it_lacks_like_the_member_files(
         store.frame(None, lot="x")
 
 
+@pytest.mark.slow
 def test_members_pair_only_on_one_seed(
     seeded_ensemble_batch: Callable[[str, int], Path],
 ) -> None:

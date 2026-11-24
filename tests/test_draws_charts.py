@@ -11,6 +11,7 @@ from zabob.retirement.sim.draws_db import draws_frames
 from zabob.retirement.sim.ensemble import EnsembleError
 
 
+@pytest.mark.slow
 def test_views_draw_a_node_and_a_pair(mc_batch: Path) -> None:
     frames = draws_frames(mc_batch)
     left, right = dc.draws_view(frames, "retire_bill_vary")

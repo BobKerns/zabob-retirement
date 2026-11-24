@@ -67,6 +67,7 @@ def _assert_store_matches_members(batch: Path) -> None:
                                            check_exact=True)
 
 
+@pytest.mark.slow
 def test_the_store_keeps_each_members_spending(cut_batch: Path) -> None:
     _assert_store_matches_members(cut_batch)
     store = open_series(cut_batch)
@@ -146,6 +147,7 @@ def test_a_small_cut_still_counts_as_cut() -> None:
     assert summary["members_ever_cut"] == pytest.approx(0.5)
 
 
+@pytest.mark.slow
 def test_sim_ensemble_spending(cut_batch: Path, tmp_path: Path) -> None:
     graph = tmp_path / "spending.png"
     result = CliRunner().invoke(main, [
@@ -232,6 +234,7 @@ def test_the_spending_widget_draws_a_run(
         rc.close()
 
 
+@pytest.mark.slow
 def test_the_ensemble_spending_widget_draws_a_batch(
     cut_batch: Path, strategy_scenarios: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:

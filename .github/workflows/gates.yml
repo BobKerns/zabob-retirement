@@ -1,8 +1,10 @@
 # The verification gates from .github/copilot-instructions.md, run on GitHub so
 # a commit made without the local hooks (a fresh clone, a web edit,
-# --no-verify) is caught before merge. Mark these jobs as required checks in the
-# ruleset for main; they block merging, not pushing. The sixth gate, loading the
-# real scenarios, needs the private data repo and stays local.
+# --no-verify) is caught before merge. The ruleset for main requires three
+# checks: Blocked keywords, Spelling and markdown, and Tests and lint, which
+# gathers the test shards and the lint job, so the shard count can change
+# without touching the ruleset. They block merging, not pushing. The sixth
+# gate, loading the real scenarios, needs the private data repo and stays local.
 #
 # Every job skips on a draft pull request, where the gates run locally and
 # Copilot doesn't review: Actions minutes are billed, and a draft can't merge.
@@ -136,6 +138,9 @@ jobs:
   # tests/.test_durations (pytest-split). A test missing from that file counts
   # as an average one, so the file only needs refreshing when the shards drift
   # apart: `pytest -n auto --store-durations --durations-path tests/.test_durations`.
+  # least_duration deals the longest tests out first, so a few very long ones
+  # don't pile into one shard. The runner has no ffmpeg, so the three tests
+  # that need it skip here though the file counts them (about 90 s in all).
   tests:
     name: Tests (${{ matrix.group }}/4)
     needs: changes
@@ -154,6 +159,7 @@ jobs:
           # Pinned: an unpinned setup asks the GitHub API for the latest
           # release on every run, and fails the job when that times out.
           version: "0.12.23"
+          enable-cache: true
 
       - name: Install Python and dependencies
         # uv reads the pinned version from .python-version.
@@ -169,6 +175,7 @@ jobs:
         run: >-
           uv run --no-sync python -m pytest -q -n auto
           --splits 4 --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
           --durations-path tests/.test_durations
 
   lint:
@@ -182,6 +189,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.23"
+          enable-cache: true
 
       - name: Install Python and dependencies
         run: |
@@ -202,7 +210,9 @@ jobs:
   python:
     name: Tests and lint
     needs: [changes, tests, lint]
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    # !cancelled(), not always(): a run superseded by a newer push (or a title
+    # edit) shows as cancelled rather than failed.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     steps:
       - name: Results

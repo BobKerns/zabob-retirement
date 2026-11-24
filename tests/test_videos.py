@@ -63,6 +63,7 @@ def _write(folder: Path, text: str, name: str = "script.md") -> Path:
     return folder
 
 
+@pytest.mark.slow
 @pytest.mark.checkout
 def test_every_repo_video_checks(repo_root: Path) -> None:
     folders = sorted(p for p in (repo_root / "docs" / "videos").iterdir() if (p / "script.md").is_file())
@@ -321,6 +322,7 @@ def demo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, tmp_path: Path, demo_root: Path) -> None:
     theme = themes.load(videos_root)
@@ -338,6 +340,7 @@ def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, t
     assert (store / ".videorc").is_file() and not demo_root.exists()
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_the_tapes_environment_drops_the_builders_activation(
     videos_root: Path, tmp_path: Path, demo_root: Path, monkeypatch: pytest.MonkeyPatch,
@@ -504,6 +507,7 @@ The chain as a flowchart.
 """
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_a_slide_shows_a_picture_setup_made(videos_root: Path, tmp_path: Path, demo_root: Path,
                                             monkeypatch: pytest.MonkeyPatch) -> None:

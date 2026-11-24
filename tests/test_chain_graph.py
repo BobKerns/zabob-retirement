@@ -177,6 +177,7 @@ def test_graph_error_is_one_line(guide_chains: Path, monkeypatch: pytest.MonkeyP
     assert result.exit_code == 1 and "Error: no browser to draw the chart with" in result.output
 
 
+@pytest.mark.slow
 def test_render_draws_a_png_with_mermaid() -> None:
     """The real thing, where a browser and a copy of Mermaid are at hand."""
     chart = "flowchart LR\n    a[Alice] -->|1: all| b([bridge])\n"

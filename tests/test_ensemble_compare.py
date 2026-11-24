@@ -270,6 +270,7 @@ def test_sim_ensemble_summary_chart_file_writes_an_svg_before_the_tables(
     assert "<svg" in svg and "net worth fan chart (CPI-constant) (baseline)" in svg
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_graph_draws_every_panel_the_options_ask_for(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path, tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -363,6 +364,7 @@ def test_figure_dpi_matches_the_terminal_text_height() -> None:
 # Several variants (#328)
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_with_several_variants_prints_the_notebooks_two_tables(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path,
 ) -> None:
@@ -407,6 +409,7 @@ def test_sim_ensemble_compare_with_several_variants_prints_the_notebooks_two_tab
     assert len(deltas) == len(tables.deltas_table("baseline", ["child", "other"]))
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_names_the_recipes_without_the_account(
     seeded_ensemble_batch: Callable[[str, int], Path], runs_dir: Path,
 ) -> None:
@@ -432,6 +435,7 @@ def test_sim_ensemble_compare_refuses_a_variant_named_twice(
     assert result.exit_code == 2 and "name each variant once" in result.output
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_graph_draws_a_column_for_each_variant(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path, tmp_path: Path,
 ) -> None:

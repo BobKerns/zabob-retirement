@@ -351,6 +351,7 @@ def test_chain_show_mermaid_with_json_is_refused(test_data_dir: Path) -> None:
     assert "--json prints the data alone" in result.output
 
 
+@pytest.mark.slow
 def test_draws_csv_file_with_json_is_refused(mc_batch: Path, runs_dir: Path, intent_dir: Path,
                                              tmp_path: Path) -> None:
     result = _ensemble(runs_dir, intent_dir, "draws", "--csv-file", str(tmp_path / "out.csv"), "--json")

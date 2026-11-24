@@ -2109,6 +2109,7 @@ def test_sim_import_transactions_with_a_budget_makes_each_category_from_the_one_
     assert _amounts(test_data_dir)["baseline_expense_food"] == ("420.00", "monthly")
 
 
+@pytest.mark.slow
 @pytest.mark.usefixtures("quicken_category_map", "at_a_terminal")
 def test_sim_import_transactions_with_a_budget_asks_once_and_again_when_an_amount_moves(
     test_data_dir: Path, quicken_transaction_export: Path, quicken_budget_full_export: Path,
