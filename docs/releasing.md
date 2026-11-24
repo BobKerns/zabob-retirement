@@ -13,13 +13,23 @@ workflow check that.
 PyPI trusts the workflow itself (trusted publishing), in two GitHub
 environments: `testpypi` and `pypi`. No token is stored.
 
-Each index needs a trusted publisher for each project. Before the first
-upload they are pending publishers, and a pending publisher can create only
-one project, so the same workflow can't be pending for both names at once.
-The workflow uploads `zabob-retirement` first, on its own: on a first
-upload, register the pending publisher for `zabob-retirement`, run the
-workflow (its `zabob-retire` step fails), add the same workflow and
-environment as a publisher for `zabob-retire`, and re-run the failed job.
+Each index needs a trusted publisher for each project, but the same
+workflow and environment can be a pending publisher (one that creates its
+project on first upload) for only one name, and the index won't take a
+pending publisher that matches one already in use. So the first upload to
+each index (TestPyPI done; PyPI still to do) goes:
+
+1. Register the pending publisher for `zabob-retirement` (`publish.yml`,
+   environment `testpypi` or `pypi`).
+2. Run the workflow: it uploads `zabob-retirement` first, on its own, and
+   its `zabob-retire` step fails.
+3. Create `zabob-retire` by hand, with an API token:
+   `uv build packages/zabob-retire`, then
+   `uv publish dist/zabob_retire-*` (for TestPyPI add
+   `--publish-url https://test.pypi.org/legacy/`).
+4. In `zabob-retire`'s settings on the index, add `publish.yml` and the same
+   environment as an ordinary trusted publisher, then re-run the failed job
+   (both uploads skip a file already there).
 
 ## A release
 
