@@ -198,7 +198,7 @@ on interest and dividends ended with 2024.
 - Brackets and the standard deduction: **shipped**. Social Security is
   exempt.
 - The extra standard deduction at 65: **shipped** (a `filers` row from
-  65). The extra deduction when blind: **not supported** (the model
+  65, marked `standard`). The extra deduction when blind: **not supported** (the model
   doesn't know who is blind).
 - The property tax credit (Schedule H): **household calculator**.
 - Spouses may file separately on one return: **shipped**
