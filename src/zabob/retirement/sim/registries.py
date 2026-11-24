@@ -103,6 +103,11 @@ follows every rule, so no rule's order is tied to it. ``fill_bracket``'s
 conversions come last: an RMD can't be converted, so it must come out first,
 and the conversion's target needs the year's whole income."""
 
+HSA_GAIN_CHARACTERS: tuple[str, ...] = ("ltcg", "stcg")
+"""The characters of an HSA withdrawal's gain over basis (``hsa_gain``,
+#497), and of a year_to_date.csv row from an HSA lot to itself that
+carries one (#605)."""
+
 # Canonical year_to_date.csv column order (ADR-003 §4.10).
 YEAR_TO_DATE_CSV_HEADER: tuple[str, ...] = (
     "name", "from_account", "from_lot", "to_account", "to_lot", "amount",

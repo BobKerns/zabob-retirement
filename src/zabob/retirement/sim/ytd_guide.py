@@ -25,7 +25,8 @@ ROW = KindSpec(
         Field("to_account", "to account", option="--to-account", strict=True,
               choices=lambda ctx, answers: list(ctx.accounts),  # noqa: ARG005
               help="The same account on both sides only adjusts a tax total, "
-                   "as a loss carried forward does."),
+                   "as a loss carried forward does; on an HSA lot, an ltcg or stcg "
+                   "row is a gain over basis that only a state taxing the HSA sees."),
         Field("to_lot", "to lot", option="--to-lot", strict=True,
               choices=lots_of("to_account"), applies=lot_asked("to_account")),
         Field("amount", "amount in dollars, or @itemization", type="money", option="--amount",
