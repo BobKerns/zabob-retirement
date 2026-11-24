@@ -827,7 +827,8 @@ def test_analysis_video_build_publish_publishes_what_it_built(monkeypatch: pytes
     assert video_runs["local"] == [
         *([] if running else [("build", folder, {"lang": "ja", "out": None, "silent": True, "rerecord": False,
                                                  "jobs": None})]),
-        ("publish", [folder], {"lang": "ja", "out": None, "dry_run": True, "refresh": False, "new_upload": True})]
+        ("publish", [folder], {"lang": "ja", "out": None, "dry_run": True, "refresh": False, "force": False,
+                               "new_upload": True})]
 
 
 def test_analysis_video_build_publishes_only_a_good_build(monkeypatch: pytest.MonkeyPatch,
@@ -913,7 +914,7 @@ def test_analysis_video_names_a_video_by_folder_name(monkeypatch: pytest.MonkeyP
     assert runner.invoke(main, ["video", "publish", "01-intro", "--lang", "ja"]).exit_code == 0
     # An option's value stays as typed, even one that names a video.
     assert runner.invoke(main, ["video", "publish", "--refresh", "--out", "01-intro"]).exit_code == 0
-    flags = {"dry_run": False, "new_upload": False}
+    flags = {"dry_run": False, "force": False, "new_upload": False}
     assert video_runs["local"] == [
         ("publish", [Path.cwd() / "docs" / "videos" / "01-intro"], {"lang": "ja", "out": None, "refresh": False,
                                                                      **flags}),

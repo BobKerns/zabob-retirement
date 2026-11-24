@@ -110,7 +110,7 @@ def check(folders: list[Path]) -> int:
 
 
 def publish(folders: list[Path], *, lang: str | None = None, out: Path | None = None,
-            dry_run: bool = False, refresh: bool = False, new_upload: bool = False) -> int:
+            dry_run: bool = False, refresh: bool = False, force: bool = False, new_upload: bool = False) -> int:
     """Upload built videos to YouTube, or (refresh) update what's there;
     with refresh and no folders, every published video."""
     repo = repo_root(Path.cwd())
@@ -124,7 +124,8 @@ def publish(folders: list[Path], *, lang: str | None = None, out: Path | None = 
         return 2
     try:
         youtube.publish(folders, langs=[lang] if lang else None, out_dir=out or repo / "out" / "videos",
-                        repo=repo, dry_run=dry_run, new_upload=new_upload, refresh_only=refresh)
+                        repo=repo, dry_run=dry_run, new_upload=new_upload, refresh_only=refresh,
+                        force=force)
     except scripts.ScriptError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
