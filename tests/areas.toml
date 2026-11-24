@@ -1,0 +1,85 @@
+# Which tests a change needs, for scripts/affected_tests.py.
+#
+# Each [[area]] owns some paths and names the tests that cover them. A
+# changed path that no area owns, and that `ignore` doesn't list, selects
+# every test: most of the code (the engine, the loader, taxes, the CLI) is
+# reached by nearly every test through tests/conftest.py, so only the areas
+# below are narrow enough to test on their own. A changed test file selects
+# itself; tests/conftest.py and tests/data/ select everything.
+#
+# Globs are relative to the repository root; `**` crosses directories. When
+# a test starts reading a path an area owns, add the test to that area.
+
+# Paths no test reads: editor settings, the spelling word lists, agent
+# instructions and the workflows (which Gates itself exercises). Check with
+# `grep -rl <name> tests/` before adding one.
+ignore = [
+    ".cspell/**", ".vscode/**", ".cursor/**", ".serena/**", ".github/**",
+    "cspell.json", ".markdownlint.json", ".markdownlintignore",
+    "*.code-workspace", ".gitignore", ".gitattributes",
+    "AGENTS.md", "CLAUDE.md", "CONVENTIONS.md", "TODO.md", "PRIVACY.md",
+    "package.json", "package-lock.json", ".node-version",
+]
+
+[[area]]
+name = "videos"
+paths = [
+    "src/zabob/retirement/videos/**", "scripts/videos/**", "docker/videos/**",
+    "docs/videos/**",
+]
+tests = [
+    "tests/test_videos*.py", "tests/test_brand.py", "tests/test_tax_calculators.py",
+]
+
+[[area]]
+name = "amazon"
+paths = ["src/zabob/retirement/amazon/**", "tests/data/amazon/**"]
+tests = ["tests/test_amazon_*.py", "tests/test_cli.py"]
+
+[[area]]
+name = "install"
+paths = [
+    "packages/**", "docker/base/**", "docker/install-test/**", "docker/setup-test/**",
+    "scripts/install.sh", "scripts/start-container.sh", "hatch_build.py",
+    "PYPI.md", "README.md", "LICENSE", "tests/install/**",
+]
+tests = [
+    "tests/install/", "tests/test_wheel.py", "tests/test_installed.py",
+    "tests/test_release.py", "tests/test_test_containers.py",
+    "tests/test_truststore_pth.py", "tests/test_setup_listings.py",
+    "tests/test_brand.py",
+]
+
+[[area]]
+name = "notebooks"
+paths = ["notebooks/**"]
+tests = [
+    "tests/test_amazon_notebook.py", "tests/test_blocked_keywords.py",
+    "tests/test_brand.py", "tests/test_installed.py", "tests/test_items.py",
+    "tests/test_load_warnings.py", "tests/test_lot_drilldown.py",
+    "tests/test_notebook_ui_pickers.py", "tests/test_prices_widgets.py",
+    "tests/test_sim_compare.py", "tests/test_videos*.py", "tests/test_wheel.py",
+]
+
+[[area]]
+name = "docs"
+paths = ["docs/**"]
+tests = [
+    "tests/test_allocation.py", "tests/test_brand.py", "tests/test_tax_calculators.py",
+    "tests/test_wheel.py",
+]
+
+[[area]]
+name = "hooks"
+paths = [".githooks/**", "scripts/check-blocked-keywords.sh"]
+tests = ["tests/test_blocked_keywords.py", "tests/test_builder.py"]
+
+[[area]]
+name = "claude plugin"
+paths = [".claude/**", ".claude-plugin/**"]
+tests = ["tests/test_research_plugin.py"]
+
+[[area]]
+name = "test selection"
+paths = ["scripts/affected_tests.py", "tests/areas.toml"]
+tests = ["tests/test_affected_tests.py"]
