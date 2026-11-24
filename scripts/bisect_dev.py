@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -40,9 +41,14 @@ def present(test: str, tree: Path) -> bool:
     file = tree / path
     if not file.exists():
         return False
-    # The function's own name: the last part of a node id, less parameters.
-    func = name.rpartition("::")[2].partition("[")[0]
-    return not func or f"def {func}(" in file.read_text(encoding="utf-8")
+    # The node id's top-level name, a test function or class, less parameters.
+    # A method below it may be inherited from another module, so only the
+    # top level is looked for.
+    top = name.partition("::")[0].partition("[")[0]
+    if not top:
+        return True
+    return re.search(rf"^(?:def {re.escape(top)}\(|class {re.escape(top)}\b)",
+                     file.read_text(encoding="utf-8"), re.MULTILINE) is not None
 
 
 def verdict(pytest_code: int) -> int:

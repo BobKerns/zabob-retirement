@@ -12,7 +12,9 @@ apart, without its "Fixes" lines. Its commits still reach main, though, so
 an issue one of their messages names with a closing keyword closes anyway;
 the body names those to reopen.
 
-Merge the promotion with a merge commit, never a squash: dev's merges then
+The pull request opens as a draft, so Gates leaves it alone while dev
+keeps moving; mark it ready when it's time to promote, which runs the full
+gates on it once. Merge it with a merge commit, never a squash: dev's merges then
 stay on main's history, where scripts/bisect_dev.py and
 `git log --first-parent` find them. Needs `gh`, signed in.
 """
@@ -37,8 +39,11 @@ _MERGED_PR = re.compile(r"^Merge pull request #(\d+) ")
 # `git revert`'s message, for a merge (-m 1) or a plain commit, whatever its
 # subject says (git titles a revert of a revert "Reapply ...").
 _REVERTS = re.compile(r"^This reverts commit ([0-9a-f]{7,40})\b", re.MULTILINE)
-# GitHub's closing keywords.
-_CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE)
+# GitHub's closing keywords, with an issue of this repository as #N,
+# owner/repo#N or its URL.
+_CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+"
+                     r"(?:BobKerns/zabob-retirement#|https://github\.com/BobKerns/zabob-retirement/issues/|#)"
+                     r"(\d+)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -117,8 +122,10 @@ def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = 
     fixes = dict.fromkeys(n for p in pulls for n in p.closes)
     if reverted:
         lines += ["", "Reverted on dev, so left out:", ""]
-        lines += [f"- #{p.number} {p.title}" + (f" (would close {issues(p.closes)})" if p.closes else "")
-                  for p in reverted]
+        for p in reverted:
+            # An issue another promoted pull request fixes closes either way.
+            own = [n for n in p.closes if n not in fixes]
+            lines.append(f"- #{p.number} {p.title}" + (f" (would close {issues(own)})" if own else ""))
         # A commit message's closing keyword acts once the commit is on main,
         # reverted or not.
         reopen = [n for p in reverted for n in p.commit_closes if n not in fixes]
@@ -158,7 +165,8 @@ def _promote(dry_run: bool) -> int:
     pulls, reverted = [], []
     for merge in merges:
         data = json.loads(_run("gh", "pr", "view", str(merge.number), "--json", "title,body"))
-        closes = closed_issues(f"{data['title']}\n{data['body']}") + merge.commit_closes
+        # GitHub reads closing keywords in a pull request's body, not its title.
+        closes = closed_issues(data["body"] or "") + merge.commit_closes
         pull = Pull(merge.number, data["title"], tuple(dict.fromkeys(closes)), merge.commit_closes)
         (pulls if merge.present else reverted).append(pull)
     body = promotion_body(pulls, reverted)
@@ -171,7 +179,9 @@ def _promote(dry_run: bool) -> int:
         _run("gh", "pr", "edit", existing, "--body-file", "-", input=body)
         print(_run("gh", "pr", "view", existing, "--json", "url", "--jq", ".url").strip())
     else:
-        print(_run("gh", "pr", "create", "--base", "main", "--head", "dev", "--title", TITLE,
+        # A draft, which Gates skips: an open promotion would run the full
+        # suite again on every push to dev. Mark it ready to promote.
+        print(_run("gh", "pr", "create", "--draft", "--base", "main", "--head", "dev", "--title", TITLE,
                    "--body-file", "-", input=body).strip())
     return 0
 

@@ -80,10 +80,16 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           # A manual run has neither: check the commit it runs on.
           HEAD: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
+          DEV_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         run: |
-          # A force push (or the first push) leaves no usable base, and the
-          # pushed range is unknown: fail closed by checking the whole history.
-          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          # A push to dev checks everything since the last promotion: a later
+          # push cancels this run, and its own range would miss this push's
+          # commits. A force push (or the first push) leaves no usable base,
+          # and the pushed range is unknown: fail closed by checking the whole
+          # history.
+          if [ "$DEV_PUSH" = true ] && git rev-parse --verify --quiet origin/main >/dev/null; then
+              range="origin/main..$HEAD"
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
               range="$BASE..$HEAD"
           else
               range="$HEAD"
@@ -327,7 +333,14 @@ jobs:
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix') }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
+          # Until dev exists, main is still where pull requests go.
+          if ! gh api "repos/$REPO/branches/dev" --silent 2>/dev/null; then
+              echo "There is no dev branch yet."
+              exit 0
+          fi
           if [ "$HEAD_REF" != dev ] && [ "$HOTFIX" != true ]; then
               echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (label hotfix) goes to main. Edit the pull request's base to dev."
               exit 1

@@ -105,8 +105,10 @@ def test_a_chain_of_reverts_and_reapplies_on_dev(promote: ModuleType, repo: _Rep
 
 
 def test_closed_issues_follow_github_keywords(promote: ModuleType) -> None:
-    text = "Shard Gates\n\nFixes #704. Closes: #12, resolved #9; see #3 and fix #704 again."
-    assert promote.closed_issues(text) == (704, 12, 9)
+    text = ("Fixes #704. Closes: #12, resolved #9; see #3 and fix #704 again. "
+            "Closes BobKerns/zabob-retirement#13, fixes https://github.com/BobKerns/zabob-retirement/issues/14, "
+            "fixes other/repo#15.")
+    assert promote.closed_issues(text) == (704, 12, 9, 13, 14)
 
 
 def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
@@ -126,6 +128,12 @@ def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(pro
     assert "close #705 anyway when this merges: reopen them afterwards." in body
 
 
+def test_an_issue_a_promoted_pull_fixes_is_not_listed_against_a_reverted_one(promote: ModuleType) -> None:
+    body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], [promote.Pull(714, "Areas", (706,))])
+    assert "- #714 Areas\n" in body
+    assert body.endswith("Fixes #706\n")
+
+
 @pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (2, 1), (4, 1), (5, 1), (-9, 128)])
 def test_bisect_blames_any_failure(bisect: ModuleType, pytest_code: int, verdict: int) -> None:
     """A collection error (2) or a broken conftest (4) is a bad merge too."""
@@ -136,11 +144,15 @@ def test_bisect_blames_any_failure(bisect: ModuleType, pytest_code: int, verdict
     ("tests/test_x.py", True),
     ("tests/test_x.py::test_old", True),
     ("tests/test_x.py::TestThing::test_old[case-1]", True),
+    ("tests/test_x.py::TestThing", True),
+    ("tests/test_x.py::TestThing::test_inherited", True),
+    ("tests/test_x.py::TestOther", False),
     ("tests/test_x.py::test_new", False),
     ("tests/test_y.py", False),
 ])
 def test_bisect_skips_a_merge_where_the_test_is_missing(bisect: ModuleType, tmp_path: Path,
                                                         test: str, present: bool) -> None:
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_x.py").write_text("def test_old(case):\n    pass\n")
+    (tmp_path / "tests" / "test_x.py").write_text("def test_old(case):\n    pass\n\n\nclass TestThing(Base):\n"
+                                                  "    def test_old(self):\n        pass\n")
     assert bisect.present(test, tmp_path) is present

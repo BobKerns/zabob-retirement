@@ -13,7 +13,8 @@ shared with Copilot; edit it there, not here:
   (e.g. `issue/40-cert-verify`). Never name a branch plain `issue`.
 - Base new branches on `origin/dev` after `git fetch`, not local `main` or
   `dev`, and don't update local `main`. Pull requests target `dev`; see "The
-  dev branch" in the shared guidance.
+  dev branch" in the shared guidance. A hotfix, the one exception, branches
+  from `origin/main` and targets `main`.
 - Keep branches after their PR merges, locally and on GitHub.
 - Work in a worktree at `../zabob-retirement-worktrees/<branch with / flattened to ->`,
   not in the main checkout. Remove the worktree (not the branch) once its PR

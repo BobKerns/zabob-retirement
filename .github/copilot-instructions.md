@@ -172,9 +172,12 @@ years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
 
 Work merges into `dev`, not `main`: branch from `origin/dev`, and open pull
 requests against `dev`. Bob promotes `dev` to `main` when he wants it, with
-one pull request that `scripts/promote_dev.py` opens or refreshes; merge it
-with a merge commit, never a squash. Nothing else goes to `main` except a
-hotfix (labeled `hotfix`), which is then merged into `dev` at once.
+one pull request that `scripts/promote_dev.py` opens or refreshes, as a
+draft so it doesn't rerun the full gates on every push to `dev`; he marks it
+ready to promote and merges it with a merge commit, never a squash. Nothing
+else goes to `main` except a hotfix, which branches from `origin/main` (not
+`dev`, whose unpromoted merges it would carry), is labeled `hotfix`, and is
+merged into `dev` as soon as it lands.
 "Fixes #N" in a pull request into `dev` closes nothing until the promotion
 merges, so an issue whose pull request merged stays open until then; the
 promotion pull request lists and closes them.
