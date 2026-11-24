@@ -49,8 +49,8 @@ tapes work in `~/zabob-retirement/sim`, as in videos 3 to 12.
 The comparison stays with tax and pre-tax figures: the after-tax net worth
 prices each year's share of the IRA on top of that year's income without
 its own IRA draws, which qualifies for the credit, so it charges the
-credit's loss against the IRA in every drawdown year (an open question, not
-for this video).
+credit's loss against the IRA in every drawdown year (by design, #575: it
+is what the IRA money costs, but it misleads a comparison like this one).
 
 > Numbers in the narration were checked on 2026-11-11 against `setup.sh`.
 
