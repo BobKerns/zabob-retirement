@@ -1287,6 +1287,9 @@ class StateAdjustment:
     empty (split evenly) for the rest."""
     refundable: bool = False
     """A ``credit`` the state pays in full, past the tax (#579)."""
+    standard: bool = False
+    """A ``deduction`` that is part of the standard deduction (#610): added
+    to it before the larger of it and the itemized one is taken."""
 
     def from_base(self, amount: int) -> int:
         """The figure for a ``federal_tax``, ``federal_deduction`` or
@@ -1429,5 +1432,5 @@ def state_adjustments(ty: TaxYear, kind: str, state: str) -> list[StateAdjustmen
             None if limit is None else int(limit), None if phaseout is None else int(phaseout),
             None if phaseout_rate is None else int(phaseout_rate),
             units=eligible if base == "filers" else 1, shares=MappingProxyType(shares),
-            refundable=_yes(row.get("refundable"))))
+            refundable=_yes(row.get("refundable")), standard=_yes(row.get("standard"))))
     return out

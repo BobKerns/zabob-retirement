@@ -1,8 +1,9 @@
 """A state's own deductions and credits (#511, #488): the
 ``state_adjustments__<state>`` table, each row a named line of the state
 return figured from tagged spending or income, the filers, or the federal
-return, and the loader's checks on it. A credit may be refundable, and an
-income row's cap reduced by Social Security (#579)."""
+return, and the loader's checks on it. A credit may be refundable, an
+income row's cap reduced by Social Security (#579), and a deduction be part
+of the standard deduction (#610)."""
 
 from __future__ import annotations
 
@@ -285,3 +286,71 @@ def test_a_refundable_credit_is_paid_past_the_tax(
         # comes off after it and isn't among the credits taken.
         assert small[year] == credits[year]
         assert tax[year] == -100_000_00
+
+
+# -- Add-ons to the standard deduction (#610) ---------------------------------
+
+def _deduction_lines(run: Path, *extra: str) -> dict[str, dict[int, int]]:
+    return _lines(run, "state_standard_deduction", "state_itemized_deduction",
+                  "state_deduction", "state_agi", "state_taxable_income", *extra)
+
+
+@pytest.mark.slow
+def test_a_household_that_itemizes_gets_no_standard_add_on(
+    add_state_tax: Callable[..., None], write_aux: Callable[[str, str], Path],
+    run_test_copy: Callable[[], Path],
+) -> None:
+    """DC's and Kansas's extra deduction at 65 is part of the standard
+    deduction: in a year whose itemized deduction is larger than both, it
+    isn't taken, though its line still shows what it would have added."""
+    add_state_tax()
+    write_aux("state_adjustments__CA.csv",
+              HEADER.rstrip("\n") + ",standard\n"
+              + "2026-01-31,extra,deduction,filers,,,5000.00,,,,,,,,,yes\n")
+    # A hand-typed itemized total is the year's own: 2026's alone.
+    write_aux("state_deductions.csv", "effective_date,amount\n2026-01-31,500000.00\n")
+    lines = _deduction_lines(run_test_copy(), "state_extra")
+    standard, itemized = lines["state_standard_deduction"], lines["state_itemized_deduction"]
+    itemizing = [y for y in itemized if itemized[y] > standard[y]]
+    assert itemizing
+    for year in itemizing:
+        assert lines["state_extra"][year] == 2 * 5000_00
+        assert lines["state_deduction"][year] == itemized[year]
+        assert lines["state_taxable_income"][year] == max(
+            0, lines["state_agi"][year] - itemized[year])
+
+
+@pytest.mark.slow
+def test_a_standard_add_on_counts_before_the_comparison_with_itemizing(
+    add_state_tax: Callable[..., None], write_aux: Callable[[str, str], Path],
+    run_test_copy: Callable[[], Path],
+) -> None:
+    """The add-on joins the standard deduction before the larger is taken,
+    so it can make the standard deduction the larger: an itemized total
+    between the two is beaten by the standard deduction with it."""
+    add_state_tax()
+    write_aux("state_adjustments__CA.csv",
+              HEADER.rstrip("\n") + ",standard\n"
+              + "2026-01-31,extra,deduction,filers,,,50000.00,,,,,,,,,yes\n")
+    lines = _deduction_lines(run_test_copy(), "state_extra")
+    standard, itemized = lines["state_standard_deduction"], lines["state_itemized_deduction"]
+    tipped = [y for y in standard if standard[y] - 100_000_00 < itemized[y] < standard[y]]
+    for year, amount in lines["state_deduction"].items():
+        assert amount == max(standard[year], itemized[year])
+        assert lines["state_extra"][year] == 100_000_00
+    assert tipped
+
+
+@pytest.mark.parametrize(("row", "message"), [
+    ("x,credit,filers,,,100.00,,,,,,,,,yes", "standard is for a deduction"),
+    ("x,deduction,filers,,,100.00,,,,50000.00,,,,,yes", "takes no income_limit"),
+    ("x,deduction,federal_tax,,,100.00,,,,,,,,,yes", "base is filers, spending or income"),
+])
+def test_the_loader_checks_a_standard_add_on(
+    add_state_tax: Callable[..., None], write_aux: Callable[[str, str], Path],
+    load_test_copy: Callable[[], LoadResult], row: str, message: str,
+) -> None:
+    add_state_tax()
+    write_aux("state_adjustments__CA.csv", HEADER.rstrip("\n") + ",standard\n" + f"2026-01-31,{row}\n")
+    with pytest.raises(LoadError, match=message):
+        load_test_copy()
