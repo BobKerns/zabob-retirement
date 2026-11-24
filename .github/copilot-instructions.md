@@ -124,16 +124,10 @@ npm run markdownlint                              # markdown (markdownlint)
 `cspell` and `markdownlint` are pinned in `package.json` and installed by
 `scripts/setup.sh` (`npm ci`); see [`docs/SETUP.md`](../docs/SETUP.md).
 
-[`.github/workflows/gates.yml`](workflows/gates.yml) runs the first five gates,
-with every test including the slow ones, and the blocked-keyword check on every
-pull request that isn't a draft and every push to `main`. It skips the tests,
-lint and types when a change touches only prose or editor settings (the list is
-in the workflow).
-
-`scripts/affected_tests.py` compares the working tree with `origin/main`
-(`--base` for another branch) and runs only the tests whose area the change
-touches, per [`tests/areas.toml`](../tests/areas.toml); a change to a path no
-area owns (the engine, the loader, taxes, the CLI, `tests/conftest.py`) runs
+`scripts/affected_tests.py` compares the working tree with `origin/dev`
+(`origin/main` before `dev` exists; `--base` for another branch) and runs
+only the tests whose area the change touches, per
+[`tests/areas.toml`](../tests/areas.toml); a change to a path no area owns (the engine, the loader, taxes, the CLI, `tests/conftest.py`) runs
 the whole suite, which is most changes. `--list` shows the choice without
 running it; arguments after `--` go to pytest. When a test starts reading a
 path an area owns, add it to that area; `tests/test_affected_tests.py` fails
@@ -151,27 +145,57 @@ exercises, run that test locally too (`-m slow`, or the test by name). Mark a
 new test `slow` when it takes about a second on its own.
 
 Copilot reviews a pull request when it leaves draft, and every push after
-that; Gates skips drafts too, since Actions minutes are billed. So open pull
-requests as drafts and iterate there with the local gates. Before marking one
-ready, merge `main` and run the whole suite locally, slow tests included
-(`.venv/bin/python -m pytest -q -n auto`). Marking it ready starts Copilot's review and one Gates
-run together; fix anything either finds. When a ready pull request needs
-several more pushes (a merge from `main`, a batch of review fixes), turn it
-back into a draft first, push, and mark it ready again: one review and one
-Gates run per return to ready, not one per push.
+that; Gates skips drafts too. So open pull requests as drafts and iterate
+there with the local gates. Before marking one ready, merge `dev` and run the
+change's tests with the slow ones (`.venv/bin/python scripts/affected_tests.py
+--slow`); run the whole suite (`.venv/bin/python -m pytest -q -n auto`) only
+when asked, since `dev` runs it after merge. Marking it ready starts Copilot's
+review and one Gates run together; fix anything either finds. When a ready
+pull request needs several more pushes (a merge from `dev`, a batch of review
+fixes), turn it back into a draft first, push, and mark it ready again: one
+review and one Gates run per return to ready, not one per push.
 
 Run a single test with `.venv/bin/python -m pytest tests/test_engine.py::test_name -q`
 (or `-k pattern` to match by substring).
 
-`ruff check` is clean on `main`; keep it that way.
+`ruff check` is clean on `dev` and `main`; keep it that way.
 
-`ty check` is clean on `main` too. Fix a type error rather than silencing it.
+`ty check` is clean on them too. Fix a type error rather than silencing it.
 Where a library hides types from ty, use the existing helper: `named_rows()`
 for `DataFrame.itertuples()` (`src/zabob/retirement/frames.py`), or `_trait()` for a
 traitlets class attribute (`notebook_ui/pickers.py`). A narrow
 `# ty: ignore[<rule>]` with a reason is the last resort. To read a frame's
 years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
 (also in `frames.py`).
+
+## The dev branch
+
+Work merges into `dev`, not `main`: branch from `origin/dev`, and open pull
+requests against `dev`. Bob promotes `dev` to `main` when he wants it, with
+one pull request that `scripts/promote_dev.py` opens or refreshes; merge it
+with a merge commit, never a squash. Nothing else goes to `main` except a
+hotfix (labeled `hotfix`), which is then merged into `dev` at once.
+"Fixes #N" in a pull request into `dev` closes nothing until the promotion
+merges, so an issue whose pull request merged stays open until then; the
+promotion pull request lists and closes them.
+
+[`.github/workflows/gates.yml`](workflows/gates.yml) runs the first five gates
+and the blocked-keyword check, at one of two depths, on every pull request
+that isn't a draft:
+
+- **Quick**, on a pull request into `dev`: keywords, lint, types, spelling,
+  markdown, and the tests `scripts/affected_tests.py` selects, slow ones
+  included. A change that selects the whole suite doesn't run it there.
+- **Full**, on every push to `dev` or `main`, a pull request into `main`, a
+  pull request labeled `full-gates`, and "Run workflow" on a branch: the
+  whole suite, slow tests included, in four shards. A newer push to `dev`
+  cancels the run on the older one, so a burst of merges costs one run.
+
+Lint and types skip when a change touches only prose or editor settings (the
+list is in the workflow). A failure on `dev` is found after merge:
+`scripts/bisect_dev.py TEST...` runs those tests at `dev`'s merges since the
+last promotion and names the first that fails them. Fix it forward in a pull
+request into `dev`, or revert that merge (`git revert -m 1 <merge>`).
 
 ## Conventions
 
