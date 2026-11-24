@@ -11,10 +11,10 @@
 # a test starts reading a path an area owns, add the test to that area.
 
 # Paths no test reads: editor settings, the spelling word lists, agent
-# instructions and the workflows (which Gates itself exercises).
+# instructions and the workflows (which Gates itself exercises). Check with
+# `grep -rl <name> tests/` before adding one.
 ignore = [
-    ".cspell/**", ".vscode/**", ".cursor/**", ".serena/**", ".claude/**",
-    ".github/**", ".githooks/**",
+    ".cspell/**", ".vscode/**", ".cursor/**", ".serena/**", ".github/**",
     "cspell.json", ".markdownlint.json", ".markdownlintignore",
     "*.code-workspace", ".gitignore", ".gitattributes",
     "AGENTS.md", "CLAUDE.md", "CONVENTIONS.md", "TODO.md", "PRIVACY.md",
@@ -65,8 +65,19 @@ tests = [
 name = "docs"
 paths = ["docs/**"]
 tests = [
-    "tests/test_brand.py", "tests/test_tax_calculators.py", "tests/test_wheel.py",
+    "tests/test_allocation.py", "tests/test_brand.py", "tests/test_tax_calculators.py",
+    "tests/test_wheel.py",
 ]
+
+[[area]]
+name = "hooks"
+paths = [".githooks/**", "scripts/check-blocked-keywords.sh"]
+tests = ["tests/test_blocked_keywords.py", "tests/test_builder.py"]
+
+[[area]]
+name = "claude plugin"
+paths = [".claude/**", ".claude-plugin/**"]
+tests = ["tests/test_research_plugin.py"]
 
 [[area]]
 name = "test selection"

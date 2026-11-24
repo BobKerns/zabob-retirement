@@ -21,6 +21,8 @@ import subprocess
 import sys
 import tomllib
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 AREAS = REPO / "tests" / "areas.toml"
 ALL = "tests"
@@ -86,7 +88,9 @@ def changed_files(base: str, root: Path = REPO) -> list[str]:
         return [line for line in out.splitlines() if line]
 
     merge_base = git("merge-base", base, "HEAD")[0]
-    paths = set(git("diff", "--name-only", merge_base))
+    # --no-renames: a moved file's old path matters too (what imported it
+    # from there), and rename detection would list only the new one.
+    paths = set(git("diff", "--name-only", "--no-renames", merge_base))
     paths.update(git("ls-files", "--others", "--exclude-standard"))
     return sorted(paths)
 
@@ -100,7 +104,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     args = parser.parse_args(argv)
 
-    tests, everything = select(changed_files(args.base), load_areas())
+    try:
+        changed = changed_files(args.base)
+    except subprocess.CalledProcessError:
+        print(f"Can't find where HEAD left {args.base}: is it fetched (git fetch origin)?"
+              " Pass --base to name another branch.", file=sys.stderr)
+        return 2
+    tests, everything = select(changed, load_areas())
     if args.list:
         print("\n".join(tests))
         return 0
@@ -115,7 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     command = [sys.executable, "-m", "pytest", "-q", "-n", "auto"]
     if not args.slow:
         command += ["-m", "not slow"]
-    return subprocess.run([*command, *tests, *args.pytest_args], cwd=REPO).returncode
+    code = subprocess.run([*command, *tests, *args.pytest_args], cwd=REPO).returncode
+    if code == pytest.ExitCode.NO_TESTS_COLLECTED and not args.slow:
+        # Every selected test is marked slow: nothing failed.
+        print("Every selected test is marked slow; run with --slow to include them.", file=sys.stderr)
+        return 0
+    return code
 
 
 if __name__ == "__main__":
