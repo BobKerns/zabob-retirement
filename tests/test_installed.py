@@ -94,6 +94,18 @@ def test_activate_puts_the_installed_program_first_and_deactivate_restores_path(
     assert "differs" not in done.stderr and "Enter ANALYSIS_REPO_DIR" not in done.stderr
 
 
+def test_activate_leaves_out_of_gitignore_a_name_commented_out_or_negated(installed_program: Path) -> None:
+    """A shared retention policy can be committed (#712): a commented-out or
+    negated line keeps activate from adding the name back."""
+    assert _sim("init", "--no-builder", *_ALICE).exit_code == 0
+    sim = Path(os.environ["HOME"]) / "zabob-retirement" / "sim"
+    lines = ["# .retention.yaml", "!.current_scenario", "/.analysis_user", "#.analysis.bak"]
+    (sim / ".gitignore").write_text("".join(f"{line}\n" for line in lines))
+    done = _activate(sim / "activate-analysis", installed_program, "/usr/bin:/bin")
+    assert done.returncode == 0, done.stderr
+    assert (sim / ".gitignore").read_text().splitlines() == [*lines, ".analysis"]
+
+
 def test_activate_finds_an_installed_program_through_the_sim_on_path(installed_program: Path) -> None:
     """A data repo cloned onto a new machine names no program: uv links an
     installed one's commands into ~/.local/bin."""
