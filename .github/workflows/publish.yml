@@ -97,8 +97,8 @@ jobs:
           path: dist/
 
       # zabob-retirement goes up first, on its own: zabob-retire depends on
-      # it, and a pending trusted publisher can create only one project, so
-      # zabob-retire's can be added only once zabob-retirement exists (#699).
+      # it, and a pending trusted publisher can create only one project
+      # (first upload: see docs/releasing.md, #699).
       # (zabob_retire-* doesn't match zabob_retirement-*.)
       - name: Split the two packages
         run: |
