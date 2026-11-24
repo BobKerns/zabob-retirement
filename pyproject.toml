@@ -1,34 +1,57 @@
 [project]
-name = "analysis"
-version = "0.1.0"
-description = "Personal finance analysis and planning tools"
-readme = "README.md"
+name = "zabob-retirement"
+# packages/zabob-retire pins this same version; tests/test_release.py and
+# publish.yml hold them, and a release tag, together.
+version = "1.0.0b1"
+description = "Zabob Retirement: a retirement simulator for your future, with scenario comparison and Monte Carlo ensembles"
+# PyPI shows this; README.md's relative links and images only work on GitHub.
+readme = "PYPI.md"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["retirement", "retirement simulator", "financial planning", "monte carlo", "taxes", "roth conversion"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Framework :: Jupyter",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Office/Business :: Financial",
+]
 dependencies = [
-  "click>=8.5.0",
+  "click>=8.5.1",
   "gitpython>=3.2.1",
   "ipywidgets>=8.1.9",
   "matplotlib>=3.11.2",
-  "pandas>=3.0.6",
+  "pandas>=3.1.1",
   "rich>=15.0.0",
   "ipykernel>=7.4.0",
-  "jupyterlab>=4.6.4",
+  "jupyterlab>=4.6.6",
   # 2.21.0 breaks under tornado >= 6.5.9: every /static request 500s (#62)
   "jupyter-server>=2.21.1",
-  "numpy>=2.5.4",
+  "numpy>=2.5.5",
   "scipy>=1.18.1",
   "truststore>=0.10.5",
-  "markdown-it-py>=4.2.0",
+  "markdown-it-py>=4.3.0",
   "anywidget>=0.11.0",
-  "playwright>=1.64.0",
+  "playwright>=1.65.2",
   "pyyaml>=6.0.3",
   "jinja2>=3.1.6",
+  "ofxtools>=1.1.1",
 ]
 
 [project.scripts]
-analysis = "analysis.cli:main"
-amazon = "analysis.amazon.cli:amazon_group_command"
-sim = "analysis.sim.cli:sim_group_command"
+analysis = "zabob.retirement.cli:main"
+amazon = "zabob.retirement.amazon.cli:amazon_group_command"
+sim = "zabob.retirement.sim.cli:sim_group_command"
+
+[project.urls]
+Homepage = "https://github.com/BobKerns/zabob-retirement"
+Documentation = "https://github.com/BobKerns/zabob-retirement/blob/main/docs/user-guide.md"
+Videos = "https://www.youtube.com/channel/UCQnUgmsanqEqAj1I-0i7vOA/"
+Issues = "https://github.com/BobKerns/zabob-retirement/issues"
 
 [dependency-groups]
 dependabot = [
@@ -37,19 +60,27 @@ dependabot = [
 ]
 dev = [
   "nbstripout>=0.9.1",
-  "pytest>=9.1.1",
+  "pytest>=9.2.0",
   "pytest-cov>=7.1.0",
-  "ruff>=0.17.1",
+  "ruff>=0.17.5",
   "pytest-xdist>=3.8.0",
-  "ty>=0.0.90",
+  "ty>=0.0.104",
 ]
 
 [build-system]
-requires = ["hatchling>=1.32.4"]
+requires = ["hatchling>=1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/analysis"]
+packages = ["src/zabob"]
+
+# hatch_build.py ships templates/, notebooks/, prototype_data/ and plugins/ in the wheel
+# and stamps the commit it was built from (#662).
+[tool.hatch.build.hooks.custom]
+
+# What the wheel is built from: uv build makes the wheel out of the sdist.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "templates", "notebooks", "prototype_data", "plugins", "hatch_build.py", "README.md", "PYPI.md", "LICENSE"]
 
 # Every Python process in the venv (JupyterLab server, kernels, CLI runs, and
 # libraries that bring their own certifi contexts) verifies TLS with the OS
@@ -57,7 +88,7 @@ packages = ["src/analysis"]
 # needs no import from our code. The project is only ever installed editable by
 # `uv sync`; hatchling copies force-include files into that install as well.
 [tool.hatch.build.targets.wheel.force-include]
-"src/pth/analysis_truststore.pth" = "analysis_truststore.pth"
+"src/pth/zabob_retirement_truststore.pth" = "zabob_retirement_truststore.pth"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -73,6 +104,8 @@ markers = [
     "allow_negative_balance: the test runs an account short on purpose; the went-negative warning must fire (see tests/conftest.py)",
     "uses_real_cpu_count: exempt from the one-CPU sim run --jobs default fixture (see tests/conftest.py)",
     "slow: takes about a second or more; the local gate runs -m 'not slow', CI runs everything",
+    "checkout: needs the code checkout; skipped when the suite runs against an installed wheel (#674)",
+    "installed: checks an installed wheel; skipped when the suite runs from a checkout (#674)",
 ]
 
 [tool.ruff]

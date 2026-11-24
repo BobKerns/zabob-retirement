@@ -11,10 +11,10 @@
 export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
 mkdir -p "$HOME"
 unset ANALYSIS_DATA_DIR
-sim init ~/retirement/data --id alice --display "Alice Example" --birthdate 1962-04-15 \
+sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/retirement/data/sim/activate-analysis > /dev/null
-cd ~/retirement/data
+source ~/zabob-retirement/sim/activate-analysis > /dev/null
+cd ~/zabob-retirement
 
 stage() {  # commit what the commands before made, and mark where a scene starts
     git add -A
@@ -100,7 +100,7 @@ demo_batch() {
     local batch
     batch="$(ls -t "state/runs/$1/monte-carlo" | head -1)"
     mv "state/runs/$1/monte-carlo/$batch" "state/runs/$1/monte-carlo/$2"
-    mv "state/intent/$1/$batch" "state/intent/$1/$2" 2>/dev/null || true
+    mv "state/intent/$1/monte-carlo/$batch" "state/intent/$1/monte-carlo/$2" 2>/dev/null || true
 }
 
 # The scenes' commands, in order.

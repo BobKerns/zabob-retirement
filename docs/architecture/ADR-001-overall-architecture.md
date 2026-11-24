@@ -1,9 +1,11 @@
+![ADR-001: Overall architecture of the finance simulator](../assets/brand/banners/architecture-adr-001-overall-architecture.svg)
+
 # ADR-001: Overall architecture of the finance simulator
 
 - **Status:** Accepted
 - **Date:** 2026-05-17
 - **Amended:** see [Amendments](#amendments) at the end.
-- **Scope:** New top-level subsystem `src/analysis/sim/`, sibling to the existing `amazon/` subsystem. Shares utility code (logging, sqlite helpers) but not data.
+- **Scope:** New top-level subsystem `src/zabob/retirement/sim/`, sibling to the existing `amazon/` subsystem. Shares utility code (logging, sqlite helpers) but not data.
 
 ## Context
 
@@ -115,7 +117,7 @@ The data repo provides a sourceable `activate` script (venv-style) that sets:
 ### Code organization
 
 ```text
-src/analysis/sim/
+src/zabob/retirement/sim/
     __init__.py
     model.py          # Person, Account, AccountModel, ScheduledTransaction dataclasses
     calendar.py       # Calendar, CalendarEvent
@@ -132,7 +134,7 @@ src/analysis/sim/
 tests/sim/...
 ```
 
-The existing `analysis.storage` module contains item-import schemas specific to Amazon CSVs; generic sqlite helpers (connection setup, normalization utilities) will be extracted into a sibling module if shared use justifies it. Until then, `sim/storage.py` defines its own DDL and connection.
+The existing `zabob.retirement.storage` module contains item-import schemas specific to Amazon CSVs; generic sqlite helpers (connection setup, normalization utilities) will be extracted into a sibling module if shared use justifies it. Until then, `sim/storage.py` defines its own DDL and connection.
 
 ### CLI surface (v1)
 
@@ -178,9 +180,9 @@ These mutating commands are convenience wrappers around the same CSV edits an AI
 Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
 
 - [ADR-005](ADR-005-lots-and-per-lot-state.md) (lots and per-lot state): accounts are split into lots, and the engine's state is per lot.
-- [#105](https://github.com/BobKerns/analysis/issues/105): a negative-balance warning records the refill chain it tried and what that chain supplied (principle 7).
-- [#197](https://github.com/BobKerns/analysis/issues/197): principle 5 no longer relies on `life_transition` events, which are dropped.
-- [#186](https://github.com/BobKerns/analysis/issues/186): `sim explain` takes a scenario and lists negative-balance warnings; `sim networth` added (CLI surface).
-- [#214](https://github.com/BobKerns/analysis/issues/214): the prompt shows the current scenario (Activation).
-- [#332](https://github.com/BobKerns/analysis/issues/332): `sim explain`'s year-end net worth is after tax unless `--pre-tax`, like the other reports (CLI surface).
-- [#431](https://github.com/BobKerns/analysis/issues/431): the notebooks show a run's negative-balance warnings as `sim explain` lists them, each with its lowest balance (principle 7, CLI surface).
+- [#105](https://github.com/BobKerns/zabob-retirement/issues/105): a negative-balance warning records the refill chain it tried and what that chain supplied (principle 7).
+- [#197](https://github.com/BobKerns/zabob-retirement/issues/197): principle 5 no longer relies on `life_transition` events, which are dropped.
+- [#186](https://github.com/BobKerns/zabob-retirement/issues/186): `sim explain` takes a scenario and lists negative-balance warnings; `sim networth` added (CLI surface).
+- [#214](https://github.com/BobKerns/zabob-retirement/issues/214): the prompt shows the current scenario (Activation).
+- [#332](https://github.com/BobKerns/zabob-retirement/issues/332): `sim explain`'s year-end net worth is after tax unless `--pre-tax`, like the other reports (CLI surface).
+- [#431](https://github.com/BobKerns/zabob-retirement/issues/431): the notebooks show a run's negative-balance warnings as `sim explain` lists them, each with its lowest balance (principle 7, CLI surface).

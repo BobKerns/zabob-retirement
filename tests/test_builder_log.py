@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from analysis.cli import main
-from analysis.sim import builder_log as blog
-from analysis.sim.retention import DEFAULT_RETENTION, RETENTION_FILENAME, parse_retention
+from zabob.retirement.cli import main
+from zabob.retirement.sim import builder_log as blog
+from zabob.retirement.sim.retention import DEFAULT_RETENTION, RETENTION_FILENAME, parse_retention
 
 
 @pytest.fixture
@@ -83,8 +83,10 @@ def test_unindented_lines_after_an_event_are_always_shown(
     builder_dir: Path, test_data_dir: Path,
 ) -> None:
     writer = blog.LogWriter(builder_dir / "logs")
-    writer.event("started (pid 1)", _at(1))
-    with open(blog.file_for(builder_dir / "logs", datetime.now()), "a") as f:
+    started = _at(1)
+    writer.event("started (pid 1)", started)
+    # The event's own file: near midnight, now's file is the next day's.
+    with open(blog.file_for(builder_dir / "logs", started), "a") as f:
         f.write("Traceback (most recent call last):\n  File x\nValueError: boom\n")
     assert _log(data_dir=test_data_dir)[1:] == ["Traceback (most recent call last):",
                                                "ValueError: boom"]
@@ -221,3 +223,51 @@ def test_follow_counts_the_output_of_a_build_already_running(builder_dir: Path) 
         done.set()
         thread.join(timeout=5)
     assert seen[1:] == ["  ... last 2 line(s) of its output:", "  written before -f", "  after"]
+
+
+def test_the_log_as_json_gives_each_record_newest_first(builder_dir: Path, test_data_dir: Path) -> None:
+    """#682: the records as rows, the indent taken off their lines."""
+    import json
+
+    writer = blog.LogWriter(builder_dir / "logs")
+    _write_build(writer, "base", 10, "build failed: base", ["  Traceback", "boom"])
+    result = CliRunner().invoke(main, ["sim", "builder", "log", "--data-dir", str(test_data_dir),
+                                       "--json"])
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.stdout)
+    assert found["columns"] == ["at", "event", "output"]
+    assert [row["event"] for row in found["rows"]] == ["build failed: base", "building base"]
+    assert found["rows"][1]["output"] == []
+    verbose = CliRunner().invoke(main, ["sim", "builder", "log", "--data-dir", str(test_data_dir),
+                                        "--json", "-v"])
+    assert json.loads(verbose.stdout)["rows"][1]["output"] == ["  Traceback", "boom"]
+    follow = CliRunner().invoke(main, ["sim", "builder", "log", "--data-dir", str(test_data_dir),
+                                       "--json", "-f"])
+    assert follow.exit_code == 2 and "--follow waits for more" in follow.output
+
+
+def test_builder_status_as_json(builder_dir: Path, test_data_dir: Path, repo_root: Path) -> None:
+    """#682: what the builder is doing as fields, and its jobs as rows."""
+    import json
+
+    from zabob.retirement.sim import builder
+
+    def status() -> dict:
+        result = CliRunner().invoke(main, ["sim", "builder", "status", "--data-dir",
+                                           str(test_data_dir), "--json"])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)
+
+    assert status()["installed"] is False
+    paths = builder.BuilderPaths.for_data(test_data_dir)
+    paths.dir.mkdir(parents=True, exist_ok=True)
+    paths.config.write_text(json.dumps({"data_dir": str(test_data_dir), "code_dir": str(repo_root)}))
+    paths.status.write_text(json.dumps({
+        "waiting": {"base": "dirty data"}, "failed": {"retire_alice": {"message": "boom"}}}))
+    found = status()
+    assert found["installed"] is True and found["running"] is False
+    assert found["tables"]["jobs"]["rows"] == [
+        {"job": "base", "state": "waiting", "since": None, "detail": "dirty data"},
+        {"job": "retire_alice", "state": "failed", "since": None, "detail": "boom"},
+    ]
+    assert {"prices", "roll", "research", "log"} <= set(found)

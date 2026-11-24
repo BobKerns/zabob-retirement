@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,11 +12,11 @@ from typing import Any
 
 import pytest
 
-from analysis.videos import captions, notebook, render
-from analysis.videos import script as scripts
-from analysis.videos import theme as themes
-from analysis.videos.commands import TTYD_URL, check, vhs_url
-from analysis.videos.build import VIDEO_DATA_ENV, _Builder, build
+from zabob.retirement.videos import captions, notebook, render
+from zabob.retirement.videos import script as scripts
+from zabob.retirement.videos import theme as themes
+from zabob.retirement.videos.commands import TTYD_URL, check, vhs_url
+from zabob.retirement.videos.build import VIDEO_DATA_ENV, _Builder, build
 
 SCRIPT = """\
 +++
@@ -62,6 +63,7 @@ def _write(folder: Path, text: str, name: str = "script.md") -> Path:
     return folder
 
 
+@pytest.mark.checkout
 def test_every_repo_video_checks(repo_root: Path) -> None:
     folders = sorted(p for p in (repo_root / "docs" / "videos").iterdir() if (p / "script.md").is_file())
     assert folders, "the pilot video should exist"
@@ -210,6 +212,27 @@ def test_slide_html_fills_template_inlines_assets_and_escapes(videos_root: Path)
         render.slide_html(theme, {}, {"template": "card", "heading": "h", "speaker": "carol"}, "en")
     with pytest.raises(scripts.ScriptError, match="no slide template 'nope'"):
         render.slide_html(theme, {}, {"template": "nope"}, "en")
+
+
+def test_slide_html_inlines_pictures_as_data_uris(videos_root: Path) -> None:
+    theme = themes.load(videos_root)
+    (theme.assets / "portrait.png").write_bytes(b"\x89PNG fake")
+    page = theme.templates / "pic.html"
+    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}')
+    html = render.slide_html(theme, {}, {"template": "pic"}, "en")
+    assert '<img src="data:image/png;base64,iVBORyBmYWtl">' in html
+    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}')
+    with pytest.raises(scripts.ScriptError, match="no picture 'nobody'"):
+        render.slide_html(theme, {}, {"template": "pic"}, "en")
+
+
+def test_host_slide_shows_zabob_over_the_scene(videos_root: Path) -> None:
+    theme = themes.load(videos_root)
+    html = render.slide_html(theme, {"series": "S"}, {"template": "host"}, "en")
+    assert "<h1>Zabob</h1>" in html and "your host" in html
+    assert "data:image/png;base64," in html and "data:image/jpeg;base64," in html
+    html = render.slide_html(theme, {}, {"template": "host", "role": "案内役", "line": "A <b>"}, "ja")
+    assert "案内役" in html and "A &lt;b&gt;" in html
 
 
 def test_captions_are_timed_per_sentence_and_split_long_ones() -> None:
@@ -687,12 +710,13 @@ def test_launch_chromium_says_how_to_get_one(monkeypatch: pytest.MonkeyPatch) ->
         render.launch_chromium(SimpleNamespace(chromium=_FakeChromium(set())))
 
 
+@pytest.mark.checkout
 def test_analysis_video_image_rebuilds_in_docker(monkeypatch: pytest.MonkeyPatch,
                                                  video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: True)
     result = CliRunner().invoke(main, ["video", "image"])
@@ -700,6 +724,7 @@ def test_analysis_video_image_rebuilds_in_docker(monkeypatch: pytest.MonkeyPatch
     assert video_runs == {"docker": [["image"]], "local": []}
 
 
+@pytest.mark.checkout
 def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
     """The image is rebuilt only when docker/videos changes (#612), so it
     must copy nothing else: the checkout is mounted, and what the code needs
@@ -712,6 +737,10 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
         assert (repo_root / path).exists(), path
     assert {"src", "pyproject.toml", "uv.lock", "README.md", "templates", "historical_data",
             "prototype_data", "notebooks", "scripts/videos", "docs/videos"} <= mounts
+    # The tapes record the program installed from a wheel built from the
+    # mounted checkout, so all the sdist takes must be mounted too.
+    sdist = tomllib.loads((repo_root / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["sdist"]
+    assert set(sdist["only-include"]) <= mounts
     assert ".venv" not in mounts
     assert "context=docker/videos" in docker_sh
     dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
@@ -737,8 +766,8 @@ def video_runs(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
     """`analysis video` with the container and the local builder replaced
     by recorders: which one ran, with what arguments (the container's
     command line; the local function's name, positional and keywords)."""
-    from analysis.videos import cli as video_cli
-    from analysis.videos import commands
+    from zabob.retirement.videos import cli as video_cli
+    from zabob.retirement.videos import commands
 
     runs: dict[str, list[Any]] = {"docker": [], "local": []}
     monkeypatch.setattr(video_cli, "_docker", lambda args, out=None: runs["docker"].append(args) or 0)
@@ -755,13 +784,14 @@ def video_runs(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
     (True, ["--local"], "local"),
     (True, ["--docker"], "docker"),
 ])
+@pytest.mark.checkout
 def test_analysis_video_build_runs_in_docker_when_it_can(monkeypatch: pytest.MonkeyPatch,
                                                          video_runs: dict[str, list[Any]],
                                                          running: bool, where: list[str], ran: str) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: running)
     result = CliRunner().invoke(main, ["video", "build", "01-intro", "--lang", "ja", "--silent", "--jobs", "3",
@@ -775,6 +805,7 @@ def test_analysis_video_build_runs_in_docker_when_it_can(monkeypatch: pytest.Mon
     assert ("running locally" in result.output) == (not running and not where)
 
 
+@pytest.mark.checkout
 @pytest.mark.parametrize("running", [True, False])
 def test_analysis_video_build_publish_publishes_what_it_built(monkeypatch: pytest.MonkeyPatch,
                                                               video_runs: dict[str, list[Any]],
@@ -783,8 +814,8 @@ def test_analysis_video_build_publish_publishes_what_it_built(monkeypatch: pytes
     machine, with publish's own options; the build's flags stay its own."""
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: running)
     result = CliRunner().invoke(main, ["video", "build", "01-intro", "--lang", "ja", "--silent", "--publish",
@@ -796,15 +827,16 @@ def test_analysis_video_build_publish_publishes_what_it_built(monkeypatch: pytes
     assert video_runs["local"] == [
         *([] if running else [("build", folder, {"lang": "ja", "out": None, "silent": True, "rerecord": False,
                                                  "jobs": None})]),
-        ("publish", [folder], {"lang": "ja", "out": None, "dry_run": True, "refresh": False, "new_upload": True})]
+        ("publish", [folder], {"lang": "ja", "out": None, "dry_run": True, "refresh": False, "force": False,
+                               "new_upload": True})]
 
 
 def test_analysis_video_build_publishes_only_a_good_build(monkeypatch: pytest.MonkeyPatch,
                                                          video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: True)
     monkeypatch.setattr(video_cli, "_docker", lambda args, out=None: video_runs["docker"].append(args) or 1)
@@ -813,14 +845,15 @@ def test_analysis_video_build_publishes_only_a_good_build(monkeypatch: pytest.Mo
     assert video_runs["local"] == []
 
 
+@pytest.mark.checkout
 def test_analysis_video_build_says_when_publish_wont_send_the_picture(
         monkeypatch: pytest.MonkeyPatch, video_runs: dict[str, list[Any]]) -> None:
     """A language already up gets only its title and description; say so,
     since the rebuild's picture won't reach YouTube without --new-upload."""
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
     runner = CliRunner()
@@ -836,12 +869,13 @@ def test_analysis_video_build_says_when_publish_wont_send_the_picture(
     (["--refresh", "--new-upload"], "--refresh, --new-upload only go with --publish"),
     (["--publish", "--refresh", "--new-upload"], "--refresh and --new-upload don't go together"),
 ])
+@pytest.mark.checkout
 def test_analysis_video_build_checks_publish_options_before_building(
         monkeypatch: pytest.MonkeyPatch, video_runs: dict[str, list[Any]], args: list[str], message: str) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
     result = CliRunner().invoke(main, ["video", "build", "01-intro", *args])
@@ -849,12 +883,13 @@ def test_analysis_video_build_checks_publish_options_before_building(
     assert video_runs == {"docker": [], "local": []}
 
 
+@pytest.mark.checkout
 def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
                                             video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
     for args in (["build", "01-intro", "--docker"], ["shell", "01-intro"], ["image"]):
@@ -863,12 +898,13 @@ def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
     assert video_runs == {"docker": [], "local": []}
 
 
+@pytest.mark.checkout
 def test_analysis_video_names_a_video_by_folder_name(monkeypatch: pytest.MonkeyPatch,
                                                     video_runs: dict[str, list[Any]]) -> None:
     from click.testing import CliRunner
 
-    from analysis.cli import main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.cli import main
+    from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
     runner = CliRunner()
@@ -878,7 +914,7 @@ def test_analysis_video_names_a_video_by_folder_name(monkeypatch: pytest.MonkeyP
     assert runner.invoke(main, ["video", "publish", "01-intro", "--lang", "ja"]).exit_code == 0
     # An option's value stays as typed, even one that names a video.
     assert runner.invoke(main, ["video", "publish", "--refresh", "--out", "01-intro"]).exit_code == 0
-    flags = {"dry_run": False, "new_upload": False}
+    flags = {"dry_run": False, "force": False, "new_upload": False}
     assert video_runs["local"] == [
         ("publish", [Path.cwd() / "docs" / "videos" / "01-intro"], {"lang": "ja", "out": None, "refresh": False,
                                                                      **flags}),
@@ -894,7 +930,7 @@ def test_analysis_video_publish_options_show_on_publish_and_build() -> None:
     from click.shell_completion import ShellComplete
     from click.testing import CliRunner
 
-    from analysis.cli import main
+    from zabob.retirement.cli import main
 
     for command in ("publish", "build"):
         result = CliRunner().invoke(main, ["video", command, "--help"])
@@ -908,13 +944,13 @@ def test_analysis_video_publish_options_show_on_publish_and_build() -> None:
 
 def test_python_m_analysis_videos_runs_locally(monkeypatch: pytest.MonkeyPatch,
                                                video_runs: dict[str, list[Any]]) -> None:
-    """`python -m analysis.videos` is `analysis video`, always on this
+    """`python -m zabob.retirement.videos` is `analysis video`, always on this
     machine: it's what the container runs, so it never looks for Docker."""
-    from analysis.videos import __main__ as videos_main
-    from analysis.videos import cli as video_cli
+    from zabob.retirement.videos import __main__ as videos_main
+    from zabob.retirement.videos import cli as video_cli
 
     def no_docker_check() -> bool:
-        raise AssertionError("python -m analysis.videos looked for Docker")
+        raise AssertionError("python -m zabob.retirement.videos looked for Docker")
 
     monkeypatch.setattr(video_cli, "docker_running", no_docker_check)
     with pytest.raises(SystemExit) as done:

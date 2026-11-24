@@ -1,3 +1,5 @@
+![How the simulator draws random futures](../assets/brand/banners/guides-simulation-basics.svg)
+
 # How the simulator draws random futures
 
 > To read a formatted `.md` file:

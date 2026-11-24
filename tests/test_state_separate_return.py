@@ -14,14 +14,14 @@ from typing import Any
 
 import pytest
 
-from analysis.sim import registries
-from analysis.sim.engine import TaxRule, _prepare_tax
-from analysis.sim.connection import RunConnection
-from analysis.sim.loader import LoadError, LoadResult
-from analysis.sim.reports import tax_return
-from analysis.sim.tax_api import Extra, Return
-from analysis.sim.taxes.state_base import Adjustment, Basis, Income
-from analysis.sim.taxes.state_tables import StateTablesYear
+from zabob.retirement.sim import registries
+from zabob.retirement.sim.engine import TaxRule, _prepare_tax
+from zabob.retirement.sim.connection import RunConnection
+from zabob.retirement.sim.loader import LoadError, LoadResult
+from zabob.retirement.sim.reports import tax_return
+from zabob.retirement.sim.tax_api import Extra, Return
+from zabob.retirement.sim.taxes.state_base import Adjustment, Basis, Income
+from zabob.retirement.sim.taxes.state_tables import StateTablesYear
 
 Aux = dict[tuple[str, str | None], list[tuple[str, dict[str, Any]]]]
 
@@ -540,3 +540,71 @@ def test_whose_the_exclusion_is_survives_a_subtractions_override(
     prepared = _prepared(ledger, aux)
     state = _OwnSubtractions(prepared.calc, prepared.ty).compute()
     assert (state["separate_agi_alice"], state["separate_agi_bill"]) == (50_000_00, 40_000_00)
+
+
+# -- Add-ons to the standard deduction (#610) ---------------------------------
+
+def _addon(amount: int, status: str | None = None) -> tuple[str, dict[str, Any]]:
+    """$``amount`` on the standard deduction for each filer from 65."""
+    row = {"name": "age_65", "step": "deduction", "base": "filers", "amount": amount,
+           "min_age": 65, "standard": "yes"}
+    return DATED, {**row, "filing_status": status} if status else row
+
+
+def test_a_standard_add_on_phases_out_with_the_standard_deduction(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Halfway through the phase-out, half the add-on is gone too; past
+    its end, all of it."""
+    standard = [(DATED, {"filing_status": s, "amount": amount,
+                         "phaseout_start": 80_000_00, "phaseout_end": 100_000_00})
+                for s, amount in (("MFJ", 6_500_00), ("MFS", 3_250_00), ("Single", 3_250_00))]
+    aux = _aux(allowed=None, standard=standard)
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00)]
+    _pay(ledger, post_transfer, 50_000_00, 40_000_00)
+    state = _state(ledger, aux)
+    assert state["age_65"] == 1_000_00
+    assert state["standard_deduction"] == state["deduction"] == 3_250_00 + 500_00
+    _pay(ledger, post_transfer, 10_000_00, 0)
+    assert _state(ledger, aux)["deduction"] == 0
+
+
+def test_each_spouse_takes_the_mfs_add_on(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Alice, 65, files separately with the MFS row's add-on on her own
+    standard deduction, not her share of the joint one; Bill, 60, has none."""
+    aux = _aux()
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00, "MFJ"), _addon(1_500_00, "MFS")]
+    _pay(ledger, post_transfer, 60_000_00, 40_000_00)
+    state = _state(ledger, aux)
+    assert state["separate_return"] == 1
+    assert state["separate_deduction_alice"] == 3_250_00 + 1_500_00
+    assert state["separate_deduction_bill"] == 3_250_00
+
+
+class _OwnStandard(StateTablesYear):
+    """A household's state year writing its own standard deduction."""
+
+    def deductions(self) -> Mapping[str, int]:
+        return {"standard_deduction": 6_500_00, "itemized_deduction": 0,
+                "deduction": 6_500_00}
+
+
+def test_a_deductions_step_written_before_the_add_ons_keeps_them_as_deductions(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Written for API 7 or before, its deductions() never adds the add-on,
+    so the add-on stays a deduction after AGI, as it was then."""
+    aux = _aux(allowed=None)
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00)]
+    _pay(ledger, post_transfer, 60_000_00, 40_000_00)
+    prepared = _prepared(ledger, aux)
+    monkeypatch.setattr(sys.modules[__name__], "API_VERSION", 7, raising=False)
+    older = _OwnStandard(prepared.calc, prepared.ty).compute()
+    assert older["age_65"] == 1_000_00
+    assert older["taxable_income"] == 100_000_00 - 6_500_00 - 1_000_00
+    monkeypatch.setattr(sys.modules[__name__], "API_VERSION", 8)
+    assert _OwnStandard(prepared.calc, prepared.ty).compute()["taxable_income"] \
+        == 100_000_00 - 6_500_00

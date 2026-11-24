@@ -10,10 +10,10 @@ from typing import Any
 
 import pytest
 
-from analysis.videos import script as scripts
-from analysis.videos import youtube
-from analysis.videos.commands import check
-from analysis.videos.script import ScriptError
+from zabob.retirement.videos import script as scripts
+from zabob.retirement.videos import youtube
+from zabob.retirement.videos.commands import check
+from zabob.retirement.videos.script import ScriptError
 
 
 def _video(root: Path, name: str, *, youtube_toml: str, scenes: tuple[str, ...] = ("title", "one", "two", "end"),
@@ -45,7 +45,7 @@ def test_description_has_summary_list_chapters_footer_and_neighbors(videos_root:
     folder = _video(videos_root, "02-second", youtube_toml=YT, episode="Video 2", title="Second\\nhalf")
     _video(videos_root, "03-third", youtube_toml=YT, episode="Video 3", title="Third")
     meta = youtube.metadata(scripts.load(folder), [("title", 7.0), ("one", 65.0), ("two", 4.0), ("end", 30.0)])
-    assert meta.title == "Retirement Simulator: 02—Second half"
+    assert meta.title == "Zabob Retirement: 02—Second half"
     # The 7 s title card takes in the scene after it, and the 4 s one joins
     # the one before: two chapters, which YouTube wouldn't show, so none.
     assert meta.description == (
@@ -77,7 +77,7 @@ def test_translation_has_its_own_words_and_inherits_its_place(videos_root: Path)
     ja = scripts.load(folder, "ja")
     assert ja.meta["youtube"] == {"next": "", "summary": "内容。"}  # not the English title, tags or list
     meta = youtube.metadata(ja, _lengths(ja))
-    assert meta.title == "Retirement Simulator: 01—動画"
+    assert meta.title == "Zabob Retirement: 01—動画"
     assert "0:00 はじめに\n0:30 oneの場面" in meta.description
     assert "次回" not in meta.description  # next = "" in script.md: no next video
 
@@ -154,17 +154,22 @@ def test_publish_uploads_then_links_the_languages(videos_root: Path, tmp_path: P
     assert uploads[1]["playlist"] == "Retirement Simulator (日本語)"
     updates = {r["video"]: r["snippet"]["description"] for r in api.requests if not r.get("upload")}
     assert "日本語版: https://youtu.be/id2" in updates["id1"]
-    assert "English version: https://youtu.be/id1" in updates["id2"]
+    # ja went up after en, so its upload already carried the link: no update for it (#695).
+    assert "English version: https://youtu.be/id1" in uploads[1]["snippet"]["description"]
+    assert "id2" not in updates
     assert all("status" not in r for r in api.requests if not r.get("upload"))  # privacy stays as set in Studio
 
     published = youtube.load_published(folder)
     assert published.video("en") == "id1" and published.lengths("ja") == _lengths(s, 20.0)
 
-    # Again: nothing to upload, descriptions refreshed from the recorded lengths, not a rebuild's.
+    # Again: nothing to upload, and nothing changed, so nothing is sent.
     _built(out, folder, "en", _lengths(s, 99.0))
     again = FakeYouTube()
     youtube.publish([folder], out_dir=out, repo=tmp_path, worker=again, log=lambda _: None)
-    assert not any(r.get("upload") for r in again.requests)
+    assert again.requests == []
+    # Forced: descriptions sent anyway, from the recorded lengths, not a rebuild's.
+    youtube.publish([folder], out_dir=out, repo=tmp_path, worker=again, force=True, log=lambda _: None)
+    assert not any(r.get("upload") for r in again.requests) and len(again.requests) == 2
     assert "0:20 The one scene" in again.requests[0]["snippet"]["description"]
 
 
@@ -189,7 +194,7 @@ def test_dry_run_sends_and_writes_nothing(videos_root: Path, tmp_path: Path) -> 
                     worker=lambda *_: pytest.fail("sent"), log=lines.append)
     assert not (folder / youtube.PUBLISHED_FILE).exists()
     assert any("would upload 01-x.en.mp4 as private" in line for line in lines)
-    assert any("Retirement Simulator: 01—A video" in line for line in lines)
+    assert any("Zabob Retirement: 01—A video" in line for line in lines)
 
 
 def test_a_failed_step_after_the_upload_keeps_the_id(videos_root: Path, tmp_path: Path) -> None:
@@ -199,6 +204,41 @@ def test_a_failed_step_after_the_upload_keeps_the_id(videos_root: Path, tmp_path
         youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, log=lambda _: None,
                         worker=lambda *_: {"video": "abc", "error": "403: quota"})
     assert youtube.load_published(folder).video("en") == "abc"
+
+
+def test_a_quota_that_runs_out_mid_upload_is_finished_next_time(videos_root: Path, tmp_path: Path) -> None:
+    folder = _video(videos_root, "01-x", youtube_toml=YT)
+    _built(tmp_path / "out", folder, "en", _lengths(scripts.load(folder)))
+    out_of_quota = {"video": "abc", "error": "403: Forbidden", "quota": True, "pending": ["captions", "playlist"]}
+    with pytest.raises(ScriptError, match="quota is used up.*add its captions, playlist.*midnight Pacific"):
+        youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, log=lambda _: None,
+                        worker=lambda *_: out_of_quota)
+    assert youtube.load_published(folder).pending("en") == ["captions", "playlist"]
+
+    api = FakeYouTube()
+    youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, worker=api, log=lambda _: None)
+    assert api.requests[0]["video"] == "abc" and api.requests[0]["finish"] == ["captions", "playlist"]
+    assert not any(r.get("upload") for r in api.requests)
+    assert youtube.load_published(folder).pending("en") == []
+
+
+def test_dry_run_counts_the_quota_units(videos_root: Path, tmp_path: Path) -> None:
+    folder = _video(videos_root, "01-x", youtube_toml=YT, ja=YT_JA)
+    for lang in ("en", "ja"):
+        _built(tmp_path / "out", folder, lang, _lengths(scripts.load(folder)))
+    lines: list[str] = []
+    youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, dry_run=True,
+                    worker=lambda *_: pytest.fail("sent"), log=lines.append)
+    # Two uploads with playlist, then en's description gains ja's link.
+    assert lines[-1].startswith(f"About {2 * 502 + 50:,} API quota units of 10,000 a day, and 2 of 100 uploads")
+
+
+def test_the_quota_resets_at_midnight_pacific() -> None:
+    from datetime import UTC, datetime
+    reset = youtube.quota_reset(datetime(2026, 11, 24, 7, 59, tzinfo=UTC))  # 23:59 PST
+    assert reset.astimezone(UTC) == datetime(2026, 11, 24, 8, 0, tzinfo=UTC)
+    summer = youtube.quota_reset(datetime(2026, 7, 1, 7, 30, tzinfo=UTC))  # 00:30 PDT
+    assert summer.astimezone(UTC) == datetime(2026, 7, 2, 7, 0, tzinfo=UTC)
 
 
 def test_publish_refuses_a_stale_or_missing_build(videos_root: Path, tmp_path: Path) -> None:
@@ -223,6 +263,7 @@ def test_scene_lengths_file_is_json(tmp_path: Path) -> None:
     assert path.name == "v.en.scenes.json" and json.loads(path.read_text()) == [["a", 1.235]]
 
 
+@pytest.mark.checkout
 def test_upload_worker_compiles(repo_root: Path) -> None:
     py_compile.compile(str(repo_root / "scripts" / "videos" / "youtube_api.py"), doraise=True)
 
@@ -242,7 +283,7 @@ def test_build_writes_the_scene_lengths_and_the_description(videos_root: Path, r
                                                              tmp_path: Path) -> None:
     from playwright.sync_api import Error
 
-    from analysis.videos.build import build
+    from zabob.retirement.videos.build import build
 
     folder = _video(videos_root, "01-x", youtube_toml=YT, scenes=("title", "end"))
     try:
@@ -252,7 +293,7 @@ def test_build_writes_the_scene_lengths_and_the_description(videos_root: Path, r
     lengths = json.loads(youtube.scene_lengths_path(result.video).read_text())
     assert [sid for sid, _ in lengths] == ["title", "end"]
     assert result.description is not None
-    assert result.description.read_text().startswith("Retirement Simulator: 01—A video\n\nWhat it shows.")
+    assert result.description.read_text().startswith("Zabob Retirement: 01—A video\n\nWhat it shows.")
     # And publish finds that build.
     assert youtube.built(scripts.load(folder), tmp_path / "out").lengths == [tuple(x) for x in lengths]
 
@@ -269,7 +310,7 @@ def test_a_video_deleted_in_studio_says_where_its_id_is(videos_root: Path, tmp_p
     _built(tmp_path / "out", folder, "en", _lengths(scripts.load(folder)))
     youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, worker=FakeYouTube(), log=lambda _: None)
     with pytest.raises(ScriptError, match=r"remove \[en\] from .*published.toml"):
-        youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, log=lambda _: None,
+        youtube.publish([folder], out_dir=tmp_path / "out", repo=tmp_path, log=lambda _: None, force=True,
                         worker=lambda request, _: {"video": request["video"], "error": "404: not found"})
 
 
@@ -277,5 +318,5 @@ def test_a_title_that_would_be_cut_off_is_refused(videos_root: Path) -> None:
     long = _video(videos_root, "01-x", youtube_toml=YT, title="A title long enough to be cut off")
     with pytest.raises(ScriptError, match="title_width of 50"):
         youtube.check(scripts.load(long))
-    # CJK characters count double: 25 for the prefix, 26 for 13 kana.
-    assert youtube.title_width("Retirement Simulator: 02—セットアップとインストール") == 51
+    # CJK characters count double: 21 for the prefix, 26 for 13 kana.
+    assert youtube.title_width("Zabob Retirement: 02—セットアップとインストール") == 47

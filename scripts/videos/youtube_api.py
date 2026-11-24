@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["google-api-python-client>=2.150", "google-auth-oauthlib>=1.2", "google-auth-httplib2>=0.2"]
 # ///
-"""Talk to the YouTube Data API for `python -m analysis.videos publish` (#395).
+"""Talk to the YouTube Data API for `python -m zabob.retirement.videos publish` (#395).
 
 Runs under `uv run --script`, in its own environment, so the project doesn't
 depend on Google's client libraries.
@@ -14,10 +14,14 @@ Reads one JSON request on stdin:
                 "notify": bool, "recording_date": "YYYY-MM-DDT00:00:00Z"},
      "snippet": {...},                              # title, description, ...
      "thumbnail": jpg, "captions": {"file": srt, "language": "en"},
-     "playlist": "playlist title"}                  # optional, uploads only
+     "playlist": "playlist title",                  # optional, uploads only
+     "finish": ["thumbnail", "captions", "playlist"]}  # with "video": steps an upload left
 and prints {"video": id}, with "error" too if a step failed (the video
-may be up already, so its id still matters). With "video", only the snippet is updated: the
-status (privacy above all) is left as it is in Studio.
+may be up already, so its id still matters), "pending": the steps after
+the upload that didn't happen, and "quota": true when the day's API quota
+ran out (#695). With "video", the snippet (if given) is updated and the
+"finish" steps done: the status (privacy above all) is left as it is in
+Studio.
 
 The first run opens a browser to sign in to the channel's Google account
 (or prints the URL to open); the token is kept in token.json beside the
@@ -105,6 +109,15 @@ def add_to_playlist(yt, video: str, title: str) -> None:
         yt.playlistItems().insert(part="snippet", body=body).execute()
 
 
+STEPS = ("thumbnail", "captions", "playlist")
+
+
+def quota_exceeded(e: HttpError) -> bool:
+    """Whether the day's quota ran out (403 quotaExceeded), not some other refusal."""
+    reasons = {d.get("reason") for d in (e.error_details or []) if isinstance(d, dict)}
+    return "quotaExceeded" in reasons or b"quotaExceeded" in (e.content or b"")
+
+
 def main() -> None:
     request = json.load(sys.stdin)
     answer: dict = {"video": request.get("video")}
@@ -116,6 +129,8 @@ def main() -> None:
         except (HttpError, SystemExit) as e:
             # The video may be up already: say so, so its id is kept.
             answer["error"] = f"{e.resp.status}: {e.reason}" if isinstance(e, HttpError) else str(e)
+            if isinstance(e, HttpError) and quota_exceeded(e):
+                answer["quota"] = True
     print(json.dumps(answer))
     sys.exit(1 if answer.get("error") else 0)
 
@@ -123,15 +138,28 @@ def main() -> None:
 def run(request: dict, answer: dict) -> None:
     yt = build("youtube", "v3", credentials=credentials(Path(request["secrets"])), cache_discovery=False)
     if request.get("upload"):
-        answer["video"] = video = upload(yt, request)
-        yt.thumbnails().set(videoId=video, media_body=MediaFileUpload(request["thumbnail"],
-                                                                      mimetype="image/jpeg")).execute()
-        captions(yt, video, request["captions"]["file"], request["captions"]["language"])
-        if request.get("playlist"):
-            add_to_playlist(yt, video, request["playlist"])
+        steps = [step for step in STEPS if step != "playlist" or request.get("playlist")]
+        # Until each step is done, it's pending: a quota that runs out
+        # between them leaves the rest for the next publish.
+        answer["pending"] = steps
+        answer["video"] = upload(yt, request)
     else:
-        yt.videos().update(part="snippet", body={"id": answer["video"], "snippet": request["snippet"]}).execute()
-
+        if request.get("snippet"):
+            yt.videos().update(part="snippet", body={"id": answer["video"], "snippet": request["snippet"]}).execute()
+        steps = list(request.get("finish") or [])
+        answer["pending"] = steps
+    video = answer["video"]
+    for step in list(steps):
+        if step == "thumbnail":
+            yt.thumbnails().set(videoId=video, media_body=MediaFileUpload(request["thumbnail"],
+                                                                          mimetype="image/jpeg")).execute()
+        elif step == "captions":
+            captions(yt, video, request["captions"]["file"], request["captions"]["language"])
+        elif step == "playlist" and request.get("playlist"):
+            add_to_playlist(yt, video, request["playlist"])
+        answer["pending"] = [s for s in answer["pending"] if s != step]
+    if not answer["pending"]:
+        del answer["pending"]
 
 if __name__ == "__main__":
     main()

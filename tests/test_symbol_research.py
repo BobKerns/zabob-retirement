@@ -17,8 +17,8 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from analysis.cli import main
-from analysis.sim import provenance, research, symbols
+from zabob.retirement.cli import main
+from zabob.retirement.sim import provenance, research, symbols
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None):
@@ -252,10 +252,11 @@ def test_from_bundle_asks_for_the_name_and_before_writing(test_data_dir: Path, r
     declined = _sim(test_data_dir, "ABCDX", "--from-bundle", bundle, "--no-open", input="My Fund\nn\n")
     assert declined.exit_code == 0, declined.output
     assert "[A Balanced Index Fund]" in declined.output
-    assert "Nothing written" in declined.output
+    assert "No weights written" in declined.output
     assert symbols.latest_set(test_data_dir, "ABCDX") is None
+    assert symbols.security_name(test_data_dir, "ABCDX") == "My Fund"  # the name is kept anyway
 
-    accepted = _sim(test_data_dir, "ABCDX", "--from-bundle", bundle, "--no-open", input="My Fund\ny\n")
+    accepted = _sim(test_data_dir, "ABCDX", "--from-bundle", bundle, "--no-open", input="y\n")
     assert accepted.exit_code == 0, accepted.output
     assert symbols.security_name(test_data_dir, "ABCDX") == "My Fund"
     assert len(_bundles(test_data_dir)) == 2
@@ -330,7 +331,7 @@ def test_a_company_by_name_is_researched_and_kept_under_its_words(
     assert "/fund-tear-sheet/scripts/" in bash and "/public-tear-sheet/scripts/" in bash
     [bundle] = sorted((test_data_dir / "research" / "ACME-ROBOTICS").iterdir())
     assert "<title>Acme Robotics research" in (bundle / "report.html").read_text(encoding="utf-8")
-    assert "Acme Robotics: the bundle has no allocation export, so nothing was written." in result.output
+    assert "Acme Robotics: the bundle has no allocation export, so no weights were written." in result.output
     assert not (test_data_dir / "allocations.csv").exists() or not any(
         r["symbol"].startswith("ACME") for r in _allocations(test_data_dir))
 
@@ -524,9 +525,33 @@ def test_a_bundle_folder_with_no_files_is_a_clear_error(test_data_dir: Path, tmp
 def test_without_claude_on_path_it_says_so(test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
                                            tmp_path: Path) -> None:
     monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(research, "CLAUDE_PLACES", ())
     result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
     assert result.exit_code != 0
-    assert "isn't on PATH" in result.output
+    assert "isn't on PATH or in Claude Code's usual places" in result.output
+
+
+def test_claude_is_found_off_path_where_it_was_recorded_or_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def executable(where: Path) -> Path:
+        where.parent.mkdir(parents=True, exist_ok=True)
+        where.write_text("#!/bin/sh\n")
+        where.chmod(0o755)
+        return where
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # as under launchd or cron (#644)
+    home = executable(tmp_path / "home" / ".local" / "bin" / "claude")
+    monkeypatch.setattr(research, "CLAUDE_PLACES", (str(home),))
+    recorded = executable(tmp_path / "elsewhere" / "claude")
+    assert research.find_claude(str(recorded)) == str(recorded)
+    assert research.find_claude(str(tmp_path / "gone" / "claude")) == str(home)
+    on_path = executable(tmp_path / "bin" / "claude")
+    monkeypatch.setenv("PATH", str(on_path.parent))
+    assert research.find_claude(str(recorded)) == str(on_path)
+    assert research.find_claude(str(recorded), path=False) == str(recorded)
+    monkeypatch.setattr(research, "CLAUDE_PLACES", ())
+    assert research.find_claude(None, path=False) is None
 
 
 # --- add_symbol(replace=True) ------------------------------------------------

@@ -7,9 +7,9 @@ from pathlib import Path
 import click
 from click.testing import CliRunner
 
-from analysis.sim import names
-from analysis.sim.cli import sim_group_command
-from analysis.sim.completion import NameType
+from zabob.retirement.sim import names
+from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.sim.completion import NameType
 
 
 def _complete(data_dir: Path | None, line: str) -> list[str]:
@@ -57,7 +57,7 @@ def test_rules_rows_and_persons(data_dir: Path) -> None:
     assert "salary_alice" in names.scheduled_names(data_dir, "retire_alice")
     # base's latent factors, inherited.
     assert "core_inflation" in names.calendar_row_names(data_dir, "retire_alice")
-    assert "prior_ordinary_wages" in names.ytd_names(data_dir, "retire_alice")
+    assert "prior_wages_alice" in names.ytd_names(data_dir, "retire_alice")
     assert {"alice", "bill"} <= set(names.person_ids(data_dir))
 
 
@@ -157,8 +157,11 @@ def test_ensemble_commands_complete_only_ensembles(test_data_dir: Path,
         "t_market_current", "t_market_ensemble",
     ])
     assert test_ensemble_scenario in _complete(test_data_dir, "run ")
-    # #296: edit completes like rename, over ensembles only.
-    assert _complete(test_data_dir, "ensemble edit ") == _complete(test_data_dir, "ensemble rename ")
+    # #296: edit completes like rename, over ensembles only; rename only
+    # the data repo's own, since a template can't be renamed (#297).
+    assert _complete(test_data_dir, "ensemble rename ") == [test_ensemble_scenario]
+    assert [n for n in _complete(test_data_dir, "ensemble edit ") if not n.startswith("t_")] == [
+        test_ensemble_scenario]
     assert "retire_alice" not in _complete(test_data_dir, "ensemble edit ")
     assert "retire_alice" in _complete(test_data_dir, "scenario edit ")
 
@@ -191,7 +194,7 @@ _NAMING_PARAMS = {
     "refill_chain", "overflow_chain", "scheduled_name", "row", "person", "owner",
     "series", "source_series", "symbol", "symbols", "tag_token", "tag_tokens",
     "vary_correlate_with", "correlate_with", "strategy", "strategy_name", "target_set",
-    "jurisdiction",
+    "jurisdiction", "beneficiary",
 }
 # ... except where the command makes a new one (by the command's function,
 # as `sim accounts` repeats `sim account`).
@@ -231,3 +234,9 @@ def test_draws_pair_completes_each_node(data_dir: Path) -> None:
     assert _complete(data_dir, f"{line}apparel_f") == ["apparel_factor,"]
     assert _complete(data_dir, f"{line}apparel_factor,core_inf") == ["apparel_factor,core_inflation"]
     assert "apparel_factor,apparel_factor" not in _complete(data_dir, f"{line}apparel_factor,")
+
+
+def test_life_tables_complete_for_a_blend(data_dir: Path) -> None:
+    offered = _complete(data_dir, "lifespan blend mix --table j")
+    assert "jp" in offered
+    assert "default" not in offered

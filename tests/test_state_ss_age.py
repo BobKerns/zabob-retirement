@@ -13,11 +13,13 @@ from typing import Any
 
 import pytest
 
-from analysis.sim import registries
-from analysis.sim.engine import TaxRule, _prepare_tax
-from analysis.sim.loader import LoadError, LoadResult, _validate_state_social_security
-from analysis.sim.tax_api import Return
-from analysis.sim.taxes import common
+from zabob.retirement.sim import registries
+from zabob.retirement.sim.engine import TaxRule, _prepare_tax
+from zabob.retirement.sim.loader import (
+    LoadError, LoadResult, _validate_state_retirement_exclusions, _validate_state_social_security,
+)
+from zabob.retirement.sim.tax_api import Return
+from zabob.retirement.sim.taxes import common
 
 Aux = dict[tuple[str, str | None], list[tuple[str, dict[str, Any]]]]
 
@@ -263,3 +265,112 @@ def test_age_rows_without_a_birthdate_warn() -> None:
         _validate_state_social_security(rows, persons, issues, warnings)
         assert not issues
         assert any("need a person with a birthdate" in w for w in warnings) == warned
+
+
+# -- Social Security sharing a pension subtraction's cap (#613) --------------
+
+def _pension_rows(income: str = "ss;pension") -> list[tuple[str, dict[str, Any]]]:
+    """Colorado's pension and annuity subtraction: $20,000 a person from 55,
+    $24,000 from 65, each counting their taxable Social Security first."""
+    return [(DATED, {"name": "pension_subtraction", "income": income, "min_age": age,
+                     "amount": amount})
+            for age, amount in (("55", 20_000_00), ("65", 24_000_00))]
+
+
+def _colorado(**columns: Any) -> Aux:
+    aux = _aux(COLORADO)
+    aux[(registries.STATE_RETIREMENT_EXCLUSION, STATE)] = _pension_rows(**columns)
+    return aux
+
+
+def _pensions(con: sqlite3.Connection, post: Callable[..., None], *,
+              alice: int, bill: int) -> None:
+    """Each one's own pension (paid into their own checking), and Social
+    Security of $20,000 for Alice and $10,000 for Bill."""
+    post(con, YEAR, SALARY, CHECKING_A, alice, "ordinary")
+    post(con, YEAR, SALARY, CHECKING_B, bill, "ordinary")
+    post(con, YEAR, SS_ALICE, CHECKING_A, 20_000_00, "ss_benefit")
+    post(con, YEAR, SS_BILL, CHECKING_B, 10_000_00, "ss_benefit")
+
+
+def _ss_shares(taxable: int) -> dict[str, int]:
+    return common.apportion(taxable, {"alice": 20_000_00, "bill": 10_000_00})
+
+
+def test_over_the_income_social_security_shares_the_pension_cap(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Bill, 60 and over the income, has his taxable Social Security
+    subtracted by the pension subtraction, up to its $20,000 with his
+    pension; Alice's, which the 65 row leaves out, still uses up her
+    $24,000 first, so only the rest of it covers her pension."""
+    _pensions(ledger, post_transfer, alice=50_000_00, bill=50_000_00)
+    federal, state = _returns(ledger, _colorado())
+    assert federal.agi > 95_000_00
+    shares = _ss_shares(federal["ss_taxable"])
+    assert 0 < shares["bill"] < 20_000_00 and 0 < shares["alice"] < 24_000_00
+    assert state["ss_taxable"] == 0
+    assert state["ss_difference"] == shares["alice"]
+    assert state["retirement_exclusion"] == 20_000_00 + (24_000_00 - shares["alice"])
+
+
+def test_below_the_income_social_security_still_uses_up_the_cap(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Below the income the table leaves all of it out, and the cap left
+    for each one's pension is less their taxable Social Security."""
+    _pensions(ledger, post_transfer, alice=25_000_00, bill=25_000_00)
+    federal, state = _returns(ledger, _colorado())
+    assert federal.agi < 95_000_00
+    shares = _ss_shares(federal["ss_taxable"])
+    assert shares["bill"] > 0
+    assert state["ss_taxable"] == 0
+    assert state["ss_difference"] == federal["ss_taxable"]
+    assert state["retirement_exclusion"] == (
+        20_000_00 - shares["bill"]) + (24_000_00 - shares["alice"])
+
+
+def test_social_security_counts_where_its_row_lists_it(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Listed after the pension, Social Security takes only the cap the
+    pension leaves: Bill's $50,000 pension fills his $20,000, so none of
+    his Social Security is left out."""
+    _pensions(ledger, post_transfer, alice=50_000_00, bill=50_000_00)
+    federal, state = _returns(ledger, _colorado(income="pension;ss"))
+    assert state["ss_taxable"] == _ss_shares(federal["ss_taxable"])["bill"]
+    assert state["retirement_exclusion"] == 44_000_00
+
+
+def test_spouses_filing_separately_each_keep_their_own_exclusion_of_social_security(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """On one return filed separately, what the pension subtraction left
+    out of Bill's Social Security comes off his own: over the income, the
+    state taxes all of his, and his subtraction takes it and $20,000 less
+    it of his pension. Alice's, untaxed from 65, uses up her cap alone."""
+    _pensions(ledger, post_transfer, alice=50_000_00, bill=50_000_00)
+    aux = _aux(COLORADO, separate=True)
+    aux[(registries.STATE_RETIREMENT_EXCLUSION, STATE)] = _pension_rows()
+    federal, state = _returns(ledger, aux)
+    shares = _ss_shares(federal["ss_taxable"])
+    assert "separate_tax" in state.lines
+    assert state["separate_agi_bill"] == 50_000_00 - (20_000_00 - shares["bill"])
+    assert state["separate_agi_alice"] == 50_000_00 - (24_000_00 - shares["alice"])
+    assert state["separate_agi_alice"] + state["separate_agi_bill"] == state["agi"]
+
+
+@pytest.mark.parametrize(("income", "less_ss", "message"), [
+    ("ss;pension", "yes", "give less_ss or income ss, not both"),
+    ("social_security", None, "must list one or more of"),
+])
+def test_an_exclusion_covering_social_security_is_checked_at_load(
+    income: str, less_ss: str | None, message: str,
+) -> None:
+
+    issues: list[str] = []
+    _validate_state_retirement_exclusions(
+        [(registries.STATE_RETIREMENT_EXCLUSION, STATE,
+          {"name": "x", "income": income, "amount": 20_000_00, "less_ss": less_ss}, DATED)],
+        issues)
+    assert any(message in issue for issue in issues), issues

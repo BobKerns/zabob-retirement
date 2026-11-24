@@ -37,12 +37,12 @@ image=analysis-videos
 # The image is built from docker/videos alone; a change to a file there
 # rebuilds it.
 context=docker/videos
-label=analysis.videos.inputs
+label=zabob.retirement.videos.inputs
 env_volume=analysis-videos-env
 # The checkout, mounted read-only over the image's /repo: piece by piece,
 # so the host's .venv (perhaps for another OS) stays out.
-MOUNTS=(src pyproject.toml uv.lock README.md .python-version templates historical_data
-        prototype_data notebooks scripts/videos docs/videos)
+MOUNTS=(src pyproject.toml uv.lock README.md PYPI.md LICENSE hatch_build.py .python-version templates historical_data
+        prototype_data notebooks plugins scripts/videos docs/videos)
 
 usage() {
     sed -n '2,23s/^# \{0,1\}//p' "$0"
@@ -124,10 +124,10 @@ fi
 
 case $command in
     build)
-        exec "${docker_run[@]}" "$image" python -m analysis.videos build "docs/videos/$name" --out /out "$@"
+        exec "${docker_run[@]}" "$image" python -m zabob.retirement.videos build "docs/videos/$name" --out /out "$@"
         ;;
     check)
-        exec "${docker_run[@]}" "$image" python -m analysis.videos check ${folders[@]+"${folders[@]}"}
+        exec "${docker_run[@]}" "$image" python -m zabob.retirement.videos check ${folders[@]+"${folders[@]}"}
         ;;
     shell)
         exec "${docker_run[@]}" -w /data "$image" bash "$@"

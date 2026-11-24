@@ -1,3 +1,5 @@
+![Historical calibration: what numbers to put in](../assets/brand/banners/guides-historical-calibration.svg)
+
 # Historical calibration: what numbers to put in
 
 > To read a formatted `.md` file:
@@ -12,7 +14,7 @@ what history says a rate's median, spread and correlation should be, and
 where to get the data to check or redo it.
 
 All of it comes from public statistics, through `analysis historical`
-([source](../../src/analysis/historical/calibration.py)), which downloads
+([source](../../src/zabob/retirement/historical/calibration.py)), which downloads
 the series and computes every table below. The command
 that produced each table is printed under it, so you can run the same thing
 on other series or years.

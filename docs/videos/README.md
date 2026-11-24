@@ -1,6 +1,8 @@
+![Instructional videos](../assets/brand/banners/videos-readme.svg)
+
 # Instructional videos
 
-How the videos for [#366](https://github.com/BobKerns/analysis/issues/366) are
+How the videos for [#366](https://github.com/BobKerns/zabob-retirement/issues/366) are
 made. Everything a video needs is committed here as text: its script, the
 terminal sessions it records, its slides and the shared look. The pictures
 and sound are rebuilt from those, so a CLI change means re-running a build,
@@ -25,7 +27,7 @@ here, and on this machine when it isn't (saying so); `--docker` or `--local`
 chooses. The result is `out/videos/00-pilot.en.mp4`, with its captions
 (`00-pilot.en.srt`) and thumbnail (`00-pilot.en.jpg`) beside it. A native
 build needs `analysis video setup` once first (voice model, VHS, ttyd).
-`python -m analysis.videos` is the same command run only on this machine
+`python -m zabob.retirement.videos` is the same command run only on this machine
 (the container runs it), and `scripts/videos/docker.sh` starts the
 container; both work on their own too.
 
@@ -41,7 +43,8 @@ container; both work on their own too.
 | `docs/videos/theme/templates/*.html` | Slide templates (Jinja2): `title` opens every video, `card` for breaks and endings, `figure` for a picture a command made, `window` for a screen the tapes can't record |
 | `docs/videos/youtube.toml` | The channel's settings and the wording around each description |
 | `docs/videos/assets/*.svg` | Reusable characters and props: Alice, Bill, their home |
-| `src/analysis/videos/` | The builder |
+| `docs/videos/assets/zabob.png`, `host-scene.jpg` | Zabob, the host, and the scene behind him (from `docs/assets/brand/src/`) |
+| `src/zabob/retirement/videos/` | The builder |
 | `scripts/videos/tts_kokoro.py` | The narration worker (runs in its own environment) |
 
 `00-pilot` exists to prove the pipeline. Real videos are numbered in the
@@ -114,9 +117,16 @@ file, the theme's terminal settings, and a hidden setup that:
   or the video's own data repo, to a fresh, committed scratch folder, after
   the video's `setup.sh` (if any) has run in it, and points
   `ANALYSIS_DATA_DIR` at it, so every recording starts from the same state;
-- puts this checkout's `sim`/`analysis` on `PATH`;
+- installs the program as a user would (`uv tool install zabob-retirement`,
+  as SETUP.md says), from a wheel built from this checkout, into `~/.local`
+  of the demo's home folder, and puts that on `PATH`, not the checkout's
+  venv: so `sim init` with no folder makes `~/zabob-retirement` with the
+  notebooks in it, as it does for a user. A `uv tool install
+  zabob-retirement` typed in a tape (video 2) installs that wheel again,
+  with `uv.lock`'s versions and this machine's uv cache, so it takes a
+  moment and records the same each time;
 - sets `ANALYSIS_NO_BUILDER=1`, so a recorded `sim init` (video 2) doesn't
-  link this checkout's `data/shared` or turn on background builds;
+  turn on background builds;
 - sets the prompt (`alice@home $`, from the theme).
 
 Each tape starts from the same state, so a tape can't rely on an earlier
@@ -172,7 +182,7 @@ viewer would. It's written like a tape, one step per line, and a `#` starts a
 comment:
 
 ```text
-Set DataDir "home/retirement/data/sim"   # where the notebooks read data
+Set DataDir "home/zabob-retirement/sim"   # where the notebooks read data
 Hide
 Open "net_worth.ipynb"
 RunAll
@@ -221,11 +231,14 @@ can't change one.
 A slide block is TOML: `template` names a file in `theme/templates/`, and the
 other keys are fields that template reads, overriding front matter of the
 same name. A template can show any asset with `{{ asset("alice") | safe }}`,
-which inlines the SVG so the theme's CSS can restyle it.
+which inlines the SVG so the theme's CSS can restyle it, and any picture
+(a `.png` or `.jpg` in `assets/`) with `{{ picture("zabob") }}`, a `data:`
+URI for an `<img src>` or a CSS `url()`.
 
 | Template | Fields |
 | --- | --- |
 | `title` | `series`, `episode`, `title`, `subtitle`, `cast` (assets to show; default home, Alice, Bill), `notice` (a boxed line under the rule, such as who can skip the video) |
+| `host` | `series`, `name` (default Zabob), `role` (default "your host"), `line` (optional, under the name), `host` and `scene` (pictures, default `zabob` and `host-scene`) |
 | `card` | `series`, `heading`, `body` (text, or a list shown one item per line), `speaker` (one asset, optional) |
 | `figure` | `series`, `heading` (the command, shown as typed), `demo_image` (a picture `setup.sh` made) |
 | `window` | `series`, `heading`, `title` (the title bar), `look` (`terminal`, `light`, `files`, `editor` or `code`), `lines`, `address` (`files`), `status` (`editor`, `code`), `code`, `language`, `first`, `marks` (`code`), `note` (below the window) |
@@ -280,7 +293,7 @@ re-renders exactly the scenes it affects.
 
 Narration is synthesized with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx),
 an open text-to-speech model that runs on a CPU. `[narration.<lang>]` in
-`theme.toml` picks the voice (`af_heart` for English), language and speed;
+`theme.toml` picks the voice (`bm_george` for English, `jm_kumo` for Japanese: Zabob, the host, narrates), language and speed;
 the [voice list](https://github.com/thewh1teagle/kokoro-onnx) covers English,
 Japanese, Chinese, Spanish, French, Hindi, Italian and Portuguese. Each
 scene's narration is synthesized one sentence at a time, which also times
@@ -481,7 +494,7 @@ first, or build and publish in one step (#562):
 analysis video build 03-base-scenario --publish [--new-upload] [--dry-run]
 ```
 
-`build --publish` takes publish's `--dry-run`, `--refresh` and
+`build --publish` takes publish's `--dry-run`, `--refresh`, `--force` and
 `--new-upload`, and publishes only after a build that succeeds, always on
 this machine (the build itself may run in the container). It says so when a
 language is already up and `--new-upload` is missing, since then the rebuilt
@@ -502,6 +515,27 @@ the same goes for the videos before and after it, whose descriptions link
 to it. Privacy is never touched after the upload. YouTube can't replace a
 video's picture, so after a rebuild, `--new-upload` makes a new video (with
 a new link); delete the old one in Studio.
+
+### API quota
+
+The YouTube Data API allows a project 10,000 units a day, plus 100 uploads
+in a bucket of their own, unless Google grants more; both reset at midnight
+Pacific (#695). An upload takes one of the 100 and about 500 units: 400 for
+captions, 50 for the thumbnail and about 50 for the playlist (its title,
+description and settings go in the upload itself). Updating a description
+costs 50. So the default quota fits about 19 uploads a day, or a little
+more than half the course in both languages.
+
+To spend less, `publish` keeps a hash of each video's title, description
+and tags in `published.toml` (`snippet`) and sends an update only when it
+changed; `--force` sends them anyway (after an edit in Studio, say).
+`--dry-run` ends with an estimate of the units the run would use.
+
+When the quota runs out, `publish` stops and says when it resets. Run the
+same command again after that: videos already up aren't uploaded again,
+and if the quota ran out between an upload and its thumbnail, captions or
+playlist, `published.toml` lists those steps under `pending` and the next
+`publish` finishes them first.
 
 ### Titles and descriptions
 
@@ -525,7 +559,7 @@ The description is put together from it and `youtube.toml`: the summary,
 the list, the chapters, the language's footer, a link to the video in each
 other language, and the previous and next videos (linked once they're
 up). The title is the language's `title` pattern, such as
-`Retirement Simulator: {number}—{title}`, where `{number}` is the folder's
+`Zabob Retirement: {number}—{title}`, where `{number}` is the folder's
 prefix.
 
 **A title must show whole.** YouTube cuts long titles off in lists, on

@@ -1,3 +1,5 @@
+![Startup stock options: what they're worth, and how to model them](../assets/brand/banners/guides-startup-stock-options.svg)
+
 # Startup stock options: what they're worth, and how to model them
 
 > To read a formatted `.md` file:

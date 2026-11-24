@@ -13,7 +13,7 @@ import git
 import pandas as pd
 import pytest
 
-from analysis.sim.loader import (
+from zabob.retirement.sim.loader import (
     DEFAULT_SCENARIO_NAME,
     DataDirtyRefused,
     LoadError,
@@ -24,7 +24,7 @@ from analysis.sim.loader import (
     resolve_scenario_name,
     write_current_scenario,
 )
-from analysis.sim.provenance import data_stamps
+from zabob.retirement.sim.provenance import data_stamps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROTOTYPE = REPO_ROOT / "prototype_data"
@@ -82,7 +82,7 @@ def test_load_retire_alice(tmp_path: Path) -> None:
         tax_priors = con.execute(
             "SELECT name, amount, tax_character, year FROM year_to_date ORDER BY name"
         ).fetchall()
-        assert len(tax_priors) == 3
+        assert len(tax_priors) == 4
         assert (
             "prior_ltcg_loss_carryforward", -150000, "ltcg", 2025
         ) in [tuple(r) for r in tax_priors]
@@ -693,6 +693,7 @@ def _git_init_commit(repo: Path) -> None:
     r.git.add(A=True)
     with r.config_writer() as cw:
         cw.set_value("commit", "gpgsign", "false")
+        cw.set_value("tag", "gpgsign", "false")
     actor = git.Actor("t", "t@t")
     r.index.commit("init", author=actor, committer=actor)
 
@@ -1066,7 +1067,7 @@ def test_scheduled_ytd_amount_and_preroll_mutually_exclusive(tmp_path: Path) -> 
 def test_on_death_requires_tax_free(tmp_path: Path) -> None:
     import pandas as pd
 
-    from analysis.sim.registries import SCHEDULED_CSV_HEADER
+    from zabob.retirement.sim.registries import SCHEDULED_CSV_HEADER
 
     repo = tmp_path / "data"
     shutil.copytree(PROTOTYPE, repo)

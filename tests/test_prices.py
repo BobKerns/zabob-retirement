@@ -11,9 +11,9 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner
 
-from analysis.cli import main
-from analysis.sim import prices
-from analysis.sim.prices import PriceError, YahooProvider, fetch_prices, format_price, month_end_closes
+from zabob.retirement.cli import main
+from zabob.retirement.sim import prices
+from zabob.retirement.sim.prices import PriceError, YahooProvider, fetch_prices, format_price, month_end_closes
 
 
 class FakeProvider:
@@ -22,6 +22,7 @@ class FakeProvider:
     def __init__(self, series: dict[str, list[tuple[str, str]]]) -> None:
         self.series = series
         self.asked: list[tuple[str, date, date]] = []
+        self.names: dict[str, str] = {}
 
     def closes(self, symbol, start, end):
         self.asked.append((symbol, start, end))
@@ -98,6 +99,31 @@ def test_yahoo_provider_reads_closes_and_skips_missing_ones() -> None:
     assert "BRK.B" in urls[0] and "period1=" in urls[0]
 
 
+def test_yahoo_provider_keeps_the_charts_name() -> None:
+    payload = json.loads(_yahoo_payload([10.0]))
+    payload["chart"]["result"][0]["meta"].update(longName="A Balanced Fund", shortName="BAL FD")
+    provider = YahooProvider(lambda _url: json.dumps(payload).encode())
+    provider.closes("ABCDX", date(2026, 5, 1), date(2026, 6, 1))
+    assert provider.names == {"ABCDX": "A Balanced Fund"}
+
+
+def test_a_fetch_fills_in_a_missing_or_blank_name(
+    test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #640 (Bob): a name the provider finds fills a blank one, adding the
+    # row when absent; a name already written stays.
+    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,\nQQQ,Mine,\n")
+    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\nBBB,,bond,100%\n")
+    provider = FakeProvider({s: DAILY for s in ("AAA", "BBB", "QQQ")})
+    provider.names = {"AAA": "Fund A", "BBB": "Fund B", "QQQ": "Nasdaq 100"}
+    monkeypatch.setitem(prices.PRICE_PROVIDERS, "yahoo", lambda: provider)
+    result = CliRunner().invoke(main, ["sim", "prices", "fetch", "--data-dir", str(test_data_dir)])
+    assert result.exit_code == 0, result.output
+    assert "AAA: named 'Fund A' in securities.csv" in result.output
+    assert (test_data_dir / "securities.csv").read_text().splitlines() == [
+        "symbol,name,no_fetch", "AAA,Fund A,", "QQQ,Mine,", "BBB,Fund B,"]
+
+
 @pytest.mark.parametrize("payload", [
     b'{"chart": {"result": null, "error": {"description": "No data found"}}}',
     b'{"chart": {"result": [{"timestamp": []}], "error": null}}',
@@ -161,7 +187,7 @@ def test_fetched_files_feed_the_opening_balance(
 def test_check_compares_balances_with_the_start_price_and_the_latest_price(
     priced_lots: None, test_data_dir: Path, load_test_copy,
 ) -> None:
-    from analysis.sim.connection import ScenarioConnection
+    from zabob.retirement.sim.connection import ScenarioConnection
     load_test_copy()
     with ScenarioConnection(test_data_dir, "retire_alice") as scenario:
         frame = prices.check_prices(scenario).set_index("lot")
@@ -204,7 +230,7 @@ def test_http_get_verifies_with_the_system_trust_store(monkeypatch: pytest.Monke
 
     import truststore
 
-    from analysis.sim import prices
+    from zabob.retirement.sim import prices
 
     seen: dict[str, object] = {}
 
@@ -271,7 +297,7 @@ def test_other_connection_failures_still_say_unreachable() -> None:
 
 
 def test_the_default_yahoo_provider_uses_the_real_http_get() -> None:
-    from analysis.sim import prices
+    from zabob.retirement.sim import prices
 
     assert prices.YahooProvider()._get is prices._http_get
 
@@ -300,6 +326,24 @@ def test_bare_fetch_gets_a_symbol_no_lot_holds_and_only_reports_its_failure(
     # Named, the same symbol fails: you asked for it.
     named = runner.invoke(main, ["sim", "prices", "fetch", "typed", "--data-dir", str(test_data_dir)])
     assert named.exit_code != 0 and "TYPED: not found" in named.output
+
+
+def test_a_bare_fetch_skips_a_no_fetch_symbol_and_a_named_one_warns(
+    test_data_dir: Path, add_account_value, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #640: held or not, a marked symbol is fetched only when named.
+    add_account_value("Asset_Roth_Alice", lot="x", symbol="AAA", quantity="10", opening_balance="1.00")
+    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,1\nQQQ,Q,\n")
+    provider = FakeProvider({"AAA": DAILY, "QQQ": DAILY})
+    monkeypatch.setitem(prices.PRICE_PROVIDERS, "yahoo", lambda: provider)
+    runner = CliRunner()
+    result = runner.invoke(main, ["sim", "prices", "fetch", "--data-dir", str(test_data_dir)])
+    assert result.exit_code == 0, result.output
+    assert [asked[0] for asked in provider.asked] == ["QQQ"]
+    named = runner.invoke(main, ["sim", "prices", "fetch", "AAA", "--data-dir", str(test_data_dir)])
+    assert named.exit_code == 0, named.output
+    assert "warning: AAA is marked no_fetch" in named.output
+    assert [asked[0] for asked in provider.asked] == ["QQQ", "AAA"]
 
 
 def test_a_held_symbol_still_fails_a_bare_fetch(

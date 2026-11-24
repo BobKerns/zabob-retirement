@@ -1,3 +1,5 @@
+![JupyterHub on the Pi: setup plan (not yet implemented)](../assets/brand/banners/guides-jupyterhub-pi-plan.svg)
+
 # JupyterHub on the Pi: setup plan (not yet implemented)
 
 Decided 2026-10-01, written up for reference — not acted on yet. Goal: give each

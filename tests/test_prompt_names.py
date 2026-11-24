@@ -13,11 +13,11 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner, Result
 
-from analysis.cli import main
-from analysis.sim import cli as sim_cli
-from analysis.sim import completion, names
-from analysis.sim.cli import sim_group_command
-from analysis.sim.loader import BATCH_MANIFEST_FILENAME, batches_dir, write_current_scenario
+from zabob.retirement.cli import main
+from zabob.retirement.sim import cli as sim_cli
+from zabob.retirement.sim import completion, names
+from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.sim.loader import BATCH_MANIFEST_FILENAME, batches_dir, write_current_scenario
 
 
 @pytest.fixture
@@ -140,9 +140,9 @@ def test_a_name_given_on_the_line_is_not_asked(sim: Callable[..., Result], test_
 
 
 # Required params that aren't names a scenario defines: a date, and the
-# inputs of the two importers, which are run from scripts.
-_STILL_REQUIRED = {"sim items start", "sim import transactions from_account",
-                   "sim import holdings files"}
+# inputs of the importers, which are run from scripts.
+_STILL_REQUIRED = {"sim import holdings files", "sim import budget file",
+                   "sim import budget from_account"}
 
 
 def test_only_non_names_are_required() -> None:
@@ -282,7 +282,7 @@ def test_a_mistyped_account_is_asked_again_once_the_ensemble_is(
 
 
 def test_a_compared_variants_names_count(test_data_dir: Path) -> None:
-    ctx = click.Context(sim_group_command.commands["ensemble"].commands["compare"])  # ty: ignore[unresolved-attribute] -- a Group
+    ctx = click.Context(sim_group_command.commands["ensemble"].commands["compare"])  # ty: ignore[missing-attribute] -- a Group
     ctx.params = {"baseline": "base", "variant": "retire_alice", "data_dir": str(test_data_dir)}
     assert "Asset_Checking" in completion.ACCOUNT.choices(ctx)  # base has no accounts
 
@@ -487,3 +487,23 @@ def test_a_builtin_account_is_not_a_mistyped_one(sim: Callable[..., Result]) -> 
 
 def test_builtin_accounts_include_payouts_and_growth() -> None:
     assert {"capital_gains", "dividends", "interest_income"} <= set(names.builtin_account_names())
+
+
+def test_ensemble_rename_refuses_and_skips_templates(
+    sim: Callable[..., Result], test_data_dir: Path, test_ensemble_scenario: str,
+) -> None:
+    # A template is the code repository's; renaming one would leave the data
+    # repo's scenarios on a missing parent (#297).
+    template = "t_market_ensemble"
+    ctx = click.Context(sim_group_command)
+    ctx.params["data_dir"] = test_data_dir
+    assert template in completion._ensembles(ctx, test_data_dir)
+    offered = completion.OWN_ENSEMBLE.choices(ctx)
+    assert test_ensemble_scenario in offered and template not in offered
+    for what in ("ensemble", "scenario"):
+        result = sim(what, "rename", template, "mine")
+        assert result.exit_code != 0 and f"{template} is a template scenario" in result.output, result.output
+    assert not (test_data_dir / "scenarios" / "mine").exists()
+    # At a terminal a template's name isn't taken for a typo and re-asked:
+    # the command says why it refuses it.
+    assert completion.OWN_ENSEMBLE.is_known(ctx, template)

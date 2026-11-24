@@ -1,3 +1,5 @@
+![Spending Data Guide (Non-SQL)](assets/brand/banners/sqlite-guide.svg)
+
 # Spending Data Guide (Non-SQL)
 
 > To read a formatted `.md` file:

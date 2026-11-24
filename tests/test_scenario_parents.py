@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from analysis.cli import main
-from analysis.sim import scenario as sc
-from analysis.sim.cli import _parents_cell
-from analysis.sim.lineage import MIXIN_BASE, MIXIN_ONLY_DESCRIPTION, is_mixin_only, load_order, read_parents
-from analysis.sim.loader import load_scenario
-from analysis.sim.scenario_guide import walk_parents
+from zabob.retirement.cli import main
+from zabob.retirement.sim import scenario as sc
+from zabob.retirement.sim.cli import _parents_cell
+from zabob.retirement.sim.lineage import MIXIN_BASE, MIXIN_ONLY_DESCRIPTION, is_mixin_only, load_order, read_parents
+from zabob.retirement.sim.loader import load_scenario
+from zabob.retirement.sim.scenario_guide import walk_parents
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None):
@@ -215,7 +215,7 @@ def test_create_scenario_api(test_data_dir: Path, parent: str | None) -> None:
 
 
 def test_mix_ins_without_a_parent_are_refused(test_data_dir: Path) -> None:
-    from analysis.sim.loader import LoadError
+    from zabob.retirement.sim.loader import LoadError
     with pytest.raises(LoadError, match="need a parent"):
         sc.create_scenario(test_data_dir, "api", None, mixins=["base"])
 
@@ -244,6 +244,26 @@ def test_a_mix_in_built_on_a_mix_in_does_not_run(test_data_dir: Path) -> None:
     result = _sim(test_data_dir, "run", "more")
     assert result.exit_code != 0
     assert "mix-in only" in result.output, result.output
+
+
+def test_run_suggests_only_scenarios_that_can_run(test_data_dir: Path) -> None:
+    # more is mix-in only too, so `sim run extra` passes it by, to what is
+    # built on it with dates (#347).
+    _mixin_on_mixin(test_data_dir)
+    result = _sim(test_data_dir, "run", "extra")
+    assert result.exit_code != 0 and "a scenario that mixes it in" in result.output, result.output
+    assert _sim(test_data_dir, "scenario", "create", "kid", "retire_alice", "more").exit_code == 0
+    result = _sim(test_data_dir, "run", "extra")
+    assert result.exit_code != 0 and "run kid," in result.output, result.output
+    assert "run more" not in result.output
+
+
+def test_ensemble_create_on_mix_ins_says_so_and_does_not_suggest_a_run(test_data_dir: Path) -> None:
+    assert _sim(test_data_dir, "scenario", "create", "extra", "--no-parent").exit_code == 0
+    result = _sim(test_data_dir, "ensemble", "create", "rec", "extra")
+    assert result.exit_code == 0, result.output
+    assert "inherits: extra (a mix-in only scenario" in result.output, result.output
+    assert "sim run rec" not in result.output and "sim ensemble edit rec" in result.output, result.output
 
 
 def test_a_mix_in_on_a_mix_in_intent_does_not_run_without_the_data_repo(
@@ -292,9 +312,8 @@ def test_edit_may_make_a_dated_scenario_mix_in_only(test_data_dir: Path, test_sc
     _mixin_on_mixin(test_data_dir)
     assert _sim(test_data_dir, "scenario", "create", "kid", "t_empty", "extra").exit_code == 0
     assert not is_mixin_only(test_scenarios_dir, "kid")
-    result = _sim(test_data_dir, "scenario", "edit", "kid", "--parents", "extra")
+    result = _sim(test_data_dir, "scenario", "edit", "kid", "--parents", "extra", "--yes")
     assert result.exit_code == 0, result.output
-    assert "now mix-in only" in result.output and "kid" in result.output, result.output
     assert is_mixin_only(test_scenarios_dir, "kid")
 
 

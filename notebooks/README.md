@@ -1,3 +1,5 @@
+![Notebooks](../docs/assets/brand/banners/notebooks-readme.svg)
+
 # Notebooks
 
 > To read a formatted `.md` file:
@@ -7,7 +9,7 @@
 Exploratory notebooks live here.
 
 Notes:
-- Keep reusable logic in the `src/analysis/` package, not in notebooks.
+- Keep reusable logic in the `src/zabob/retirement/` package, not in notebooks.
 - Read inputs from `../data/` and write generated artifacts to `../out/`.
 - Treat `../state/` as persistent runtime state used by CLI and notebooks.
 
@@ -34,6 +36,7 @@ Several views also have terminal equivalents that need no notebook or kernel:
 | every run, with its status (a notebook opens a scenario's newest run that succeeded, names it under the picker, and warns of a newer one that failed) | `analysis sim list` |
 | persons and their lifespans | `analysis sim person list` |
 | each person's age-at-death distribution, and the household's last death (`lifespan.ipynb`) | `analysis sim person show [PERSON] [--graph]` |
+| every life table's death rates and expected age at death, by age and sex (`age_comparison.ipynb`) | `analysis sim lifespan tables`, `analysis sim lifespan check [AGE]` |
 | calendar events of every kind, with their variation | `analysis sim calendar list [--kind KIND] [--tag TAG]` |
 | year-to-date rows | `analysis sim ytd list` |
 | itemizations, their totals and what references them | `analysis sim itemization list`, `analysis sim itemization show NAME` |
@@ -58,7 +61,7 @@ Several views also have terminal equivalents that need no notebook or kernel:
 | two ensembles compared on risk: percentile, paired and tail-mean deltas, and each guard rail's change | `analysis sim ensemble compare <baseline> <variant> [--account NAME [--lot LOT]] [--log] [--chart]` |
 | a baseline ensemble against several others in one table, net worth and guard rails (`ensemble.ipynb`) | `analysis sim ensemble compare <baseline> <variant> <variant> ...` |
 | which varying rows matter, and when (`sensitivity.ipynb`) | `analysis sim ensemble sensitivity <recipe> [--row ROW] [--chart]` |
-| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv FILE] [--chart]` |
+| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv-file FILE] [--chart]` |
 
 Views with no terminal equivalent yet, and what the terminal shows that no notebook does yet, are listed in [TODO.md](../TODO.md), which also asks for a periodic review of both.
 
@@ -80,7 +83,7 @@ to see the real (usually empty) diff. See
 ## Writing a widget for a notebook
 
 Show a widget with `CONNECTIONS.show(fn, ...)` or `CONNECTIONS.show_scenario(fn, ...)`
-(`analysis.sim.notebook_ui.pickers`); they own the draw and redraw logic, so a widget
+(`zabob.retirement.sim.notebook_ui.pickers`); they own the draw and redraw logic, so a widget
 function should not.
 
 - **Return the widget** (or return `None` if the function displays things itself). Do not

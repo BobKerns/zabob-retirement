@@ -8,7 +8,7 @@
 #
 #   /repo/...          the checkout, read-only: src, pyproject.toml, uv.lock,
 #                      README.md, templates, historical_data, prototype_data,
-#                      notebooks, scripts/videos, docs/videos
+#                      notebooks, plugins, scripts/videos, docs/videos
 #   /opt/env           the named volume analysis-videos-env: the project's
 #                      venv, uv's cache and Pythons, Playwright's Chromium
 #   /out               where the videos land (and the build cache, .cache)
@@ -29,14 +29,14 @@
 FROM ubuntu:24.04
 
 # Keep VHS_VERSION, TTYD_VERSION and KOKORO_RELEASE in step with
-# src/analysis/videos, and PLAYWRIGHT_VERSION with uv.lock (tests/test_videos.py
+# src/zabob/retirement/videos, and PLAYWRIGHT_VERSION with uv.lock (tests/test_videos.py
 # checks): it chooses the system libraries Chromium is given. VHS comes from Bob's
 # fork, which records terminal images (render.VHS_VERSION says why).
 ARG NODE_VERSION=22.22.2
 ARG UV_VERSION=0.11.32
 ARG VHS_VERSION=0.12.1-analysis.2
 ARG TTYD_VERSION=1.7.7
-ARG PLAYWRIGHT_VERSION=1.64.0
+ARG PLAYWRIGHT_VERSION=1.65.2
 ARG KOKORO_RELEASE=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
 ARG TARGETARCH
 
@@ -99,12 +99,15 @@ RUN set -eu; \
         curl -fsSL -o "$ANALYSIS_VIDEO_CACHE/$f" "$KOKORO_RELEASE/$f"; \
     done
 
-# Chromium's system libraries, from the npm package of the Playwright the
-# project uses; Chromium itself goes in the volume (the entrypoint installs
-# it). /opt/pw-browsers/chromium is where the builder looks for it, and VHS
-# finds `chromium` on PATH: both point into the volume.
-RUN npx --yes "playwright@$PLAYWRIGHT_VERSION" install-deps chromium \
- && rm -rf /var/lib/apt/lists/* /root/.npm \
+# Chromium's system libraries, from the Python package of the Playwright the
+# project locks, at that exact version (#685: npm's playwright can lag PyPI's,
+# as 1.65.2 did), run with a throwaway uv cache and Python, since the image's
+# own uv paths are in the volume. Chromium itself goes in the volume (the
+# entrypoint installs it). /opt/pw-browsers/chromium is where the builder
+# looks for it, and VHS finds `chromium` on PATH: both point into the volume.
+RUN UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+        uvx --python 3.14 --from "playwright==$PLAYWRIGHT_VERSION" playwright install-deps chromium \
+ && rm -rf /var/lib/apt/lists/* /tmp/uv-cache /tmp/uv-python \
  && mkdir -p /opt/pw-browsers \
  && ln -s /opt/env/pw-browsers/chromium /opt/pw-browsers/chromium \
  && ln -s /opt/env/pw-browsers/chromium /usr/local/bin/chromium
@@ -123,4 +126,4 @@ RUN git config --system user.name "Video builder" \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["python", "-m", "analysis.videos", "check"]
+CMD ["python", "-m", "zabob.retirement.videos", "check"]

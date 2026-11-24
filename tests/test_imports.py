@@ -5,12 +5,15 @@ from __future__ import annotations
 import datetime as dt
 import re
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from analysis.sim.imports import flows, holdings, mapping, profiles, quicken, sources
-from analysis.sim.imports.forms import Flows, Holding, Snapshot
+from zabob.retirement.sim.imports import budget as budgets
+from zabob.retirement.sim.imports import flows, holdings, mapping, profiles, quicken, sources, transactions
+from zabob.retirement.sim.imports.forms import ORIGIN, Budget, BudgetLine, Flows, Holding, Snapshot
 
 # ---------- the Quicken source ----------
 
@@ -47,6 +50,120 @@ def test_an_export_with_no_transactions_still_has_dates(
 
     both = sources.read_flows([quicken_transaction_export, quicken_empty_transaction_export])
     assert both.transactions["date"].dt.month.tolist() == [1, 1, 2, 2]
+
+
+def test_a_portfolio_report_is_one_account_s_holdings_on_each_of_its_dates(
+    quicken_portfolio_report: Path, quicken_net_worth_export: Path,
+) -> None:
+    assert quicken.is_portfolio(quicken_portfolio_report)
+    assert not quicken.is_account_tree(quicken_portfolio_report)
+    assert not quicken.is_portfolio(quicken_net_worth_export)
+
+    found = quicken.read_portfolio(quicken_portfolio_report, "Joint Brokerage")
+
+    assert found.as_of == dt.date(2026, 8, 18) and found.complete == {"Joint Brokerage"} and not found.notes
+    assert [(h.account, h.asset, h.value_cents, h.cost_basis_cents) for h in found.holdings] == [
+        ("Joint Brokerage", "(cash)", 250000, None),
+        ("Joint Brokerage", "VTSAX", 30000000, 21000000),
+        ("Joint Brokerage", "ACME", 750000, None),
+        ("Joint Brokerage", "Stable Value Trust", 910000, 900000),
+    ]
+    assert found.holdings[1].hints == {"name": "Total Stock Fund"}
+    assert sorted(found.dated) == [dt.date(2025, 12, 31), dt.date(2026, 8, 18)]
+
+    # The numbers wanted are those of the date nearest the plan's.
+    earlier = holdings.nearest(found, dt.date(2026, 1, 1))
+    assert earlier.as_of == dt.date(2025, 12, 31) and not earlier.dated
+    assert [(h.asset, h.value_cents) for h in earlier.holdings] == [
+        ("(cash)", 100000), ("VTSAX", 25000000), ("VBTLX", 3900000), ("ACME", 500000),
+        ("Stable Value Trust", 900000)]
+    assert "those of 2025-12-31 are used, the nearest to 2026-01-01 (not 2026-08-18)" in earlier.notes[0]
+    assert holdings.nearest(found, dt.date(2026, 8, 1)).as_of == dt.date(2026, 8, 18)
+
+
+def test_a_portfolio_report_needs_its_account_and_says_when_it_is_of_them_all(
+    quicken_portfolio_report: Path, quicken_net_worth_export: Path,
+) -> None:
+    source, unnamed = sources.unnamed([quicken_portfolio_report])
+    assert source.name == "quicken" and unnamed == [quicken_portfolio_report]
+    assert sources.unnamed([quicken_net_worth_export])[1] == []
+
+    with pytest.raises(sources.SourceError, match="doesn't say which account it is.*--outside-account"):
+        sources.read_holdings([quicken_portfolio_report])
+    with pytest.raises(sources.SourceError, match="names its accounts itself"):
+        sources.read_holdings([quicken_net_worth_export], account="Joint Brokerage")
+    read = sources.read_holdings([quicken_portfolio_report], account="Joint Brokerage")
+    assert len(read.holdings) == 4 and len(read.dated) == 2
+
+    every = quicken_portfolio_report.with_name("all.csv")
+    every.write_text(
+        quicken_portfolio_report.read_text(encoding="utf-8").replace("Joint Brokerage,", "All Accounts,"),
+        encoding="utf-8")
+    assert "Export the report for one account at a time" in quicken.read_portfolio(every, "Joint Brokerage").notes[0]
+
+
+def test_a_portfolio_report_s_opened_lines_are_read_by_tax_lot(quicken_tax_lot_report: Path) -> None:
+    found = quicken.read_portfolio(quicken_tax_lot_report, "Joint Brokerage")
+
+    assert not found.notes          # "1 Account" is the one account it should be of
+    assert [(h.asset, h.acquired, h.value_cents, h.cost_basis_cents) for h in found.holdings] == [
+        ("(cash)", None, 250000, None),
+        ("VTSAX", dt.date(2019, 3, 15), 19500000, 12000000),
+        ("VTSAX", dt.date(2022, 6, 1), 9300000, 8000000),
+        ("VTSAX", dt.date(2026, 2, 10), 1200000, 1000000),
+        ("ACME", None, 750000, None),
+    ]
+    # The name the report was saved under is a guess at the account's.
+    assert found.holdings[1].hints == {"name": "Total Stock Fund", "report": "Joint Brokerage"}
+    # A tax lot is held only on the dates it has numbers for.
+    assert [(h.asset, h.acquired) for h in found.dated[dt.date(2025, 12, 31)] if h.acquired] == [
+        ("VTSAX", dt.date(2019, 3, 15)), ("VTSAX", dt.date(2022, 6, 1)), ("VBTLX", dt.date(2020, 4, 1))]
+
+    # Lots that don't come to the security's total leave the rest with no date.
+    short = quicken_tax_lot_report.with_name("short.csv")
+    short.write_text("".join(
+        line for line in quicken_tax_lot_report.read_text(encoding="utf-8").splitlines(keepends=True)
+        if not line.startswith(",6/1/2022")), encoding="utf-8")
+    partly = quicken.read_portfolio(short, "Joint Brokerage")
+    assert [(h.acquired, h.value_cents, h.cost_basis_cents) for h in partly.holdings if h.asset == "VTSAX"] == [
+        (dt.date(2019, 3, 15), 19500000, 12000000), (dt.date(2026, 2, 10), 1200000, 1000000),
+        (None, 9300000, 8000000)]
+    # Said of the date whose numbers are imported, not of the report's last.
+    assert not partly.notes
+    assert "the tax lots of VTSAX come to 207000.00 of its 300000.00 as of 2026-08-18" \
+        in holdings.nearest(partly, dt.date(2026, 8, 1)).notes[0]
+    earlier = holdings.nearest(partly, dt.date(2026, 1, 1)).notes
+    assert "the tax lots of VTSAX come to 170000.00 of its 250000.00 as of 2025-12-31" in earlier[0]
+    assert len(earlier) == 2 and "those of 2025-12-31 are used" in earlier[1]
+
+    several = quicken_tax_lot_report.with_name("several.csv")
+    several.write_text(
+        quicken_tax_lot_report.read_text(encoding="utf-8").replace("1 Account,", "3 Accounts,"), encoding="utf-8")
+    assert "says it is of 3 accounts" in quicken.read_portfolio(several, "Joint Brokerage").notes[0]
+
+
+def test_a_flat_transaction_report_is_read_row_by_row(quicken_flat_transaction_report: Path) -> None:
+    assert quicken.is_transaction_export(quicken_flat_transaction_report)
+    assert not quicken.is_account_tree(quicken_flat_transaction_report)
+
+    frame = quicken.read_transactions(quicken_flat_transaction_report).transactions
+
+    assert frame[["account", "payee", "category", "amount_cents"]].to_dict("records") == [
+        {"account": "Rewards Card", "payee": "Florist", "category": "Gifts", "amount_cents": -6000},
+        {"account": "Checking", "payee": "Market", "category": "Groceries", "amount_cents": -150000},
+        {"account": "Savings", "payee": "Dividend", "category": "Uncategorized", "amount_cents": 208},
+        {"account": "Checking", "payee": "To Savings", "category": "Transfer:[Savings]", "amount_cents": -20000},
+    ]
+    assert frame["date"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2026-02-14", "2026-02-02", "2026-01-31", "2026-01-15"]
+    assert frame["transfer"].tolist() == ["", "", "", "Savings"]
+    assert frame["tags"][0] == "Family" and frame["memo"][0] == "Flowers, a dozen"
+    assert sources.read_flows([quicken_flat_transaction_report]).source == "quicken"
+    # A bank's table with the same columns, and no unnamed first one, is a profile's to read.
+    table = quicken_flat_transaction_report.with_name("bank.csv")
+    table.write_text("Date,Payee,Category,Amount,Account\n01/15/2026,Market,Groceries,-20.00,Checking\n",
+                     encoding="utf-8")
+    assert not quicken.is_transaction_export(table)
 
 
 def test_flows_refuse_a_frame_without_the_common_columns(quicken_transaction_export: Path) -> None:
@@ -117,12 +234,52 @@ def test_account_map_round_trips_and_falls_back_to_the_whole_account(test_data_d
     ("A,,move,X,,\n", "action must be"),
     ("A,,map,,,\n", "needs an account"),
     ("A,,map,X,,\nA,,skip,,,\n", "duplicate"),
+    ("A,,split,,,\n", "needs an account"),
+    ("A,,split,X,one,\n", "a 'split' row names no lot: lot_splits.csv"),
 ])
 def test_load_account_map_rejects_bad_rows(
     write_import_map: Callable[[str, str], Path], rows: str, message: str,
 ) -> None:
     with pytest.raises(ValueError, match=message):
         mapping.load_account_map(write_import_map("quicken/accounts.csv", rows))
+
+
+@pytest.mark.parametrize(("rows", "message"), [
+    ("A,,,100.00,\n", "a lot is required"),
+    ("A,,one,100.00,\nA,,one,50.00,\n", "lot 'one' has a part of 'A' already"),
+    ("A,,one,,\nA,,two,,\n", "only one lot of a split can have a blank amount"),
+    ("A,,one,1e3,\n", "invalid dollar value"),
+    ("A,,one,100.00,lots\n", "invalid dollar value"),
+])
+def test_load_lot_splits_rejects_bad_rows(
+    write_import_map: Callable[[str, str], Path], rows: str, message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        mapping.load_lot_splits(write_import_map("quicken/lot_splits.csv", rows))
+
+
+def test_lot_splits_round_trip_and_divide_a_number(write_import_map: Callable[[str, str], Path]) -> None:
+    path = write_import_map(
+        "quicken/lot_splits.csv", "Funds,,vti,6000.00,4500.00\nFunds,,bnd,,\nBank,,cd,250.00,\nBank,,rest,50.00,\n")
+    found = mapping.load_lot_splits(path)
+    before = path.read_text(encoding="utf-8")
+    found.save()
+    assert path.read_text(encoding="utf-8") == before
+    assert mapping.load_lot_splits(path.with_name("none.csv")).parts == {}
+
+    funds, bank = found.parts["Funds", ""], found.parts["Bank", ""]
+    assert funds == [mapping.LotPart("vti", 600000, 450000), mapping.LotPart("bnd", None)]
+    # The lot with no amount takes what the others leave, whatever the number is now.
+    assert [cents for _, cents in mapping.divide(funds, 1000000) or []] == [600000, 400000]
+    assert [cents for _, cents in mapping.divide(funds, 600000) or []] == [600000, 0]
+    # More given out than there is, and fixed amounts that come to another number, don't divide it.
+    assert mapping.divide(funds, 500000) is None
+    assert [cents for _, cents in mapping.divide(bank, 30000) or []] == [25000, 5000]
+    assert mapping.divide(bank, 30001) is None and mapping.divide([], 0) is None
+    # Of nothing, no lot gets a part: the rest would be what the others were given, taken back.
+    assert mapping.divide(funds, 0) is None and mapping.divide(funds, -1) is None
+    assert [cents for _, cents in mapping.divide([mapping.LotPart("vti", 0), mapping.LotPart("bnd", None)], 0) or []] \
+        == [0, 0]
 
 
 def test_load_account_map_rejects_another_header(quicken_account_map: Path) -> None:
@@ -151,10 +308,28 @@ def test_renames_follow_in_every_saved_mapping(
     assert mapping.rename_account(test_data_dir, "Nothing", "Else") == []
     assert mapping.rename_lot(test_data_dir, "Asset_Checking", "vti", "x") == []
 
+    # A row that divides a number among an account's lots follows the
+    # account in accounts.csv, and its lots in lot_splits.csv; a part of
+    # another account's lot of the same name is left alone.
+    accounts.write_text(accounts.read_text(encoding="utf-8")
+                        + "Total,,split,Asset_Brokerage_Joint,,\nOther,,split,Asset_Roth_Alice,,\n", encoding="utf-8")
+    # A split of one holding (VTI) finds its row as the holding does: the outside account's.
+    splits = write_import_map(
+        "quicken/lot_splits.csv", "Total,,bnd,10.00,\nTotal,,voo,,\nOther,,bnd,,\nTotal,VTI,bnd,,\n")
+    assert mapping.rename_lot(test_data_dir, "Asset_Brokerage_Joint", "bnd", "bonds") == [
+        "imports/quicken/accounts.csv", "imports/quicken/lot_splits.csv"]
+    assert splits.read_text(encoding="utf-8").splitlines()[1:] == [
+        "Total,,bonds,10.00,", "Total,,voo,,", "Other,,bnd,,", "Total,VTI,bonds,,"]
+    assert mapping.rename_account(test_data_dir, "Asset_Roth_Alice", "Asset_Roth") == ["imports/quicken/accounts.csv"]
+    assert mapping.load_account_map(accounts).entries["Other", ""] == mapping.AccountTarget("split", "Asset_Roth")
+    assert mapping.rename_lot(test_data_dir, "Asset_Brokerage_Joint", "bonds", "bnd") == [
+        "imports/quicken/accounts.csv", "imports/quicken/lot_splits.csv"]
+
     found = mapping.load_account_map(accounts)
     assert found.lookup("Business") == mapping.AccountTarget("map", "Asset_Bank")
     assert found.entries["Funds", ""].label == "Asset_Brokerage_Joint:total_market"
     assert found.entries["Bonds", ""].label == "Asset_Brokerage_Joint:bnd"
+    assert found.entries["Total", ""] == mapping.AccountTarget("split", "Asset_Brokerage_Joint")
     assert mapping.load_expense_accounts(expenses).accounts == {
         "Food": "Expense_Home", "Gifts": "-"}
 
@@ -300,6 +475,30 @@ def test_plan_reports_what_the_mapping_leaves_open() -> None:
     assert result.changes == [] and result.cells == {}
 
 
+def test_plan_divides_a_number_by_its_split_and_leaves_open_one_that_does_not_fit() -> None:
+    account_map = _map(Funds=mapping.AccountTarget("split", "Asset_Brokerage_Joint"))
+    snapshot = Snapshot("quicken", (Holding("Funds", 6000, quantity=Decimal(3)), Holding("Funds", 4000)))
+    # No split, or one whose amounts come to another number: nothing is set.
+    for splits in ({}, {("Funds", ""): [mapping.LotPart("vti", 7000), mapping.LotPart("bnd", 2000)]}):
+        whole = holdings.plan(snapshot, account_map, _ACCOUNTS, _lots(), splits=splits)
+        assert not whole.complete and [h.value_cents for h, _ in whole.to_split] == [6000, 4000]
+        assert whole.changes == []
+
+    # The outside account's holdings are divided as their total, and a part has no share count.
+    result = holdings.plan(snapshot, account_map, _ACCOUNTS, _lots(), splits={
+        ("Funds", ""): [mapping.LotPart("vti", 7000, 5000), mapping.LotPart("bnd", None)]})
+    assert result.complete
+    assert {(c.lot, c.column): c.after for c in result.changes if c.column != "prior_year_end_balance"} == {
+        ("vti", "opening_balance"): "70.00", ("vti", "opening_cost_basis"): "50.00",
+        ("bnd", "opening_balance"): "30.00"}
+
+    # A part for a lot the account doesn't have is as a mapping to one, and names its lot.
+    astray = holdings.plan(snapshot, account_map, _ACCOUNTS, _lots(), splits={
+        ("Funds", ""): [mapping.LotPart("vti", 7000), mapping.LotPart("voo", None)]})
+    assert [(h.lot, h.value_cents, t.label) for h, t in astray.no_lot] == [("voo", 3000, "Asset_Brokerage_Joint:voo")]
+    assert not astray.to_split
+
+
 # ---------- the flows applier ----------
 
 def test_flow_plan_classifies_each_generated_rule() -> None:
@@ -383,7 +582,15 @@ def test_a_profile_reads_money_dates_and_where_the_holdings_stop(
 
 @pytest.mark.parametrize(("text", "problem"), [
     ("- a list\n", "a profile is a mapping"),
-    ("description: x\n", "needs 'holdings'"),
+    ("description: x\n", "needs 'holdings' or 'transactions'"),
+    ("transactions: {columns: {date: D, amount: A}}\n", "must name payee"),
+    ("transactions: {columns: {date: D, payee: P}}\n", "say where the amount is, once"),
+    ("transactions: {columns: {date: D, payee: P, amount: A, debit: X, credit: Y}}\n",
+     "say where the amount is, once"),
+    ("transactions: {columns: {date: D, payee: P, debit: X}}\n", "say where the amount is, once"),
+    ("transactions: {columns: {date: D, payee: P, amount: A}, spending: up}\n", "'spending' is one of"),
+    ("transactions: {columns: {date: D, payee: P, amount: A}, only: {status: [Posted]}}\n",
+     "'only' maps a column the profile names"),
     ("holdings: {columns: {asset: A}}\n", "must name value"),
     ("holdings: {columns: {asset: A, value: V}}\n", "say where the account is, once"),
     ("holdings: {columns: {asset: A, value: V, account: C}, account: {file_name: x}}\n",
@@ -516,6 +723,49 @@ def test_plan_sends_each_holding_to_the_lot_of_its_symbol(test_data_dir: Path) -
         1: {"opening_balance": "5000.00", "opening_cost_basis": "6000.00"},
     }
     assert [w for w in result.warnings if "'gone'" in w and "sim account lot delete Brokerage gone" in w]
+
+
+def test_plan_sends_each_tax_lot_to_the_lot_acquired_that_day(test_data_dir: Path) -> None:
+    account_map = _mapped(test_data_dir, ("B1", "", mapping.AccountTarget("map", "Brokerage")))
+    snapshot = Snapshot("broker", (
+        Holding("B1", 7000_00, asset="AAA", cost_basis_cents=4000_00, acquired=dt.date(2020, 1, 2)),
+        Holding("B1", 5000_00, asset="AAA", cost_basis_cents=5500_00, acquired=dt.date(2024, 3, 4)),
+        Holding("B1", 900_00, asset="AAA", cost_basis_cents=800_00, acquired=dt.date(2026, 5, 6)),
+    ))
+    lots = [
+        {"account_name": "Brokerage", "lot": "aaa", "symbol": "AAA", "opening_balance": "11000.00"},
+        {"account_name": "Brokerage", "lot": "aaa-2020-01-02", "symbol": "AAA", "acquired": "2020-01-02",
+         "opening_balance": "1.00"},
+        {"account_name": "Brokerage", "lot": "aaa-2024-03-04", "symbol": "AAA", "acquired": "2024-03-04",
+         "opening_balance": "5000.00", "opening_cost_basis": "5500.00"},
+        {"account_name": "Brokerage", "lot": "sold", "symbol": "AAA", "acquired": "2021-01-01",
+         "opening_balance": "3.00"},
+    ]
+
+    result = holdings.plan(snapshot, account_map, _BROKERAGE, lots, prune=True)
+
+    # The lot with no date is emptied (the dated ones hold its total), and so
+    # is the tax lot the file no longer has; the one with no lot yet is new.
+    assert result.cells == {
+        0: {"opening_balance": "0.00"},
+        1: {"opening_balance": "7000.00", "opening_cost_basis": "4000.00"},
+        3: {"opening_balance": "0.00"},
+    }
+    assert [(h.acquired, t.account) for h, t in result.new] == [(dt.date(2026, 5, 6), "Brokerage")]
+
+    # What the file has of the symbol with no date is no tax lot's: with no
+    # undated lot it is new, whichever side of the tax lots it comes on.
+    rest = Holding("B1", 300_00, asset="AAA", cost_basis_cents=200_00)
+    for order in ((rest, *snapshot.holdings), (*snapshot.holdings, rest)):
+        partly = holdings.plan(Snapshot("broker", order), account_map, _BROKERAGE, lots[1:3])
+        assert (rest, mapping.AccountTarget("map", "Brokerage")) in partly.new and not partly.warnings
+        assert partly.cells[0]["opening_balance"] == "7000.00" and "opening_balance" not in partly.cells[1]
+
+    # A mapping that names a lot still takes them all in together.
+    account_map.set("B1", "AAA", mapping.AccountTarget("map", "Brokerage", "aaa"))
+    gathered = holdings.plan(snapshot, account_map, _BROKERAGE, lots)
+    assert gathered.complete
+    assert gathered.cells[0] == {"opening_balance": "12900.00", "opening_cost_basis": "10300.00"}
 
 
 def test_plan_clears_a_share_count_the_file_lacks_and_keeps_lots_it_names(test_data_dir: Path) -> None:
@@ -688,3 +938,281 @@ def test_plan_prune_empties_a_lot_the_file_no_longer_has(test_data_dir: Path) ->
     assert not emptied.notes
     assert result.pruned == ["Brokerage:sold"] and not result.warnings
     assert (result.lots_changed, result.lots_unchanged) == (1, 2)
+
+
+# ---------- transactions from a profile, and categories by payee (issue #617) ----------
+
+def test_a_banks_download_is_read_as_transactions(bank_checking_export: Path) -> None:
+    assert [(s.name, form) for s, form in sources.detect(bank_checking_export)] == [
+        ("wells_fargo", "transactions")]
+
+    found = sources.read_flows([bank_checking_export])
+
+    assert found.source == "wells_fargo" and found.sources == ("wells_fargo",)
+    frame = found.transactions
+    # The account is the file's name: nothing inside says, and nothing maps it.
+    assert set(frame["account"]) == {"Checking1"} and set(frame[ORIGIN]) == {"wells_fargo"}
+    assert frame["amount_cents"].tolist() == [-20000, -100000, -15000, -40000, 500000, -7500, -15000]
+    assert frame["date"].iloc[0] == pd.Timestamp("2026-02-20") and not frame["category"].any()
+    # The bank's padding is not part of who was paid.
+    assert frame["payee"].iloc[2] == "CITY POWER AND WATER BILL PAY 260201"
+    assert frame["check"].iloc[5] == "1042"
+    assert sources.read_flows([bank_checking_export], account="Joint").transactions["account"].iloc[0] \
+        == "Joint"
+    # A bank names its downloads alike, so where it can the command asks.
+    asked = sources.read_flows([bank_checking_export], ask_account=lambda path, source: f"{source} joint")
+    assert set(asked.transactions["account"]) == {"wells_fargo joint"}
+
+
+def test_a_transactions_profile_reads_two_amount_columns_charges_and_only_some_rows(
+    write_import_profile: Callable[[str, str], Path], test_data_dir: Path,
+    write_import_export: Callable[[str, str], Path],
+) -> None:
+    imports = test_data_dir / "imports"
+    write_import_profile(
+        "my_bank", "transactions: {columns: {account: Acct, date: When, payee: Who, debit: Out, "
+        "credit: In, status: State}, date_format: '%Y-%m-%d', only: {status: posted}}\n")
+    export = write_import_export(
+        "bank.csv", "Report for Alice\n\nAcct,When,Who,Out,In,State\n"
+        "A1,2026-01-05,Market,12.50,,Posted\nA1,2026-01-06,Refund,,3.00,Posted\n"
+        "A1,2026-01-07,Cafe,4.00,,Pending\n\nEnd of report\n")
+    assert sources.read_flows([export], imports=imports).transactions["amount_cents"].tolist() == [-1250, 300]
+
+    write_import_profile(
+        "my_card", "transactions: {columns: {date: Day, payee: Merchant, amount: Charge}, "
+        "spending: positive, account: {file_name: 'card-(\\d+)'}}\n")
+    card = write_import_export("card-4321.csv", "Day,Merchant,Charge\n01/05/2026,Market,12.50\n")
+    frame = sources.read_flows([card], imports=imports).transactions
+    assert (frame["amount_cents"].iloc[0], frame["account"].iloc[0]) == (-1250, "4321")
+
+
+def test_one_run_reads_files_of_several_sources(
+    bank_checking_export: Path, quicken_transaction_export: Path,
+) -> None:
+    both = sources.read_flows([bank_checking_export, quicken_transaction_export])
+
+    assert both.source == "wells_fargo+quicken" and both.sources == ("wells_fargo", "quicken")
+    assert both.transactions[ORIGIN].value_counts().to_dict() == {"wells_fargo": 7, "quicken": 4}
+    # A named source is every file's.
+    with pytest.raises((ValueError, KeyError)):
+        sources.read_flows([bank_checking_export, quicken_transaction_export], "wells_fargo")
+
+
+def test_a_cards_two_layouts_are_one_profile_and_a_reference_is_counted_once(
+    card_exports: tuple[Path, Path, Path], test_data_dir: Path,
+) -> None:
+    detailed, february, short = card_exports
+    imports = test_data_dir / "imports"
+    assert [(s.name, form) for s, form in sources.detect(short, imports=imports)] == [
+        ("amex", "transactions")]
+
+    plain = sources.read_flows([short], imports=imports).transactions
+    assert (plain["amount_cents"].tolist(), plain["account"].tolist(), plain["category"].tolist()) == (
+        [-6000], ["-12345"], [""])
+
+    # The two detailed files share January 25: by its reference it is one charge.
+    both = sources.read_flows([detailed, february], imports=imports)
+    assert both.duplicates == 1
+    frame = both.transactions
+    assert frame["reference"].tolist() == ["'R003'", "'R002'", "'R001'", "'R004'"]
+    # A charge is spending and the payment money in; a cell's line breaks don't split a row.
+    assert frame["amount_cents"].tolist() == [-8000, 30000, -4000, -6000]
+    assert frame["category"].tolist()[0] == "Merchandise & Supplies-Groceries"
+
+    # Without references, the same days of one account twice are refused.
+    with pytest.raises(ValueError, match="both have transactions"):
+        sources.read_flows([short, short], imports=imports)
+
+    payees = mapping.PayeeMap(imports / "amex" / "payees.csv")
+    payees.add("harbor cafe", "Treats")
+    payees.add("online payment", "transfer")
+    # A payee's row goes over the card's own category; the rest keep the file's.
+    over, unmatched = transactions.categorize(frame, {"amex": payees})
+    assert over["category"].tolist() == [
+        "Merchandise & Supplies-Groceries", "", "Treats", "Merchandise & Supplies-Groceries"]
+    assert over["transfer"].tolist() == ["", "transfer", "", ""] and unmatched == []
+
+
+def test_a_file_without_references_may_not_overlap_one_with_them(
+    card_exports: tuple[Path, Path, Path], test_data_dir: Path,
+) -> None:
+    detailed, february, short = card_exports
+    imports = test_data_dir / "imports"
+    # February 10 is in both, and the short download has no reference to match it by.
+    with pytest.raises(ValueError, match="both have transactions of '-12345' between 2026-02-10"):
+        sources.read_flows([february, short], imports=imports)
+    with pytest.raises(ValueError, match="both have transactions"):
+        sources.read_flows([short, february], imports=imports)
+
+    # Apart, the two layouts are one source's, and the short one's rows are found by payee.
+    both = sources.read_flows([detailed, short], imports=imports)
+    assert both.sources == ("amex",) and both.duplicates == 0
+    _, unmatched = transactions.categorize(
+        both.transactions, {"amex": mapping.PayeeMap(imports / "amex" / "payees.csv")})
+    assert [(each.key, each.rows, each.cents) for each in unmatched] == [("corner market", 1, 6000)]
+
+
+def test_files_that_name_no_account_are_named_in_order_or_refused(
+    bank_checking_export: Path, write_import_export: Callable[[str, str], Path],
+    write_import_profile: Callable[[str, str], Path], test_data_dir: Path,
+) -> None:
+    again = write_import_export(
+        "Checking1 (1).csv", bank_checking_export.read_text(encoding="utf-8"))
+    # The same account downloaded twice: by their names they would be two.
+    with pytest.raises(ValueError, match="2 files don't say which account they are"):
+        sources.read_flows([bank_checking_export, again])
+    with pytest.raises(ValueError, match="both have transactions of 'Joint'"):
+        sources.read_flows([bank_checking_export, again], account=["Joint", "Joint"])
+    named = sources.read_flows([bank_checking_export, again], account=["Joint", "Savings"])
+    assert named.transactions["account"].value_counts().to_dict() == {"Joint": 7, "Savings": 7}
+    with pytest.raises(ValueError, match="--outside-account was given 1 time"):
+        sources.read_flows([bank_checking_export, again], account="Joint")
+
+    # A source's name may have a '+' in it: the sources are not found by splitting the label.
+    write_import_profile(
+        "bank+card", "transactions: {columns: {date: Day, payee: Merchant, amount: Charge}}\n")
+    odd = write_import_export("odd.csv", "Day,Merchant,Charge\n01/05/2026,Market,-12.50\n")
+    assert sources.read_flows([odd], imports=test_data_dir / "imports").sources == ("bank+card",)
+
+
+def test_a_payee_pattern_matches_whole_words() -> None:
+    payees = mapping.PayeeMap(Path("payees.csv"))
+    payees.add("art", "Hobbies")
+    payees.add("Corner Market", "Food")
+    assert payees.category("WALMART 1234") is None
+    assert payees.category("THE ART STORE") == "Hobbies"
+    assert payees.category("CORNER MARKET #204 OAKLAND") == "Food"
+    assert payees.category("CORNER SUPERMARKET") is None
+
+
+def test_a_transactions_profile_says_what_a_file_may_lack(
+    write_import_profile: Callable[[str, str], Path], test_data_dir: Path,
+) -> None:
+    write_import_profile(
+        "odd", "transactions: {columns: {date: D, payee: P, amount: A}, optional: [amount]}\n")
+    with pytest.raises(ValueError, match="can't do without"):
+        profiles.load(test_data_dir / "imports" / "odd" / "profile.yaml", "odd")
+    write_import_profile(
+        "odd", "transactions: {columns: {date: D, payee: P, amount: A}, optional: [memo]}\n")
+    with pytest.raises(ValueError, match="'optional' lists columns the profile names"):
+        profiles.load(test_data_dir / "imports" / "odd" / "profile.yaml", "odd")
+
+
+def test_payees_give_a_banks_rows_their_categories(test_data_dir: Path, bank_checking_export: Path) -> None:
+    frame = sources.read_flows([bank_checking_export]).transactions
+    payees = mapping.PayeeMap(test_data_dir / "imports" / "wells_fargo" / "payees.csv")
+    payees.add("Corner Market #204", "Food")
+    payees.add("transfer to savings", mapping.TRANSFER)
+    payees.add("CHECK", mapping.NO_RULE)
+
+    found, unmatched = transactions.categorize(frame, {"wells_fargo": payees})
+
+    # Words with a digit are a store's or a card's number, never the payee.
+    assert payees.rows[0] == ("corner market", "Food")
+    assert found.loc[found["category"].eq("Food"), "amount_cents"].tolist() == [-20000, -40000]
+    assert found.loc[found["transfer"].eq("transfer"), "amount_cents"].tolist() == [-100000]
+    assert -7500 not in found["amount_cents"].tolist()
+    # Money in needs no category; the utility's two payments are one payee to ask about.
+    assert [(u.key, u.rows, u.cents) for u in unmatched] == [("city power and water bill pay", 2, 30000)]
+    assert unmatched[0].example == "CITY POWER AND WATER BILL PAY 260201"
+
+    rest, still = transactions.categorize(frame, {"wells_fargo": payees}, rest="Other")
+    assert rest.loc[rest["category"].eq("Other"), "amount_cents"].tolist() == [-15000, -15000]
+    assert len(still) == 1
+
+    payees.save()
+    again = mapping.load_payee_map(payees.path)
+    assert again.rows == payees.rows and again.category("x CORNER  MARKET 99 y") == "Food"
+
+
+def test_the_maps_of_several_sources_must_agree() -> None:
+    one = transactions.CategoryMaps(merges={"Groceries": "Food"}, exclusions={"Tax"},
+                                    splits={"Food": {"Checking": "Food_Alice"}}, excluded_payees=("rent",))
+    two = transactions.CategoryMaps(merges={"Dining": "Food", "Groceries": "Food"},
+                                    splits={"Food": {"": "Food_Joint"}}, excluded_payees=("rent", "hoa"))
+
+    both = transactions.combine({"a": one, "b": two})
+
+    assert both.merges == {"Groceries": "Food", "Dining": "Food"} and both.exclusions == {"Tax"}
+    assert both.splits == {"Food": {"Checking": "Food_Alice", "": "Food_Joint"}}
+    assert both.excluded_payees == ("rent", "hoa")
+    with pytest.raises(ValueError, match="'Groceries' goes to 'Food' for a and to '-' for b"):
+        transactions.combine({"a": one, "b": transactions.CategoryMaps(exclusions={"Groceries"})})
+    with pytest.raises(ValueError, match="split two ways"):
+        transactions.combine(
+            {"a": one, "b": transactions.CategoryMaps(splits={"Food": {"Checking": "Food_Bill"}})})
+
+
+# ---------- a budget (issue #617) ----------
+
+def test_a_quicken_budget_is_read_month_by_month_with_the_own_amount_of_each_category(
+    quicken_budget_full_export: Path,
+) -> None:
+    assert [(s.name, form) for s, form in sources.detect(quicken_budget_full_export)] == [
+        ("quicken", "budget")]
+
+    budget = sources.read_budget(quicken_budget_full_export)
+
+    assert budget.months[0] == dt.date(2026, 7, 1) and budget.months[-1] == dt.date(2027, 6, 1)
+    assert len(budget.months) == 12
+    lines = {line.category: line for line in budget.lines}
+    # Food's row counts what is under it; 10 a month is its own. Travel has no budget.
+    assert {name: line.total_cents for name, line in lines.items()} == {
+        "Paycheck": 6_000_000, "Food": 12_000, "Food:Groceries": 600_000,
+        "Food:Restaurants": 180_000, "Food:Restaurants:Coffee": 60_000,
+        "Property Tax": 600_000, "Utilities": 198_000}
+    assert lines["Paycheck"].income and not lines["Food"].income
+    assert lines["Property Tax"].monthly_cents == (0, 0, 0, 0, 0, 300_000, 0, 0, 0, 300_000, 0, 0)
+    assert lines["Utilities"].monthly_cents[5:7] == (15_000, 18_000)
+
+
+def test_a_quicken_budget_summary_has_the_years_totals_and_its_months_from_the_period(
+    quicken_budget_summary_export: Path, quicken_budget_full_export: Path,
+) -> None:
+    budget = sources.read_budget(quicken_budget_summary_export)
+    full = sources.read_budget(quicken_budget_full_export)
+
+    assert budget.months == full.months
+    assert {line.category: line.total_cents for line in budget.lines} \
+        == {line.category: line.total_cents for line in full.lines}
+    assert all(line.monthly_cents == () for line in budget.lines)
+
+
+def _lines(*categories: str) -> Budget:
+    return Budget("quicken", tuple(BudgetLine(False, category, 1200, ()) for category in categories), ())
+
+
+def test_a_category_row_is_for_its_path_and_never_a_same_named_category_elsewhere() -> None:
+    found = budgets.gather(
+        _lines("Insurance", "Auto:Insurance", "Auto:Fuel", "Home:Tax", "Tax"),
+        {"Insurance": "Insurance", "Auto": "Car"}, {"Tax"})
+
+    # The top category's rows say nothing of Auto:Insurance or Home:Tax.
+    assert found.spending == {"Insurance": [1200], "Car": [2400], "Home": [1200]}
+    assert found.excluded == ["Tax"]
+
+
+def test_a_budgets_income_tax_lines_are_left_out_unless_the_map_names_them() -> None:
+    budget = _lines("Tax:Fed", "Tax:State", "Tax:Property", "Taxes:Federal Estimated", "Sales Tax", "Statement Fees")
+
+    found = budgets.gather(budget, {}, set())
+    assert found.taxes == ["Tax:Fed", "Tax:State", "Taxes:Federal Estimated"]
+    assert found.spending == {"Tax": [1200], "Sales Tax": [1200], "Statement Fees": [1200]}
+
+    # A row for the line itself keeps it: the household means to pay it by rule.
+    assert budgets.gather(budget, {"Tax:Fed": "Withholding"}, set()).spending["Withholding"] == [1200]
+
+
+def test_a_budget_beside_transactions_is_gathered_into_their_categories() -> None:
+    budget = _lines("Dining", "Fun:Movies", "Insurance", "Insurance:Auto", "Travel")
+
+    found = budgets.gather(
+        budget, {"Insurance:Auto": "Car"}, set(),
+        # The card's insurance is the car's, and the rest the home's; a budget's line has no account.
+        splits={"Insurance": {"Card": "Auto Insurance", "": "Home Insurance"}, "Car": {"Card": "Fleet"}},
+        # The transactions had no row for these, and put them in Other.
+        defaulted=("Dining", "Fun"), default="Other")
+
+    assert found.spending == {"Other": [2400], "Home Insurance": [1200], "Car": [1200], "Travel": [1200]}
+    # By itself a budget keeps its own top categories.
+    assert set(budgets.gather(budget, {}, set()).spending) == {"Dining", "Fun", "Insurance", "Travel"}

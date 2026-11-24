@@ -13,7 +13,7 @@ what each account holds, so they stop typing numbers into the plan. They \
 export two reports and two downloads, tell the simulator once which of their \
 accounts, lots and categories each outside name means, and from then on an \
 import is one command. Guide: \
-https://github.com/BobKerns/analysis/blob/main/docs/guides/importing-data.md"""
+https://github.com/BobKerns/zabob-retirement/blob/main/docs/guides/importing-data.md"""
 contents = [
   "Match each name once",
   "Exporting the reports and downloads",
@@ -45,7 +45,7 @@ two Quicken reports and two brokerage downloads Alice saved into
 scenes do, tagging the data repo before each
 (`stage/<scene>`). The questions are only asked at a terminal, so setup
 writes Alice's answers as the files the import would save. The tapes work
-in `~/retirement/data/sim`, as in videos 3 to 11.
+in `~/zabob-retirement/sim`, as in videos 3 to 11.
 
 Quicken's reports fill the cash accounts and Alice's IRA, and bring the
 spending; the brokerages' downloads (#527's second phase) fill the joint
@@ -136,9 +136,9 @@ in her downloads folder.
 ```tape
 Set FontSize 28
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/sources && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/sources && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -166,9 +166,9 @@ Alice knows, before importing anything, that all four will be understood.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/holdings && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/holdings && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -180,9 +180,13 @@ Sleep 9s
 Type "Asset_Checking"
 Sleep 600ms
 Enter
+Sleep 1s
+Enter
 Sleep 2s
 Type "Asset_Savings"
 Sleep 600ms
+Enter
+Sleep 1s
 Enter
 Sleep 3s
 Type "skip"
@@ -191,6 +195,8 @@ Enter
 Sleep 4s
 Type "Asset_TraditionalIRA_Alice"
 Sleep 600ms
+Enter
+Sleep 1s
 Enter
 Sleep 2s
 Type "skip"
@@ -215,7 +221,8 @@ Sleep 20s
 
 Sim import holdings reads the net worth report. It hasn't seen any of
 these names before, so it asks about each, and lists the plan's accounts
-to choose from. Joint Checking is asset checking. Online Savings is asset
+to choose from, and then which lot of the account; Enter takes its one
+lot. Joint Checking is asset checking. Online Savings is asset
 savings. The brokerage is different. Quicken's report has one number for
 it, and the plan keeps it as two lots, stocks and bonds. The brokerage's
 own download lists each fund, so Alice answers skip here, and imports that
@@ -237,9 +244,9 @@ the answers are saved.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/positions && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/positions && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -284,9 +291,9 @@ says how to add it.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/roth && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/roth && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -335,9 +342,9 @@ funds cost, which is something else, so it's never taken from the file.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/again && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/again && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -392,9 +399,9 @@ plan's start gets a warning.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/estimates && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/estimates && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -417,9 +424,9 @@ called other.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/estimates && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/estimates && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -446,14 +453,14 @@ the two estimates go first.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/transactions && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/transactions && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
 Sleep 500ms
-Type "sim import transactions ~/Downloads/transactions-2025.csv --from-account Asset_Checking"
+Type "sim import transactions ~/Downloads/transactions-2025.csv --from Asset_Checking"
 Sleep 400ms
 Enter
 Sleep 7s

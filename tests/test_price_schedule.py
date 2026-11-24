@@ -15,9 +15,9 @@ import git
 import pytest
 from click.testing import CliRunner
 
-from analysis.sim import builder, price_schedule
-from analysis.sim.cli import sim_group_command
-from analysis.sim.prices import PriceError
+from zabob.retirement.sim import builder, price_schedule
+from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.sim.prices import PriceError
 
 NY = price_schedule.MARKET
 
@@ -351,9 +351,24 @@ def test_a_failing_symbol_is_recorded_and_does_not_stop_the_others(
     price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=later)
     state = price_schedule.read_state(data)
     assert state["failing"]["BAD"]["since"] == NOW.timestamp()  # when it first failed
-    assert "price failing for 4 days: BAD: no such symbol (no lot holds it)" in \
+    tried = later.astimezone().strftime("%Y-%m-%d %H:%M")  # local time, as status shows it
+    assert f"price failing for 4 days: BAD (last tried {tried}): no such symbol (no lot holds it)" in \
+        price_schedule.describe(state, later)
+    del state["failing"]["BAD"]["at"]  # state from before #648: the fetch's last try
+    assert f"price failing for 4 days: BAD (last tried {tried}): no such symbol (no lot holds it)" in \
         price_schedule.describe(state, later)
     assert price_schedule.stale_held(state, later) == []  # no lot holds it
+
+
+def test_a_scheduled_fetch_skips_a_no_fetch_symbol(
+    commit_files: Callable[..., str],
+    priced: tuple[Path, git.Repo], fetching: None,
+) -> None:
+    data, repo = priced
+    commit_files(repo, {"sim/securities.csv": "symbol,name,no_fetch\nBAD,Gone fund,1\n"}, "BAD")
+    outcome = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
+    assert not any(line.startswith("BAD") for line in outcome.lines)
+    assert "BAD" not in (price_schedule.read_state(data).get("failing") or {})
 
 
 def test_a_fetch_where_every_symbol_fails_is_tried_again_later(
@@ -435,7 +450,7 @@ def test_install_records_whether_to_fetch_prices(
     data, _ = priced
     code = tmp_path / "code"
     (code / "data").mkdir(parents=True)
-    (code / "data" / "shared").symlink_to(data.parent)
+    (code / "data" / "private").symlink_to(data.parent)
     (data / ".analysis").write_text(f"{code}\n")
     monkeypatch.setattr(builder, "code_dir", lambda: code.resolve())
     paths = builder.BuilderPaths.for_data(data)
@@ -447,3 +462,58 @@ def test_install_records_whether_to_fetch_prices(
     assert (builder.read_config(paths) or {}).get("prices") is False
     monkeypatch.delenv(price_schedule.SWITCH_ENV)
     assert not price_schedule.enabled(builder.read_config(paths))
+
+
+def test_a_fetch_started_from_a_git_hook_leaves_the_hooks_repository_alone(
+    priced: tuple[Path, git.Repo], fetching: None, code_repo: git.Repo,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#627: a hook's GIT_DIR and GIT_INDEX_FILE, inherited, would otherwise
+    aim the fetch's git commands at the code worktree that ran the hook."""
+    data, repo = priced
+    hooked = Path(code_repo.git_dir)
+    head = code_repo.head.commit.hexsha
+    monkeypatch.setenv("GIT_DIR", str(hooked))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(hooked / "index"))
+    outcome = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
+    monkeypatch.delenv("GIT_DIR")
+    monkeypatch.delenv("GIT_INDEX_FILE")
+
+    assert outcome.committed is not None
+    assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == outcome.committed
+    assert code_repo.head.commit.hexsha == head
+    assert [b.name for b in code_repo.branches] == ["main"]
+    assert len(code_repo.git.worktree("list").splitlines()) == 1
+    assert not code_repo.is_dirty(untracked_files=True)
+
+
+def test_a_worktree_left_belonging_to_another_repository_is_made_again(
+    priced: tuple[Path, git.Repo], fetching: None, code_repo: git.Repo,
+) -> None:
+    """#646: a worktree made while a hook's GIT_DIR named the code repo (before
+    #627) is the code repo's: commits there went into its object store, and
+    moving builder/prices in the data repo failed with "nonexistent object"."""
+    data, repo = priced
+    worktree = _worktree(data)
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    code_repo.git.worktree("add", "--detach", str(worktree))
+    assert not price_schedule.worktree_ok(Path(repo.working_tree_dir or ""), worktree)
+    outcome = price_schedule.fetch(data, worktree, provider=FakeProvider(), now=NOW)
+    assert outcome.committed is not None
+    assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == outcome.committed
+    assert price_schedule.worktree_ok(Path(repo.working_tree_dir or ""), worktree)
+    assert len(code_repo.git.worktree("list").splitlines()) == 1  # the stray one is gone
+
+
+def test_a_fetch_ignores_an_inherited_object_directory(
+    priced: tuple[Path, git.Repo], fetching: None, code_repo: git.Repo,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#646: an inherited GIT_OBJECT_DIRECTORY would put the commit's objects
+    in another repository."""
+    data, repo = priced
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(Path(code_repo.git_dir) / "objects"))
+    outcome = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
+    monkeypatch.delenv("GIT_OBJECT_DIRECTORY")
+    assert outcome.committed is not None
+    assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == outcome.committed

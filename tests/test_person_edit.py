@@ -1,16 +1,20 @@
 """``sim person add|edit`` and ``sim person lifespan set|clear`` (#192)."""
+# cspell:ignore tabel
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
 from click.testing import CliRunner, Result
 
-from analysis.cli import main
-from analysis.sim.staging import EditRejected, staged_edit
+from zabob.retirement.cli import main
+from zabob.retirement.sim import cli as sim_cli
+from zabob.retirement.sim import registries
+from zabob.retirement.sim.staging import EditRejected, staged_edit
 
 
 @pytest.fixture
@@ -50,19 +54,44 @@ def test_person_add_with_options_writes_the_row(
     assert "every scenario" in result.output
     assert _persons(test_data_dir)["carol"] == {
         "id": "carol", "display": "Carol (fake)", "birthdate": "1995-02-03", "sex": "",
-        "role": "secondary", "meta_json": "{}",
+        "role": "secondary", "meta_json": "{}", "kind": "",
     }
 
 
 def test_person_add_asks_for_what_is_missing(
     sim: Callable[..., Result], test_data_dir: Path,
 ) -> None:
-    result = sim("person", "add", "carol", input="Carol (fake)\n1995-02-03\nf\n\n\n")
+    result = sim("person", "add", "carol", input="Carol (fake)\n1995-02-03\nf\n\n\n\n")
 
     assert result.exit_code == 0, result.output
     carol = _persons(test_data_dir)["carol"]
     assert (carol["display"], carol["birthdate"], carol["sex"], carol["role"]) == (
         "Carol (fake)", "1995-02-03", "f", "")
+    # The question says what a role is, and no role is an answer of its own.
+    assert "roles: primary (you or your spouse" in result.output and "role [none]:" in result.output
+
+    # Until the household has its two spouses, the usual answer is offered.
+    edited = sim("person", "edit", "bill", "--role", "secondary")
+    assert edited.exit_code == 0, edited.output
+    result = sim("person", "add", "dave", input="Dave (fake)\n1966-02-03\nm\n\n\n")
+    assert result.exit_code == 0, result.output
+    assert "role [primary]:" in result.output and _persons(test_data_dir)["dave"]["role"] == "primary"
+    result = sim("person", "edit", "dave", input="\n\n\nnone\n\n\n")
+    assert result.exit_code == 0, result.output
+    assert "role [primary]:" in result.output and _persons(test_data_dir)["dave"]["role"] == ""
+
+
+def test_person_role_none_as_an_option_is_no_role_too(
+    sim: Callable[..., Result], test_data_dir: Path,
+) -> None:
+    added = sim("person", "add", "carol", "--display", "Carol (fake)", "--birthdate", "1995-02-03",
+                "--sex", "f", "--role", "none")
+    assert added.exit_code == 0, added.output
+    assert _persons(test_data_dir)["carol"]["role"] == ""
+    assert sim("person", "edit", "carol", "--role", "secondary").exit_code == 0
+    edited = sim("person", "edit", "carol", "--role", "none")
+    assert edited.exit_code == 0, edited.output
+    assert _persons(test_data_dir)["carol"]["role"] == ""
 
 
 @pytest.mark.parametrize(("args", "message"), [
@@ -93,7 +122,20 @@ def test_person_edit_option_changes_only_that_field(
     result = sim("person", "edit", "bill", "--role", "secondary")
 
     assert result.exit_code == 0, result.output
-    assert _persons(test_data_dir)["bill"] == {**before, "role": "secondary"}
+    assert _persons(test_data_dir)["bill"] == {**before, "kind": "", "role": "secondary"}
+
+
+def test_person_add_someone_outside_the_household(
+    sim: Callable[..., Result], test_data_dir: Path,
+) -> None:
+    # No role and no birthdate: an heir, here a charity (#274).
+    result = sim("person", "add", "good_cause", "--display", "Good Cause",
+                 "--birthdate", "", "--role", "", "--kind", "charity")
+
+    assert result.exit_code == 0, result.output
+    cause = _persons(test_data_dir)["good_cause"]
+    assert (cause["birthdate"], cause["role"], cause["kind"]) == ("", "", "charity")
+    assert "kind must be one of" in sim("person", "edit", "good_cause", "--kind", "cousin").output
 
 
 def test_person_edit_option_keeps_a_blank_meta_json(
@@ -118,7 +160,7 @@ def test_person_edit_asks_with_current_values_as_defaults(
 
     assert result.exit_code == 0, result.output
     assert _persons(test_data_dir)["bill"] == {
-        **before, "birthdate": "1967-09-01", "meta_json": '{"note": 1}'}
+        **before, "kind": "", "birthdate": "1967-09-01", "meta_json": '{"note": 1}'}
 
 
 def test_person_edit_refuses_when_persons_csv_changes_meanwhile(
@@ -132,7 +174,7 @@ def test_person_edit_refuses_when_persons_csv_changes_meanwhile(
         if "carol" not in persons.read_text():
             persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,,{}\n")
         return ""
-    monkeypatch.setattr("analysis.sim.cli._prompt_with_completion", role_prompt)
+    monkeypatch.setattr("zabob.retirement.sim.cli._prompt_with_completion", role_prompt)
 
     result = sim("person", "edit", "bill", input="\n1967-09-01\n{}\n")
 
@@ -311,6 +353,30 @@ def test_lifespan_set_with_no_options_asks_for_each_field(
     row = _lifespan_row(folder, "alice")
     assert (row["age_at_death"], row["vary_distribution"], row["vary_low"],
             row["vary_high"], row["vary_correlate_with"]) == ("84", "triangular", "75", "95", "")
+
+
+def test_lifespan_set_completes_the_distribution(
+    sim: Callable[..., Result], test_scenarios_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The "vary across" question completes over its answers, as a name
+    prompt does, and still takes only those (#260)."""
+    asked: dict[str, list[str] | None] = {}
+    prompt = sim_cli._prompt_with_completion
+
+    def spy(text: str, choices: list[str] | None = None, default: str | None = None,
+            **kwargs: Any) -> str:
+        asked[text] = choices if choices is not None else (
+            [str(c) for c in kwargs["choice"].choices] if kwargs.get("choice") else None)
+        return prompt(text, choices, default, **kwargs)
+    monkeypatch.setattr(sim_cli, "_prompt_with_completion", spy)
+
+    result = sim("person", "lifespan", "set", "alice", "--scenario", "retire_alice",
+                 input="84\nlife_tabel\nlife_table\n\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert asked["vary across ensemble members"] == ["none", *registries.LIFESPAN_DISTRIBUTIONS]
+    assert "not one of" in result.output, result.output
+    assert _lifespan_row(test_scenarios_dir / "retire_alice", "alice")["vary_distribution"] == "life_table"
 
 
 def test_lifespan_set_correlates_two_lifespans(

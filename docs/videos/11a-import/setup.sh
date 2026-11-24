@@ -9,10 +9,10 @@
 export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
 mkdir -p "$HOME"
 unset ANALYSIS_DATA_DIR
-sim init ~/retirement/data --id alice --display "Alice Example" --birthdate 1962-04-15 \
+sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/retirement/data/sim/activate-analysis > /dev/null
-cd ~/retirement/data
+source ~/zabob-retirement/sim/activate-analysis > /dev/null
+cd ~/zabob-retirement
 
 stage() {  # commit what the commands before made, and mark where a scene starts
     git add -A
@@ -213,5 +213,5 @@ Health,Expense_Healthcare
 Home,Expense_Living
 Travel,Expense_Living
 CSV
-sim import transactions ~/Downloads/transactions-2025.csv --from-account Asset_Checking
+sim import transactions ~/Downloads/transactions-2025.csv --from Asset_Checking
 stage done

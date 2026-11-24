@@ -1,8 +1,43 @@
-# Setup
+![Setting up Zabob Retirement](assets/brand/banners/setup.svg)
+
+# Setting up Zabob Retirement
 
 > To read a formatted `.md` file:
 > - In Jupyter: right-click on it and select `Open With / Markdown Preview`
 > - In VSCode: Command `Markdown Preview Enhanced: Open Preview` or ⌘⇧V
+
+## Install the program
+
+To use the simulator without its code, install it from PyPI with
+[uv](https://docs.astral.sh/uv/getting-started/installation/), which also
+fetches Python 3.14 if you don't have it:
+
+```sh
+uv tool install zabob-retirement
+```
+
+(`zabob-retire` is the same program under a shorter name.) Then make your
+data repo, the git repository of CSV files that holds your household, and
+activate it:
+
+```sh
+sim init                                          # in ~/zabob-retirement, asking who you are
+source ~/zabob-retirement/sim/activate-analysis   # in each new shell
+```
+
+`sim init` saves a first version with git: on macOS, if a window offers to
+install the command-line developer tools (which include git), let it finish,
+then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
+prototype household, Alice and Bill, asking nothing: somewhere to try
+commands before entering your own. Either way the data repo gets the
+notebooks, in its `notebooks/`; `analysis jupyter` opens them.
+
+To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
+--replace` to take the new notebooks (it replaces the copies in your data
+repo; without `--replace` it adds only new ones). Runs made with the old
+version become stale and are rebuilt.
+
+The rest of this page is for working from a clone of the code.
 
 ## Install with one line
 
@@ -11,7 +46,7 @@ If you don't have the code yet, or don't use git, paste this into a terminal
 first):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/BobKerns/analysis/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/BobKerns/zabob-retirement/main/scripts/install.sh | sh
 ```
 
 It installs git if it's missing (on macOS, Apple's command-line tools: finish
@@ -42,23 +77,26 @@ walks through this ([日本語](https://youtu.be/zeTFTujsWwI)).
    it asks.
 2. Ubuntu opens after the restart and asks for a Linux user name (one word,
    lowercase; it needn't match your Windows name) and a password. Nothing
-   shows as you type the password. Linux asks for it with `sudo`, and the
-   installer needs it once, to install a compiler.
+   shows as you type the password. Linux asks for it with `sudo`, when it
+   installs software (the one-line installer above needs it once, to
+   install a compiler).
 3. Open Ubuntu again from the Start menu, or from Windows Terminal's
    new-tab arrow. In Windows Terminal's Settings, **Startup**, **Default
    profile** makes Ubuntu the tab it opens.
-4. Paste the install line above into the Ubuntu terminal (Ctrl+V in Windows
-   Terminal).
+4. In the Ubuntu terminal, install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+   and then the program, as in [Install the program](#install-the-program)
+   (Ctrl+V pastes in Windows Terminal).
 
-Keep the code and data in your Linux home folder, where the installer puts
-them, not under `/mnt/c` (your C: drive): it's much faster, and git behaves.
+Keep your data repo in your Linux home folder, where `sim init` puts it, not
+under `/mnt/c` (your C: drive): it's much faster, and git behaves.
 To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For the notebooks, and a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` and `--chart` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
-extension, and open the code from Ubuntu with `code ~/retirement/analysis`.
+extension, and open a folder from Ubuntu with `code .` (in a clone of the
+code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
 Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
 the chart as a PNG and prints its path (see
@@ -114,18 +152,27 @@ on: the simulator and notebooks don't need Node.js, only those two
 verification gates do.
 
 Last, it links the data and code repositories together. It asks for the path to
-your data repo, makes `data/shared` point to it, and asks which of the data
+your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
 to create one there with `sim init`, which asks who you are. Leave the path
-blank and it fills `data/shared` with the template data instead, used as a
+blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,
 `--new PATH` (with `sim init`'s options, if you like) or `--template`.
 Either way, this then gives you a working environment:
 
 ```sh
-source data/shared/sim/activate-analysis
+source data/private/sim/activate-analysis
 ```
+
+A checkout's data repo is always found at its `data/private`. In a checkout
+that has none yet, `sim init` with no arguments makes one right there, and
+`sim init DIR` makes it at `DIR` and links `data/private` to it. Sourced
+through `data/private`, `activate-analysis` activates the code of the checkout
+you are in, so several worktrees can share one data repo and each run its
+own code. If you run `sim init` while another checkout's venv is active, it
+runs the `sim init` of the checkout you are in instead (making its `.venv`
+first if needed), so the data repo isn't paired with the wrong code.
 
 With a data repo linked, it then turns on background scenario builds
 (`sim builder install`; [ADR-004](architecture/ADR-004-reproducibility-and-activation.md) §12):
@@ -205,7 +252,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
 6. Run `uv sync --group dev` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
-   This also puts `analysis_truststore.pth` in the venv's site-packages. It
+   This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It
    runs `truststore.inject_into_ssl()` at the start of every Python process
    there (the JupyterLab server, kernels, the CLI), so HTTPS everywhere is
    verified with the operating system's trust store and a root you've
@@ -234,15 +281,15 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     scripts/link-data.sh /path/to/data-repo   # or --template for template data
     ```
     `--new PATH` creates a data repo there with `sim init` first. With no
-    argument it asks for the path. Once `data/shared` exists, re-running
-    it leaves it alone; remove `data/shared` to link a different data repo.
+    argument it asks for the path. Once `data/private` exists, re-running
+    it leaves it alone; remove `data/private` to link a different data repo.
 10. Turn on background scenario builds, for a linked data repo:
     ```sh
-    .venv/bin/sim builder install --data-dir data/shared/sim
+    .venv/bin/sim builder install --data-dir data/private/sim
     ```
 11. Optionally, install the finance-research Claude plugin:
     ```sh
-    .venv/bin/analysis research-plugin install --data-dir data/shared/sim
+    .venv/bin/analysis research-plugin install --data-dir data/private/sim
     ```
 
 ## Blocked keywords
@@ -261,7 +308,7 @@ same format: one keyword per line, `#` comment lines and blank lines ignored.
   - the `BLOCKED_KEYWORDS_PRIVATE` environment variable, which may also
     separate keywords with commas where a value can't span lines;
   - a `blocked-keywords.txt` file at the top of the data repo, found through
-    `$ANALYSIS_DATA_DIR`, or else through `data/shared` in the main checkout
+    `$ANALYSIS_DATA_DIR`, or else through `data/private` in the main checkout
     (so worktrees and hooks run from an editor find it too).
 
 Set the private list once in each place it is needed:

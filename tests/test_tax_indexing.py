@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from analysis.sim import engine
-from analysis.sim.engine import run_scenario
-from analysis.sim.loader import LoadError, load_scenario
+from zabob.retirement.sim import engine
+from zabob.retirement.sim.engine import run_scenario
+from zabob.retirement.sim.loader import LoadError, load_scenario
 
 # prototype_data/aux/standard_deduction.csv: 2027 MFJ, indexed by cpi.
 MFJ_2027 = 32_200_00
@@ -37,6 +37,22 @@ def test_an_indexed_figure_grows_to_the_tax_years_january_rounded_down_to_50() -
     exact = MFJ_2027 * factor // 1_000_000
     assert row["amount"] == exact // 5_000 * 5_000
     assert 34_650_00 <= row["amount"] <= 34_700_00  # about 2.5% a year for three years
+
+
+@pytest.mark.parametrize("base", [184_500_00, 184_800_00, 185_100_00])
+def test_the_wage_base_rounds_to_the_nearest_300(base: int) -> None:
+    """42 U.S.C. §430(b)(2) rounds the Social Security wage base to the
+    nearest $300, half up (#623); the other figures round down."""
+    aux = _aux_with("self_employment_tax", [
+        ("2026-01-31", {"filing_status": "MFJ", "wage_base": base, "wage_base_series": "cpi"}),
+    ])
+    cache: dict = {}
+    factor = engine._cumulative_inflation_factor(
+        aux, "cpi", date(2026, 1, 31), date(2027, 1, 31), cache)
+    [row] = engine._indexed_tax_rows(aux, "self_employment_tax", None, 2027, cache)
+    exact = base * factor // 1_000_000
+    assert row["wage_base"] == (exact + 15_000) // 30_000 * 30_000
+    assert abs(row["wage_base"] - exact) <= 15_000
 
 
 def test_the_tables_own_year_and_a_row_with_no_series_are_as_written() -> None:
