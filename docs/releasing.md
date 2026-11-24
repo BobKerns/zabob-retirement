@@ -13,6 +13,14 @@ workflow check that.
 PyPI trusts the workflow itself (trusted publishing), in two GitHub
 environments: `testpypi` and `pypi`. No token is stored.
 
+Each index needs a trusted publisher for each project. Before the first
+upload they are pending publishers, and a pending publisher can create only
+one project, so the same workflow can't be pending for both names at once.
+The workflow uploads `zabob-retirement` first, on its own: on a first
+upload, register the pending publisher for `zabob-retirement`, run the
+workflow (its `zabob-retire` step fails), add the same workflow and
+environment as a publisher for `zabob-retire`, and re-run the failed job.
+
 ## A release
 
 1. Set the new version in `pyproject.toml`, and in
