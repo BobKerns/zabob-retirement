@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-09-29
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-001](ADR-001-overall-architecture.md) (overall architecture), [ADR-002](ADR-002-storage-schema.md) (storage schema, `scenario.seed` — "reserved for ensembles; unused in v1"), [ADR-003](ADR-003-registries-and-csv-schemas.md) (registries, CSV layouts, calendar events §3, scenario hierarchy §4.5), [ADR-004](ADR-004-reproducibility-and-activation.md) (reproducibility, provenance).
 
 ## Context
@@ -248,12 +247,6 @@ Every ensemble's member 0 resolves each `vary_distribution` row to its distribut
 
 This is a deliberate, small distortion of the sampled distribution: member 0 isn't actually drawn from it, so a statistic computed across *all* `member_count` members (mean, SD, a fan chart's percentile bands) is very slightly biased toward the center relative to `member_count` genuinely independent draws — most noticeable at a small `member_count`, negligible at the sizes this ADR expects (tens of members; see `docs/guides/ensembles.md` for sizing guidance). The alternative considered was keeping member 0 out of the statistics (effectively `member_count + 1` members: one deterministic, `member_count` random) or dropping the guaranteed base case entirely (every member drawn, as originally designed). Both were rejected: a single always-present, always-inspectable member is worth more than the statistical purity of excluding it, and "member 0 is special, full stop" is a simpler invariant to hold onto than a count that means something different depending on whether you're drawing a member or aggregating across them.
 
-## Amendments applied alongside this ADR
-
-- [ADR-002](ADR-002-storage-schema.md): `calendar_event` gains `name` and the `vary_*` columns; new intent-layer tables `ensemble_manifest`, `ensemble_draw` (added to `SNAPSHOT_TABLES`); `SCHEMA_VERSION` bump; `schema_overview` rows.
-- [ADR-003](ADR-003-registries-and-csv-schemas.md): §4.8 `calendar.csv` gains `name` and the `vary_*` columns (§2); §3 notes that a row with `vary_distribution` set is resolved before it can fire, and §3.1 documents the ramp-as-expansion behavior (§4).
-- [ADR-004](ADR-004-reproducibility-and-activation.md): a member's provenance is the recipe's `scenario_tree_id` (unchanged meaning, copied via the intent copy) plus `ensemble_manifest` for which member and what it drew — not a new parallel determinism mechanism.
-
 ## Consequences
 
 - Positive: `run_scenario`/`open_run_file` need no ensemble-awareness at all; a member is an ordinary intent-then-run pair readable by every existing tool; variation authoring reuses calendar reporting instead of inventing a parallel, invisible mechanism; a failed member's exact input is a file on disk, not something to reconstruct.
@@ -266,47 +259,3 @@ This is a deliberate, small distortion of the sampled distribution: member 0 isn
 - Additional distribution families (lognormal, ...) — useful flexibility, not a present requirement. (Skew/kurtosis controls and `triangular` were added by #31.)
 - Correlated draws across variations — today every variation is independent; no rationale identified yet for coupling two.
 - A variation whose value should be computed from *another* variation's resolved draw (beyond the date-before-amount ordering in §3) — not needed yet; the two-pass rule covers every case raised so far.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#31](https://github.com/BobKerns/zabob-retirement/issues/31) (skewed and heavy-tailed distributions): `vary_mean` renamed to `vary_median`, the *truncated* median; `vary_skew`/`vary_tailweight` shape a `truncated_normal`; new `triangular` family with `vary_mode`; inverse-CDF sampling (§2, §3, §9).
-- [ADR-008](ADR-008-correlated-parameters.md) (#30): varying rows may be correlated through `vary_correlate_with`/`vary_correlation` and `latent_factor` rows; draws are no longer always independent (§3), and resolution computes correlated normal scores before the date and amount passes (§5).
-- [#34](https://github.com/BobKerns/zabob-retirement/issues/34): a date bound may be a bare `YYYY-MM`, spanning the month (first day as `vary_low`, last as `vary_high`, the 15th as `vary_mode`); a full date stays exact (§2).
-- [#74](https://github.com/BobKerns/zabob-retirement/issues/74): a recipe's child scenario inherits its `ensemble_size` along with its seed (§7).
-- [#113](https://github.com/BobKerns/zabob-retirement/issues/113): the notebook fan chart shades quintile bands, not just the min–max range (§8).
-- [#115](https://github.com/BobKerns/zabob-retirement/issues/115): a varying `set_rate` row may carry a year-by-year **process** around its drawn level (§2, §3, new §4a, §5).
-- [#130](https://github.com/BobKerns/zabob-retirement/issues/130): `vary_*` amount bounds and `vary_innovation_sd` are written as percents or dollars, like the row's `amount` (§2, §4a).
-- [#134](https://github.com/BobKerns/zabob-retirement/issues/134): `transfer_balance` rows vary only their date (§2).
-- [#155](https://github.com/BobKerns/zabob-retirement/issues/155): the year-end table, notebook and `sim ensemble summary` alike, reports the 5th/95th percentiles and quintile breakpoints in place of min and max, and the fan chart's outer band is 5th–95th (§8).
-- [#163](https://github.com/BobKerns/zabob-retirement/issues/163): one account's balance as well as net worth; tail means (CVaR) and a CPI-constant reserve in `scenario.meta_json`; comparing two ensembles by percentile, paired and tail-mean deltas (§8).
-- [#165](https://github.com/BobKerns/zabob-retirement/issues/165): new `discrete` family with `vary_outcomes`: weighted outcomes, each a value or a range; a `one_off_transfer` outcome may be 0 (§2, §3).
-- [#168](https://github.com/BobKerns/zabob-retirement/issues/168), [#169](https://github.com/BobKerns/zabob-retirement/issues/169): an ensemble is a scenario with a positive `ensemble_size`; `ensemble create` takes mix-ins and inherits an ensemble parent's seed and size; `scenario create` writes size 0; a non-ensemble with varying rows runs its base case; `sim ensemble list` (§7).
-- [#170](https://github.com/BobKerns/zabob-retirement/issues/170), [#171](https://github.com/BobKerns/zabob-retirement/issues/171): one lot of an account as well as the whole account, with `--lot` on `sim ensemble summary`/`compare`; the notebook's two widgets share their controls and can start on a named recipe (§8).
-- [#221](https://github.com/BobKerns/zabob-retirement/issues/221): a person's lifespan varies by age, `uniform` or `triangular`, with the authored age as its base case (§3a, §5, §9).
-- [#222](https://github.com/BobKerns/zabob-retirement/issues/222): a lifespan can be drawn from a period life table, around `age_at_death` as its median by a solved age set-forward, with no mortality multiplier (§3a).
-- [#235](https://github.com/BobKerns/zabob-retirement/issues/235): the notebook's ensemble widgets show a progress bar, member by member, while they load and analyze members (§8).
-- [#167](https://github.com/BobKerns/zabob-retirement/issues/167): `--graph` and `--graph-file` on `sim ensemble summary` and `compare`; the charts move to `sim/ensemble_plots.py` (§8).
-- [#261](https://github.com/BobKerns/zabob-retirement/issues/261): members record each draw's `noise` and `u`, t-copula scales and process shocks, and each batch gathers them into one `draws.sqlite3` (§6).
-- [#284](https://github.com/BobKerns/zabob-retirement/issues/284): `vary_innovation_sd` renamed `vary_shock_sd`, the name `analysis historical` uses (§2, §4a).
-- [#280](https://github.com/BobKerns/zabob-retirement/issues/280): `vary_process_start = current` starts a process at the rate in effect before its date and reverts to the level, member 0 decaying deterministically; pass 2 resolves amount rows in date order (§2, §4a, §5).
-- [#281](https://github.com/BobKerns/zabob-retirement/issues/281): dates written relative to a `date_marker`; pass 1 resolves the markers first and moves every relative date with them (§2, §5).
-- [#291](https://github.com/BobKerns/zabob-retirement/issues/291): `vary_resume`, a return row that resumes the process an episode interrupted with its own shocks, or brings a fixed rate back at once; pass 2 resolves resume rows in date order (§2, new §4b, §5).
-- [#298](https://github.com/BobKerns/zabob-retirement/issues/298): a batch's member series stored in `series.sqlite3`, read by the notebook and `sim ensemble summary|compare`; the notebook compares a baseline head to head with one recipe that pairs with it, or in a table with several (§8).
-- [#315](https://github.com/BobKerns/zabob-retirement/issues/315): a `life_table` lifespan reads the table its `lifespan.csv` row names (§3a).
-- [#292](https://github.com/BobKerns/zabob-retirement/issues/292) ([ADR-009](ADR-009-pooled-ensembles.md)): a pool is an ensemble made from other ensembles' members; the draws database keys members, nodes, pairs and checks by component (§6, §7).
-- [#305](https://github.com/BobKerns/zabob-retirement/issues/305): guard rails on ensembles: the series store keeps each member's transfer totals (format 2); each rail's share of members past it, share ever past and RMS overshoot, annual and cumulative, in `sim ensemble guard-rails`, `sim ensemble compare` and the notebook (§8).
-- [#305](https://github.com/BobKerns/zabob-retirement/issues/305): the notebook's guard rails table sets a baseline's rails against several recipes (§8).
-- [#359](https://github.com/BobKerns/zabob-retirement/issues/359): the series store keeps each member's dollars per asset class and the batch's target sets (format 3), from which `sim ensemble drift` and the notebook work out allocation drift (§8).
-- [#408](https://github.com/BobKerns/zabob-retirement/issues/408): the series store keeps each member's delivered and budgeted spending by expense category, a catch-up dated before the run by its own month (format 5), read by `sim ensemble spending` and the notebook (§8).
-- [#393](https://github.com/BobKerns/zabob-retirement/issues/393): `--chart`/`--chart-file` replace `--graph`/`--graph-file` and draw the chart alone; `--table` adds the tables after it (§8).
-- [#408](https://github.com/BobKerns/zabob-retirement/issues/408): a strategy's parameters vary from `strategy_vary/<name>.csv`, node `strategy:<name>.<param>` (§3b).
-- [#328](https://github.com/BobKerns/zabob-retirement/issues/328): `sim ensemble compare` takes several variants, printing the notebook table's two (year, recipe) tables and charting a column per variant (§8).
-- [#330](https://github.com/BobKerns/zabob-retirement/issues/330): `sim ensemble draws --pair A,B` and `--chart`/`--chart-file`; the draws charts move to `sim/draws_charts.py` (§6).
-- [#331](https://github.com/BobKerns/zabob-retirement/issues/331): `--dollars` on `sim ensemble summary` (CPI-constant by default, was nominal), and `--start`/`--end` and `--log` on `sim ensemble summary|compare` (§8).
-- [#369](https://github.com/BobKerns/zabob-retirement/issues/369): `scenario create` no longer writes `ensemble_size` 0, so a plain scenario mixed into an ensemble keeps it one; `ensemble edit --size 0` turns one off; `sim run` on an ensemble counts members and negative balances instead of printing each (§7).
-- [#369](https://github.com/BobKerns/zabob-retirement/issues/369): `sim ensemble draws` reads the latest Monte Carlo batch by default, not the latest of either kind, running the ensemble when it has none; `--chart` refuses a sensitivity batch (§6).
-- [#369](https://github.com/BobKerns/zabob-retirement/issues/369): the ensemble comparison charts drop the percentile-delta panel; the tables keep `Δp05`…`Δp95` (§8).
-- [#454](https://github.com/BobKerns/zabob-retirement/issues/454): a batch's member intents and runs live in its mode's folder, `<recipe>/monte-carlo/<batch>/`; a batch without a current series store gets one from the background builder (§5, §7, §8).
-- [#682](https://github.com/BobKerns/zabob-retirement/issues/682): `sim ensemble draws` writes its member x node CSV with `--csv-file FILE` (was `--csv`), leaving `--csv`/`--json` to print its tables (§6).
