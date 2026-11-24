@@ -491,9 +491,13 @@ def _uv_env(root: Path) -> dict[str, str]:
     HOME is the demo's, install this checkout's wheel, quickly and the same
     way each time: the wheel as a find-links source, the lock as
     constraints, and this machine's uv cache and Pythons (a demo HOME would
-    start both empty, and download everything)."""
+    start both empty, and download everything). And this Python: installing
+    by name, uv takes the first Python it finds and doesn't look past one
+    older than the package needs (#699), so a 3.13 first on PATH fails the
+    install."""
     uv = _program_wheel()[1]
     return {
+        "UV_PYTHON": sys.executable,
         "UV_FIND_LINKS": str(root / "wheels"),
         "UV_CONSTRAINT": str(root / "constraints.txt"),
         "UV_CACHE_DIR": run([uv, "cache", "dir"]).stdout.strip(),
