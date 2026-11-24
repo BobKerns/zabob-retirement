@@ -103,6 +103,7 @@ return, written to the run as `state_<name>` and shown by
 | `per_person` | `yes`: the cap is each filer's. For `income`, each filer's own income counts against their own cap: an account's owner's, a joint account's split evenly (after a death, all the survivor's). |
 | `less_ss` | `yes`, for `income` with an `amount`: the cap is less the Social Security received that year, each filer's own with `per_person` (Maryland's pension exclusion), else the household's (Idaho's retirement benefits deduction). |
 | `refundable` | `yes`, for a `credit`: paid in full even past the tax, so the state can pay out (Idaho's grocery credit). It comes off after the other credits and isn't counted in `state_credits`. |
+| `standard` | `yes`, for a `deduction`: part of the standard deduction (DC's and Kansas's extra at 65). It is added to the standard deduction before that is compared with the itemized one, so it can make the standard deduction the larger, and a household that itemizes doesn't get it. Its line shows what it added; `state_standard_deduction` includes it. Its base is `filers`, `spending` or `income`, and it takes no `income_limit`: it phases out with the standard deduction, the same share of it. A spouse filing separately takes a `filers` line's `MFS` row. |
 | `min_age` | Only filers who have reached this age by December 31 count. |
 | `filing_status` | `MFJ`, `Single` or `MFS`; blank is every status. A row for the status wins over a blank one. |
 | `income_limit` | Above this state AGI the line ends, unless `phaseout` or `phaseout_rate` says otherwise. |
@@ -377,10 +378,8 @@ the others taxes Social Security, so only Washington's needs a
 `state_social_security` table. Where a state's lines ship in
 `state_adjustments__<state>.csv`, they are named below. An extra
 deduction for a blind filer isn't modeled anywhere. The extra deductions
-at 65 are `filers` rows, which can't tell the standard deduction from an
-itemized one, so a household 65 or over that itemizes in DC or Kansas
-gets them too, which the state doesn't allow: at most $3,300 of deduction
-too much.
+at 65 are `filers` rows marked `standard`, so they count only toward the
+standard deduction, as the states allow.
 
 - **District of Columbia:** brackets the same for every filing status, not
   indexed. The standard deduction follows the federal one ($16,100, or

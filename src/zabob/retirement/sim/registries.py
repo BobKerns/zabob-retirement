@@ -963,11 +963,14 @@ AUX_KIND_COLUMNS: dict[str, tuple[str, ...]] = {
     # every status. `less_ss` (an `income` row with an amount, #579) takes
     # the Social Security received off the cap: each filer's own with
     # `per_person`, else the household's. A `refundable` credit (#579) is
-    # paid in full, below zero tax. Every column after `base` may be left out.
+    # paid in full, below zero tax. A `standard` deduction (#610) is part of
+    # the standard deduction, added to it before it is compared with the
+    # itemized one, so a household that itemizes doesn't get it. Every
+    # column after `base` may be left out.
     STATE_ADJUSTMENTS: (
         "effective_date", "name", "step", "base", "tag", "rate", "amount", "per_person",
         "min_age", "filing_status", "income_limit", "phaseout", "phaseout_rate",
-        "less_ss", "refundable",
+        "less_ss", "refundable", "standard",
     ),
     # Itemized deductions: a dated total, no filing_status split (unlike
     # standard_deduction). Optional; when present, a tax jurisdiction uses
@@ -1140,7 +1143,7 @@ AUX_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
                                       "min_age"}),
     STATE_ADJUSTMENTS: frozenset({
         "tag", "rate", "amount", "per_person", "min_age", "filing_status", "income_limit",
-        "phaseout", "phaseout_rate", "less_ss", "refundable",
+        "phaseout", "phaseout_rate", "less_ss", "refundable", "standard",
     }),
 }
 """Columns of ``AUX_KIND_COLUMNS`` a file may leave out, by kind: a missing
