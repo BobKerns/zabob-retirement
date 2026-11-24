@@ -191,8 +191,9 @@ that isn't a draft:
   whole suite, slow tests included, in four shards. A newer push to `dev`
   cancels the run on the older one, so a burst of merges costs one run.
 
-Lint and types skip when a change touches only prose or editor settings (the
-list is in the workflow). A failure on `dev` is found after merge:
+At quick depth, lint and types skip when a change touches only prose or
+editor settings (the list is in the workflow); full depth runs everything,
+whatever the change. A failure on `dev` is found after merge:
 `scripts/bisect_dev.py TEST...` runs those tests at `dev`'s merges since the
 last promotion and names the first that fails them. Fix it forward in a pull
 request into `dev`, or revert that merge (`git revert -m 1 <merge>`).

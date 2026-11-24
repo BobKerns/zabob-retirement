@@ -10,7 +10,8 @@ worktree, so the current checkout and its branch are left alone; the tests
 run with this checkout's virtual environment against that worktree's code.
 
 At a merge where a given test doesn't exist yet the merge is skipped, not
-blamed. The answer is the first merge where the tests fail: revert it with
+blamed; any other failure, a collection error included, blames it. The
+answer is the first merge where the tests fail: revert it with
 `git revert -m 1 <merge>` in a pull request into dev, or fix forward.
 """
 
@@ -29,14 +30,25 @@ REPO = Path(__file__).resolve().parent.parent
 GOOD, BAD, SKIP, ABORT = 0, 1, 125, 128
 
 
+def present(test: str, tree: Path) -> bool:
+    """Whether the test exists at the commit checked out in tree. A test
+    added later can't say anything about this commit."""
+    path, _, name = test.partition("::")
+    file = tree / path
+    if not file.exists():
+        return False
+    # The function's own name: the last part of a node id, less parameters.
+    func = name.rpartition("::")[2].partition("[")[0]
+    return not func or f"def {func}(" in file.read_text(encoding="utf-8")
+
+
 def verdict(pytest_code: int) -> int:
-    """git bisect run's verdict for a pytest exit code."""
-    if pytest_code in (0, 1):
-        return pytest_code  # passed, failed
-    if pytest_code in (4, 5):
-        # A usage error or nothing collected: a given test isn't there yet.
-        return SKIP
-    return ABORT  # interrupted, or pytest itself broke
+    """git bisect run's verdict for a pytest exit code, once the tests are present.
+    Any failure blames the commit: a collection error (2), a broken conftest
+    (4) or a lost test (5) is just what a bad merge does."""
+    if pytest_code < 0:
+        return ABORT  # killed by a signal
+    return GOOD if pytest_code == 0 else BAD
 
 
 # The nbstripout filter runs the worktree's .venv, which the bisect worktree
@@ -53,6 +65,8 @@ def _git(*args: str, cwd: Path = REPO) -> str:
 def step(tests: list[str]) -> int:
     """One bisect step, run inside the bisect worktree."""
     tree = Path.cwd()
+    if not all(present(test, tree) for test in tests):
+        return SKIP
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [str(tree / "src"), os.environ.get("PYTHONPATH")]))}
     code = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests],
                           cwd=tree, env=env).returncode

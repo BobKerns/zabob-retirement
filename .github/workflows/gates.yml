@@ -108,10 +108,13 @@ jobs:
           printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/pr.txt"
           scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/pr.txt"
 
-  # Which jobs below have work to do. A change that only touches prose or
-  # editor settings can't change a lint or type result, so that job skips.
-  # The list names what may skip, not what must run, so a new directory is
-  # checked by default. Which tests run comes from scripts/affected_tests.py.
+  # Which jobs below have work to do. At full depth that is all of them,
+  # whatever the change: a push run on dev may stand for several merges whose
+  # own runs a later push cancelled, so its own range says too little. At quick
+  # depth (a pull request into dev, whose diff is the whole change), a change
+  # that only touches prose or editor settings skips lint and types; the list
+  # names what may skip, not what must run, so a new directory is checked by
+  # default. Its tests come from scripts/affected_tests.py.
   changes:
     name: Changed files
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
@@ -127,16 +130,30 @@ jobs:
           # The base commit, to list the changed files.
           fetch-depth: 0
 
+      - name: Depth
+        id: depth
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-gates') }}
+        run: |
+          if [ "$EVENT" = pull_request ] && [ "$BASE_REF" = dev ] && [ "$FULL_LABEL" != true ]; then
+              depth=quick
+          else
+              depth=full
+          fi
+          echo "Depth: $depth"
+          echo "depth=$depth" >> "$GITHUB_OUTPUT"
+
       - name: Changed files
         id: changes
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          DEPTH: ${{ steps.depth.outputs.depth }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           needed=false
-          # With no usable base (a force push, the first push, a manual run)
-          # the change is unknown: run everything.
-          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          if [ "$DEPTH" = full ]; then
               needed=true
           else
               changed=$(git diff --name-only "$BASE...$HEAD")
@@ -159,40 +176,32 @@ jobs:
 
       # The selector needs only the standard library.
       - uses: actions/setup-python@v6
+        if: ${{ steps.depth.outputs.depth == 'quick' }}
         with:
           python-version-file: .python-version
 
       - name: Tests to run
         id: tests
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-gates') }}
+          DEPTH: ${{ steps.depth.outputs.depth }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-              selection=$(python scripts/affected_tests.py --list --base "$BASE")
-          else
-              selection=tests
-          fi
-          if [ "$EVENT" = pull_request ] && [ "$BASE_REF" = dev ] && [ "$FULL_LABEL" != true ]; then
-              depth=quick
-          else
-              depth=full
-          fi
-          if [ -z "$selection" ]; then
-              echo "No test reads what this change touched."
-              run=false groups='[1]' paths=''
-          elif [ "$depth" = full ]; then
+          if [ "$DEPTH" = full ]; then
               echo "Full gates: the whole suite."
               run=true groups='[1, 2, 3, 4]' paths=tests
-          elif [ "$selection" = tests ]; then
-              echo "The change selects the whole suite: it runs on dev after merge (label full-gates to run it here)."
-              run=false groups='[1]' paths=''
           else
-              echo "Selected tests:"
-              echo "$selection"
-              run=true groups='[1]' paths=$(echo $selection)
+              selection=$(python scripts/affected_tests.py --list --base "$BASE")
+              if [ -z "$selection" ]; then
+                  echo "No test reads what this change touched."
+                  run=false groups='[1]' paths=''
+              elif [ "$selection" = tests ]; then
+                  echo "The change selects the whole suite: it runs on dev after merge (label full-gates to run it here)."
+                  run=false groups='[1]' paths=''
+              else
+                  echo "Selected tests:"
+                  echo "$selection"
+                  run=true groups='[1]' paths=$(echo $selection)
+              fi
           fi
           # groups is never empty: GitHub rejects an empty matrix even on a
           # job its condition skips.

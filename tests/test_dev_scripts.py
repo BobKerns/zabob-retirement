@@ -54,6 +54,21 @@ def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
     assert body.endswith("\nFixes #706\nFixes #707\n")
 
 
-@pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (4, 125), (5, 125), (2, 128), (3, 128)])
-def test_bisect_skips_a_merge_where_the_test_is_missing(bisect: ModuleType, pytest_code: int, verdict: int) -> None:
+@pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (2, 1), (4, 1), (5, 1), (-9, 128)])
+def test_bisect_blames_any_failure(bisect: ModuleType, pytest_code: int, verdict: int) -> None:
+    """A collection error (2) or a broken conftest (4) is a bad merge too."""
     assert bisect.verdict(pytest_code) == verdict
+
+
+@pytest.mark.parametrize(("test", "present"), [
+    ("tests/test_x.py", True),
+    ("tests/test_x.py::test_old", True),
+    ("tests/test_x.py::TestThing::test_old[case-1]", True),
+    ("tests/test_x.py::test_new", False),
+    ("tests/test_y.py", False),
+])
+def test_bisect_skips_a_merge_where_the_test_is_missing(bisect: ModuleType, tmp_path: Path,
+                                                        test: str, present: bool) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("def test_old(case):\n    pass\n")
+    assert bisect.present(test, tmp_path) is present
