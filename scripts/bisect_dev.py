@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 # git bisect run's verdicts.
 GOOD, BAD, SKIP, ABORT = 0, 1, 125, 128
+# Set for the steps when this checkout has no data repo to share.
+TEMPLATE_DATA = "BISECT_DEV_TEMPLATE_DATA"
 
 
 def present(test: str, tree: Path) -> bool:
@@ -67,6 +70,11 @@ def step(tests: list[str]) -> int:
     tree = Path.cwd()
     if not all(present(test, tree) for test in tests):
         return SKIP
+    if os.environ.get(TEMPLATE_DATA):
+        # Template data, built from this commit's templates/ as Gates does.
+        shutil.rmtree(tree / "data" / "private", ignore_errors=True)
+        subprocess.run([str(tree / "scripts" / "link-data.sh"), "--template"], check=True,
+                       stdout=subprocess.DEVNULL)
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [str(tree / "src"), os.environ.get("PYTHONPATH")]))}
     code = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests],
                           cwd=tree, env=env).returncode
@@ -90,14 +98,19 @@ def main(argv: list[str] | None = None) -> int:
     tree = Path(tempfile.mkdtemp(prefix="bisect-dev-"))
     _git("worktree", "add", "--detach", "--force", str(tree), bad)
     try:
+        # The tests need data/private: this checkout's data repo, or else
+        # template data, rebuilt at each step.
         private = REPO / "data" / "private"
+        env = dict(os.environ)
         if private.exists():
             (tree / "data").mkdir(exist_ok=True)
             (tree / "data" / "private").symlink_to(private.resolve())
+        else:
+            env[TEMPLATE_DATA] = "1"
         _git("bisect", "start", "--first-parent", bad, good, cwd=tree)
         code = subprocess.run(["git", *NO_FILTER, "bisect", "run",
                                sys.executable, str(Path(__file__).resolve()), "--step", *args.tests],
-                              cwd=tree).returncode
+                              cwd=tree, env=env).returncode
         _git("bisect", "reset", cwd=tree)
         return code
     finally:

@@ -54,6 +54,22 @@ def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
     assert body.endswith("\nFixes #706\nFixes #707\n")
 
 
+def test_a_reverted_merge_is_left_out_until_its_revert_is_reverted(promote: ModuleType) -> None:
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    message = f'Revert "Merge pull request #714 from x/y"\n\nThis reverts commit {sha}, reversing\nchanges.\n'
+    assert promote.reverted_commits(["Plain commit\n", message]) == [sha]
+    merge = "Merge pull request #714 from x/y"
+    assert promote.reverted_pulls([merge]) == {714}
+    assert promote.reverted_pulls([merge, f'Revert "{merge}"']) == set()
+    assert promote.reverted_pulls(["Fix a typo (#716)", "Unrelated commit"]) == {716}
+
+
+def test_promotion_body_names_reverted_pulls_and_keeps_their_issues_open(promote: ModuleType) -> None:
+    body = promote.promotion_body([promote.Pull(716, "Typo", ())], [promote.Pull(714, "Test areas", (706,))])
+    assert "- #714 Test areas (#706 stay open)" in body
+    assert "Fixes #706" not in body
+
+
 @pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (2, 1), (4, 1), (5, 1), (-9, 128)])
 def test_bisect_blames_any_failure(bisect: ModuleType, pytest_code: int, verdict: int) -> None:
     """A collection error (2) or a broken conftest (4) is a bad merge too."""

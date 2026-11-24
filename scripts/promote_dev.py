@@ -27,6 +27,8 @@ TITLE = "Promote dev to main"
 
 # GitHub's merge commit, and a squash merge's "Title (#N)".
 _MERGED_PR = re.compile(r"^Merge pull request #(\d+) |\(#(\d+)\)$")
+# `git revert`'s message, for a merge (-m 1) or a plain commit.
+_REVERTS = re.compile(r"^This reverts commit ([0-9a-f]{7,40})\b", re.MULTILINE)
 # GitHub's closing keywords.
 _CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE)
 
@@ -54,11 +56,36 @@ def closed_issues(text: str) -> tuple[int, ...]:
     return tuple(dict.fromkeys(int(n) for n in _CLOSES.findall(text)))
 
 
-def promotion_body(pulls: list[Pull]) -> str:
+def reverted_commits(messages: list[str]) -> list[str]:
+    """The commits that the revert commits among these messages undo."""
+    shas: list[str] = []
+    for message in messages:
+        shas += _REVERTS.findall(message)
+    return shas
+
+
+def reverted_pulls(subjects: list[str]) -> set[int]:
+    """The pull requests that reverting the commits with these subjects takes
+    out of dev. Each revert toggles its pull request: reverting a merge takes
+    it out, and reverting that revert (a "Revert "Revert ..."" subject) puts
+    it back."""
+    out: set[int] = set()
+    for subject in subjects:
+        while subject.startswith('Revert "') and subject.endswith('"'):
+            subject = subject[len('Revert "'):-1]
+        out ^= set(pull_numbers([subject]))
+    return out
+
+
+def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = ()) -> str:
     lines = [f"Promotes dev to main: {len(pulls)} pull request{'s' if len(pulls) != 1 else ''}.", "",
              "Merge with a merge commit, not a squash, so dev's merges stay on main's history.", ""]
     lines += [f"- #{p.number} {p.title}" + (f" (closes {', '.join(f'#{n}' for n in p.closes)})" if p.closes else "")
               for p in pulls]
+    if reverted:
+        lines += ["", "Reverted on dev, so left out, with the issues they would close:", ""]
+        lines += [f"- #{p.number} {p.title}" + (f" ({', '.join(f'#{n}' for n in p.closes)} stay open)"
+                                                 if p.closes else "") for p in reverted]
     issues = dict.fromkeys(n for p in pulls for n in p.closes)
     if issues:
         lines += ["", *(f"Fixes #{n}" for n in issues)]
@@ -84,11 +111,16 @@ def main(argv: list[str] | None = None) -> int:
     if not subjects:
         print("dev has nothing main lacks.", file=sys.stderr)
         return 0
-    pulls = []
+    # A merge reverted on dev never reaches main: its issues must stay open.
+    messages = _run("git", "log", "--format=%B%x00", "origin/main..origin/dev").split("\0")
+    undone = reverted_pulls([_run("git", "log", "-1", "--format=%s", sha).strip()
+                             for sha in reverted_commits(messages)])
+    pulls, reverted = [], []
     for number in pull_numbers(subjects):
         data = json.loads(_run("gh", "pr", "view", str(number), "--json", "title,body"))
-        pulls.append(Pull(number, data["title"], closed_issues(f"{data['title']}\n{data['body']}")))
-    body = promotion_body(pulls)
+        pull = Pull(number, data["title"], closed_issues(f"{data['title']}\n{data['body']}"))
+        (reverted if number in undone else pulls).append(pull)
+    body = promotion_body(pulls, reverted)
     if args.dry_run:
         print(body, end="")
         return 0

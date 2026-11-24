@@ -78,7 +78,8 @@ jobs:
           # Only these SHAs come from the event; never interpolate its text
           # into the script.
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          # A manual run has neither: check the commit it runs on.
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
         run: |
           # A force push (or the first push) leaves no usable base, and the
           # pushed range is unknown: fail closed by checking the whole history.
