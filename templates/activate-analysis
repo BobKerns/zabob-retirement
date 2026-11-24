@@ -166,11 +166,15 @@ if [ -z "$_ANALYSIS_KEEP_POINTER" ]; then
 fi
 unset _ANALYSIS_KEEP_POINTER _ANALYSIS_THROUGH
 
+# A line that comments the name out (`# .retention.yaml`) or negates it
+# (`!.retention.yaml`) records a choice to commit that file, such as a shared
+# retention policy, so it counts as present and isn't added back (#712).
 for _analysis_ignored in .analysis .current_scenario .analysis_user .retention.yaml; do
     if [ ! -f "$ANALYSIS_DATA_DIR/.gitignore" ]; then
         printf '%s\n' "$_analysis_ignored" > "$ANALYSIS_DATA_DIR/.gitignore" || \
             _analysis_fail "unable to write $ANALYSIS_DATA_DIR/.gitignore"
-    elif ! grep -qxF "$_analysis_ignored" "$ANALYSIS_DATA_DIR/.gitignore"; then
+    elif ! grep -qE "^(#[[:space:]]*|!)?/?$(printf '%s' "$_analysis_ignored" | sed 's/\./\\./g')\$" \
+            "$ANALYSIS_DATA_DIR/.gitignore"; then
         printf '%s\n' "$_analysis_ignored" >> "$ANALYSIS_DATA_DIR/.gitignore" || \
             _analysis_fail "unable to update $ANALYSIS_DATA_DIR/.gitignore"
     fi
