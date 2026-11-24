@@ -99,7 +99,7 @@ an issue to close, or a row you write yourself.
 | Arizona | Partial | Long-term gain subtraction limited to assets bought after 2011 |
 | Arkansas | Partial | Low-income tax tables |
 | California | Shipped | |
-| Colorado | Partial | Social Security sharing the pension subtraction's cap from 55 to 64, over the income |
+| Colorado | Tables needed | |
 | Connecticut | Partial | Personal tax credit; Social Security's 25% cap |
 | Delaware | Tables needed | |
 | District of Columbia | Shipped | Extra deduction when blind |

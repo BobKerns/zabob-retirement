@@ -1608,7 +1608,10 @@ sim ytd add loss_2025 Income_CapitalGain Income_CapitalGain \
 
 Leave out anything and you are asked for it. A negative amount goes after
 `--`, so it isn't read as an option. Using the same account on both sides
-changes only a tax total, as a loss carried forward does. `--year` is for a
+changes only a tax total, as a loss carried forward does. On an HSA lot, an
+`ltcg` or `stcg` row is instead a withdrawal's gain over basis that only a
+state taxing the HSA sees (California's, say), which a roll writes for the
+months it skips; the federal return never sees it. `--year` is for a
 fact from a whole earlier tax year; leave it out for the scenario's first
 year. `sim ytd edit` changes a row and `sim ytd delete` removes one, and
 `sim ytd list` shows them all. A payment that one scheduled rule already
@@ -2313,6 +2316,16 @@ have a Pre-tax/After-tax toggle. An account's balance is always before tax.
 After tax is what shows a Roth conversion's or a taxable sale's real effect.
 Before tax, tax paid now looks like a loss, while the tax a traditional
 balance still owes doesn't show at all.
+
+A credit that ends at an income limit (a cliff, like DC's property tax
+credit) can make after-tax net worth lower in a scenario that has it than
+in one that doesn't, even though it pays less tax. Without its IRA draws,
+the household's income would be under the limit, and drawing the IRA
+loses the credit. So each drawdown year's share is charged the credit,
+even in years when the run's own withdrawals already lose it. That really
+is what the IRA money costs, but the measure can't see that the household
+with the credit is better off when it has less. To compare two scenarios
+that differ by such a credit, use tax paid and pre-tax net worth.
 
 **Video.** *Comparing what-ifs* builds two what-ifs on Alice and Bill's
 base scenario, runs them, and compares them with `sim compare` and
