@@ -103,14 +103,14 @@ def mark_deaths(
 
 
 def _new_axes() -> Axes:
-    """Axes on a new pyplot figure, so a notebook shows it inline. pyplot is
-    imported only here: importing it picks a GUI backend, which the CLI's
-    charts (``ensemble_plots``, which takes ``FRAME_ALPHA`` from here) must
-    not do."""
-    import matplotlib.pyplot as plt
+    """Axes on a new plain ``Figure``, not a pyplot one. Show it in a notebook
+    with ``notebook_ui.styled.show_figure(ax.figure)``. A figure on pyplot's
+    open-figure list can be rendered by matplotlib-inline's ``flush_figures``
+    on another thread while a widget is still drawing it (#119, #123), and
+    importing pyplot would pick a GUI backend under the CLI."""
+    from matplotlib.figure import Figure
 
-    _, ax = plt.subplots(figsize=(10, 5))
-    return ax
+    return Figure(figsize=(10, 5)).subplots()
 
 
 def _finish(ax: Axes, title: str, ylabel: str) -> None:

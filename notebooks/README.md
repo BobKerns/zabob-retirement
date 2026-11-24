@@ -93,13 +93,15 @@ function should not.
   it has finished (IPython's `post_execute` hook), like any later redraw. Drawing while the
   cell is still running, before the widget's view exists in the browser, could come out
   clipped or blank under Jupyter. Nothing else needs to be deferred.
-- Plots go in an `Output` widget as before: `plt.show()`, or `display(fig)` followed by
-  `plt.close(fig)`. Redraws triggered by a control are drawn immediately.
-- If a plot sits alongside other output in the same cell (a table above it, say), give it
-  its own `Output` widget rather than sharing one; under Jupyter a plot has needed both
-  `plt.show()` and `display(fig, clear=True)`, in that order, to draw reliably every time
-  (`portfolio_allocation_widget`'s pie is the example) — sharing the `Output` with other
-  content caused the two calls to reserve then misplace space.
+- Draw a chart on a plain `matplotlib.figure.Figure` (the shared chart modules, such as
+  `run_charts` or `compare_charts`, return one) and show it in the widget's `Output` with
+  `show_figure(fig)` from `zabob.retirement.sim.notebook_ui.styled`, which displays it as a
+  PNG. Don't use `plt.subplots()`, `plt.show()` or `display(fig)`: pyplot's open-figure list
+  is shared across the kernel, and under JupyterLab's kernel subshells matplotlib-inline can
+  render a pyplot figure from another thread while the widget is still drawing it, which
+  leaves the chart blank or corrupted (#119, #123). `figure_image(fig)` gives the same PNG
+  for a widget that gathers its outputs to display later. Redraws triggered by a control
+  are drawn immediately.
 - Fill a picker's options before you observe it, so setting them does not trigger a draw.
 - Observe a shared control (one passed in, like `dollar_mode` or `time_range`) with
   `observe_while_shown(control, redraw)` (`pickers.py`), not `control.observe`: `show`
