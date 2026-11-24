@@ -1,34 +1,39 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "qkVIh277ceI"
-uploaded = 2026-11-03T07:21:50Z
+video = "fEkZsCNM8YA"
+uploaded = 2026-11-23T15:01:59Z
+snippet = "7835dd02007ea07c"
 scenes = [
-  ["title", 20.12],
-  ["contents", 26.82],
-  ["person", 18.42],
-  ["kinds", 28.81],
-  ["accounts", 47.16],
-  ["lots", 56.17],
-  ["more-accounts", 32.14],
-  ["rules", 26.89],
-  ["scheduled", 50.08],
-  ["more-scheduled", 30.65],
-  ["first-look", 39.47],
-  ["chains-card", 25.61],
-  ["chains", 48.76],
-  ["chains-graph", 26.78],
-  ["chains-run", 23.20],
-  ["calendar-card", 20.08],
-  ["calendar", 40.72],
-  ["last-run", 27.39],
-  ["end", 7.73],
+  ["title", 23.30],
+  ["contents", 30.58],
+  ["person", 21.60],
+  ["kinds", 32.75],
+  ["accounts", 47.52],
+  ["lots", 62.53],
+  ["more-accounts", 34.91],
+  ["rules", 29.26],
+  ["scheduled", 54.32],
+  ["more-scheduled", 32.82],
+  ["first-look", 45.47],
+  ["chains-card", 28.34],
+  ["chains", 54.96],
+  ["chains-graph", 29.25],
+  ["chains-run", 26.12],
+  ["calendar-card", 23.86],
+  ["calendar", 40.68],
+  ["last-run", 31.21],
+  ["end", 8.24],
 ]
 
 [ja]
 video = "66ralFK5Q-E"
 uploaded = 2026-11-03T07:22:09Z
+snippet = "ab051b1bd03f217b"
 scenes = [
   ["title", 27.23],
   ["contents", 32.38],

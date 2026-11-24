@@ -1,48 +1,53 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "Q825lq05EvQ"
-uploaded = 2026-11-03T08:33:52Z
+video = "NE-Qn5XNzNs"
+uploaded = 2026-11-24T17:39:36Z
+snippet = "9b074ace5dc69568"
 scenes = [
-  ["title", 18.88],
-  ["contents", 21.41],
-  ["monte-carlo", 33.76],
-  ["templates", 35.88],
-  ["create", 20.92],
-  ["varying", 27.16],
-  ["factors", 58.23],
-  ["pair", 23.46],
-  ["run", 51.57],
-  ["fan", 28.85],
-  ["table", 23.84],
-  ["reading", 27.98],
-  ["compare", 34.12],
-  ["compare-chart", 23.56],
-  ["nb-ensemble", 34.67],
-  ["ai", 18.69],
-  ["end", 7.25],
+  ["title", 21.03],
+  ["contents", 24.63],
+  ["monte-carlo", 37.41],
+  ["templates", 41.00],
+  ["create", 23.54],
+  ["varying", 31.76],
+  ["factors", 65.35],
+  ["pair", 25.93],
+  ["run", 59.31],
+  ["fan", 32.48],
+  ["table", 26.74],
+  ["reading", 31.37],
+  ["compare", 38.88],
+  ["compare-chart", 25.88],
+  ["nb-ensemble", 39.33],
+  ["ai", 21.02],
+  ["end", 8.44],
 ]
 
 [ja]
-video = "ug5Mv7g9quM"
-uploaded = 2026-11-03T08:34:11Z
+video = "6WHhFjpUFbQ"
+uploaded = 2026-11-24T17:39:57Z
+snippet = "efbab30b51628535"
 scenes = [
-  ["title", 23.67],
-  ["contents", 26.80],
-  ["monte-carlo", 40.98],
-  ["templates", 44.39],
-  ["create", 25.16],
-  ["varying", 36.16],
-  ["factors", 71.58],
-  ["pair", 28.91],
-  ["run", 68.64],
-  ["fan", 35.31],
-  ["table", 27.31],
-  ["reading", 37.75],
-  ["compare", 41.58],
-  ["compare-chart", 23.48],
-  ["nb-ensemble", 34.67],
-  ["ai", 21.62],
-  ["end", 9.02],
+  ["title", 24.01],
+  ["contents", 27.10],
+  ["monte-carlo", 41.62],
+  ["templates", 46.25],
+  ["create", 25.76],
+  ["varying", 35.08],
+  ["factors", 75.10],
+  ["pair", 29.57],
+  ["run", 70.86],
+  ["fan", 35.51],
+  ["table", 27.42],
+  ["reading", 38.75],
+  ["compare", 42.91],
+  ["compare-chart", 25.88],
+  ["nb-ensemble", 39.33],
+  ["ai", 22.97],
+  ["end", 9.45],
 ]

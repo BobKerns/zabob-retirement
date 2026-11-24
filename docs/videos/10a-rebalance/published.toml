@@ -1,48 +1,53 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "Id-wps0PVrw"
-uploaded = 2026-11-10T21:00:10Z
+video = "uy_-e2nUrIE"
+uploaded = 2026-11-24T19:11:46Z
+snippet = "4c221cdc47e9fcf4"
 scenes = [
-  ["title", 14.60],
-  ["contents", 14.12],
-  ["strategy", 21.99],
-  ["mix", 40.05],
-  ["classes", 28.40],
-  ["targets", 73.96],
-  ["add", 34.08],
-  ["invest", 57.36],
-  ["log", 56.28],
+  ["title", 17.12],
+  ["contents", 15.66],
+  ["strategy", 25.34],
+  ["mix", 45.26],
+  ["classes", 32.41],
+  ["targets", 73.88],
+  ["add", 34.16],
+  ["invest", 57.20],
+  ["log", 56.16],
   ["nb-drift", 16.93],
-  ["off", 75.24],
-  ["why", 15.69],
-  ["mc", 43.32],
-  ["mc-compare", 59.56],
-  ["nb-compare", 16.97],
-  ["ai", 22.22],
-  ["end", 7.53],
+  ["off", 76.16],
+  ["why", 18.32],
+  ["mc", 44.08],
+  ["mc-compare", 56.66],
+  ["nb-compare", 16.93],
+  ["ai", 24.48],
+  ["end", 8.63],
 ]
 
 [ja]
-video = "sd8p2AofnSA"
-uploaded = 2026-11-10T21:00:31Z
+video = "BgpUJpEFW2o"
+uploaded = 2026-11-24T19:12:06Z
+snippet = "c8581c1e0f51247b"
 scenes = [
-  ["title", 17.59],
-  ["contents", 18.14],
-  ["strategy", 25.16],
-  ["mix", 51.65],
-  ["classes", 36.68],
-  ["targets", 73.96],
-  ["add", 36.86],
-  ["invest", 57.36],
-  ["log", 56.28],
+  ["title", 18.08],
+  ["contents", 19.91],
+  ["strategy", 25.78],
+  ["mix", 54.38],
+  ["classes", 38.62],
+  ["targets", 74.48],
+  ["add", 38.02],
+  ["invest", 57.08],
+  ["log", 56.16],
   ["nb-drift", 16.93],
-  ["off", 75.24],
-  ["why", 22.24],
-  ["mc", 43.32],
-  ["mc-compare", 62.69],
-  ["nb-compare", 18.57],
-  ["ai", 26.46],
-  ["end", 8.51],
+  ["off", 75.64],
+  ["why", 22.92],
+  ["mc", 46.32],
+  ["mc-compare", 64.99],
+  ["nb-compare", 19.09],
+  ["ai", 28.55],
+  ["end", 8.70],
 ]

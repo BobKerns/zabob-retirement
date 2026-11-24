@@ -1,38 +1,44 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "VvoRgRvgIiY"
-uploaded = 2026-11-10T08:14:49Z
+video = "-QSZLv4EhOk"
+uploaded = 2026-11-23T13:29:42Z
+snippet = "f8488a8c772b631c"
 scenes = [
-  ["title", 18.43],
-  ["questions", 27.95],
-  ["model", 22.74],
-  ["simple", 34.93],
-  ["data", 15.26],
-  ["scenarios", 34.79],
-  ["run", 19.37],
-  ["explain", 24.15],
-  ["networth", 22.73],
-  ["views", 17.54],
-  ["ensemble", 52.16],
-  ["end", 22.03],
+  ["host", 27.76],
+  ["title", 18.87],
+  ["questions", 31.96],
+  ["model", 25.37],
+  ["simple", 38.81],
+  ["data", 17.67],
+  ["scenarios", 39.16],
+  ["run", 21.40],
+  ["explain", 27.37],
+  ["networth", 26.06],
+  ["views", 20.01],
+  ["ensemble", 59.40],
+  ["end", 24.99],
 ]
 
 [ja]
-video = "kH_Uzpp4ghU"
-uploaded = 2026-11-10T08:15:11Z
+video = "tixkxYf-QQE"
+uploaded = 2026-11-23T13:30:00Z
 scenes = [
-  ["title", 27.01],
-  ["questions", 36.35],
-  ["model", 27.66],
-  ["simple", 50.42],
-  ["data", 20.73],
-  ["scenarios", 48.13],
-  ["run", 22.27],
-  ["explain", 33.94],
-  ["networth", 28.50],
-  ["views", 20.41],
-  ["ensemble", 67.79],
-  ["end", 26.92],
+  ["host", 34.54],
+  ["title", 26.04],
+  ["questions", 37.63],
+  ["model", 29.30],
+  ["simple", 51.55],
+  ["data", 21.37],
+  ["scenarios", 49.05],
+  ["run", 23.51],
+  ["explain", 35.39],
+  ["networth", 30.80],
+  ["views", 21.56],
+  ["ensemble", 70.65],
+  ["end", 27.92],
 ]

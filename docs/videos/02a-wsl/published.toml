@@ -2,39 +2,39 @@
 # scenes: each scene's length in seconds in the build that was uploaded.
 
 [en]
-video = "yHr90VdoHGQ"
-uploaded = 2026-11-12T18:52:39Z
+video = "KCmrMe1LztY"
+uploaded = 2026-11-23T14:14:58Z
 scenes = [
-  ["title", 12.34],
-  ["skip", 25.59],
-  ["why", 30.10],
-  ["turn-on", 26.14],
-  ["linux-user", 16.49],
-  ["password", 24.72],
-  ["open-again", 23.49],
-  ["files", 26.08],
-  ["explorer", 22.99],
-  ["vscode", 27.02],
-  ["vscode-window", 24.61],
-  ["ready", 21.36],
-  ["end", 5.80],
+  ["title", 14.35],
+  ["skip", 29.64],
+  ["why", 33.98],
+  ["turn-on", 30.85],
+  ["linux-user", 19.41],
+  ["password", 22.99],
+  ["open-again", 25.90],
+  ["files", 27.19],
+  ["explorer", 24.61],
+  ["vscode", 28.42],
+  ["vscode-window", 30.45],
+  ["ready", 22.13],
+  ["end", 6.67],
 ]
 
 [ja]
-video = "zeTFTujsWwI"
-uploaded = 2026-11-12T18:52:55Z
+video = "mF9CMkimH80"
+uploaded = 2026-11-23T14:15:14Z
 scenes = [
-  ["title", 16.82],
-  ["skip", 32.85],
-  ["why", 34.56],
-  ["turn-on", 34.97],
-  ["linux-user", 19.51],
-  ["password", 30.15],
-  ["open-again", 26.10],
-  ["files", 32.91],
-  ["explorer", 27.91],
-  ["vscode", 35.04],
-  ["vscode-window", 31.71],
-  ["ready", 24.36],
-  ["end", 7.05],
+  ["title", 17.14],
+  ["skip", 33.38],
+  ["why", 35.28],
+  ["turn-on", 35.31],
+  ["linux-user", 20.70],
+  ["password", 25.56],
+  ["open-again", 26.76],
+  ["files", 33.53],
+  ["explorer", 27.27],
+  ["vscode", 32.22],
+  ["vscode-window", 36.99],
+  ["ready", 26.13],
+  ["end", 6.99],
 ]

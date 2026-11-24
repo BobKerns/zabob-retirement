@@ -1,34 +1,39 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "8byMoioSYH8"
-uploaded = 2026-11-03T07:46:05Z
+video = "epiZIjACJHY"
+uploaded = 2026-11-23T15:28:17Z
+snippet = "45a8291d2285ec38"
 scenes = [
-  ["title", 19.24],
-  ["contents", 30.68],
-  ["networth-graph", 33.64],
-  ["after-tax", 31.07],
-  ["networth", 36.21],
-  ["runs", 33.22],
-  ["explain", 37.73],
-  ["history", 33.98],
-  ["income", 36.01],
-  ["expenses", 30.24],
-  ["tax", 32.51],
-  ["notebooks-card", 16.90],
-  ["nb-networth", 27.60],
-  ["nb-income-tax", 28.53],
-  ["nb-accounts", 24.17],
-  ["nb-events", 26.10],
-  ["nb-overview", 17.27],
-  ["ai", 17.54],
-  ["end", 8.42],
+  ["title", 21.52],
+  ["contents", 34.35],
+  ["networth-graph", 38.08],
+  ["after-tax", 36.12],
+  ["networth", 40.65],
+  ["runs", 37.17],
+  ["explain", 42.55],
+  ["history", 38.40],
+  ["income", 40.23],
+  ["expenses", 33.97],
+  ["tax", 36.78],
+  ["notebooks-card", 18.63],
+  ["nb-networth", 27.47],
+  ["nb-income-tax", 30.36],
+  ["nb-accounts", 24.13],
+  ["nb-events", 29.39],
+  ["nb-overview", 18.55],
+  ["ai", 19.69],
+  ["end", 9.59],
 ]
 
 [ja]
-video = "SDzC49sCXqM"
-uploaded = 2026-11-03T07:46:29Z
+video = "7ZPuH_JVjPE"
+uploaded = 2026-11-23T12:11:42Z
+snippet = "323a139556f7bb4e"
 scenes = [
   ["title", 26.50],
   ["contents", 36.39],
@@ -42,9 +47,9 @@ scenes = [
   ["expenses", 36.27],
   ["tax", 39.75],
   ["notebooks-card", 23.60],
-  ["nb-networth", 27.67],
+  ["nb-networth", 27.80],
   ["nb-income-tax", 31.92],
-  ["nb-accounts", 24.17],
+  ["nb-accounts", 24.13],
   ["nb-events", 36.27],
   ["nb-overview", 19.78],
   ["ai", 22.01],
