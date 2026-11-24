@@ -150,7 +150,7 @@ What it does:
   (`fill_bracket` steps, the after-tax drawdown). It overrides
   `refundable_credits`, run for each return, one of the steps a
   state year goes through (`additions`, `subtractions`, `deductions`,
-  `itemized_lines`, `other_deductions`, `tax`, `credits`, `credit_lines`,
+  `itemized_lines`, `other_deductions`, `tax`, `tax_lines`, `credits`, `credit_lines`,
   `separate`, `excise`, `refundable_credits`). Each line it returns is a line of the return,
   written to the run as `state_<line>`. A refundable credit comes off
   last and can take the tax below zero; the April settlement pays it

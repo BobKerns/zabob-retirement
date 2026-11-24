@@ -147,6 +147,10 @@ class StateTablesYear(FederalStateYear):
         # every filing status (California's $1 million). A local income tax
         # is its own jurisdiction (local_bands, #508).
         self._surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series)
+        # A benefit recapture (#549) takes back the lower brackets' benefit
+        # as state AGI rises: an addition to tax by AGI, not a rate on
+        # taxable income, so its own rows rather than more bands.
+        self._recapture = common.recapture_rows(ty, series)
 
         # The state's own deductions and credits (#511, #488): a renter's
         # deduction, an exemption, a deduction for federal tax paid. Each is
@@ -182,6 +186,7 @@ class StateTablesYear(FederalStateYear):
         self._mfs_ltcg = common.rate_table(ty, params.ltcg_bracket_aux, series, SEPARATE)
         self._mfs_stcg = common.rate_table(ty, params.stcg_bracket_aux, series, SEPARATE)
         self._mfs_surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series, SEPARATE)
+        self._mfs_recapture = common.recapture_rows(ty, series, SEPARATE)
         self._mfs_standard = common.standard_deduction_row(
             ty, *self._standard_table(), SEPARATE)
         # Unclipped, so one spouse's business loss stays theirs rather than
@@ -559,7 +564,23 @@ class StateTablesYear(FederalStateYear):
         }
 
     def tax(self, taxable: int, income: Income) -> int:
-        return super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+        recapture = common.recapture(self._recapture, income.agi)
+        # What this step added, for tax_lines to show: a subclass's own tax
+        # step that doesn't call this one adds none.
+        self._recaptured = recapture if self._recapture else None
+        return (super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+                + recapture)
+
+    def tax_lines(self, taxable: int, income: Income) -> Mapping[str, int]:
+        recaptured = self._take_recaptured()
+        return {} if recaptured is None else {"recapture": recaptured}
+
+    def _take_recaptured(self) -> int | None:
+        """The recapture the last :meth:`tax` call through this class's
+        added, once: None where it added none (no table, or a subclass's
+        tax step that doesn't call this one's)."""
+        recaptured, self._recaptured = getattr(self, "_recaptured", None), None
+        return recaptured
 
     def separate(self, joint: Joint, basis: Basis) -> Separate | None:
         """Each spouse's tax filing separately on one return (#580): the
@@ -611,6 +632,7 @@ class StateTablesYear(FederalStateYear):
         taxes: dict[str, int] = {}
         total_deduction = total_taxable = ordinary_taxable = 0
         nol_left, nol_used = self._nol_in, 0
+        recaptured_total: int | None = None
         for i, p in enumerate(people):
             # A state without a standard deduction of its own (only
             # exemptions) gives a spouse none either.
@@ -627,7 +649,11 @@ class StateTablesYear(FederalStateYear):
             nol_left, nol_used = nol_left - used, nol_used + used
             taxable = max(0, before_nol - used)
             with self._filing_separately():
+                self._recaptured = None
                 taxes[p] = self.tax(taxable, income_by[p])
+                if (recaptured := self._take_recaptured()) is not None:
+                    lines[f"separate_recapture_{p}"] = recaptured
+                    recaptured_total = (recaptured_total or 0) + recaptured
             lines[f"separate_agi_{p}"] = agi[p]
             lines[f"separate_deduction_{p}"] = deduction
             lines[f"separate_taxable_income_{p}"] = taxable
@@ -638,23 +664,25 @@ class StateTablesYear(FederalStateYear):
         tax, credits, credit_lines = self._after_credits(taxes, joint, lines)
         return Separate(lines, tax, nol_used, deduction=total_deduction, taxable=total_taxable,
                         ordinary_taxable=ordinary_taxable, credits=credits,
-                        credit_lines=credit_lines)
+                        credit_lines=credit_lines,
+                        tax_lines={} if recaptured_total is None
+                        else {"recapture": recaptured_total})
 
     @contextmanager
     def _filing_separately(self) -> Generator[None]:
         """:meth:`tax` with the married-filing-separately tables (#580), so
         a subclass's own tax step applies to each spouse's return too."""
         saved = (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-                 self.stcg_brackets, self._surcharge)
+                 self.stcg_brackets, self._surcharge, self._recapture)
         self.ty, self.filing_status = self._mfs_ty, SEPARATE
         self.brackets, self.ltcg_brackets, self.stcg_brackets = (
             self._mfs_brackets, self._mfs_ltcg, self._mfs_stcg)
-        self._surcharge = self._mfs_surcharge
+        self._surcharge, self._recapture = self._mfs_surcharge, self._mfs_recapture
         try:
             yield
         finally:
             (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-             self.stcg_brackets, self._surcharge) = saved
+             self.stcg_brackets, self._surcharge, self._recapture) = saved
 
     def _spouse_income(self, income: Income, subtractions: Sequence[Adjustment],
                        basis: Basis) -> dict[str, Income]:

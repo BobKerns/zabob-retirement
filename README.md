@@ -100,7 +100,7 @@ an issue to close, or a row you write yourself.
 | Arkansas | Partial | Low-income tax tables |
 | California | Shipped | |
 | Colorado | Tables needed | |
-| Connecticut | Partial | Benefit recapture ([#549](https://github.com/BobKerns/zabob-retirement/issues/549)); personal tax credit; Social Security's 25% cap |
+| Connecticut | Partial | Personal tax credit; Social Security's 25% cap |
 | Delaware | Tables needed | |
 | District of Columbia | Shipped | Extra deduction when blind |
 | Florida | No tax | |
@@ -126,7 +126,7 @@ an issue to close, or a row you write yourself.
 | New Hampshire | No tax | |
 | New Jersey | Tables needed | |
 | New Mexico | Tables needed | |
-| New York | Partial | Benefit recapture ([#549](https://github.com/BobKerns/zabob-retirement/issues/549)); Yonkers surcharge (a share of state tax) |
+| New York | Partial | Yonkers surcharge (a share of state tax) |
 | North Carolina | Shipped | Exclusion for government pensions vested before August 1989 (a row you write) |
 | North Dakota | Tables needed | |
 | Ohio | Tables needed | |

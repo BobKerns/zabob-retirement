@@ -949,6 +949,36 @@ def state_series(ty: TaxYear, year: int | None = None) -> str:
         residence.state, has_tables=ty.has_table("state_brackets", residence.state))
 
 
+def recapture_rows(ty: TaxYear, series: str | None,
+                   filing_status: str | None = None) -> list[Mapping[str, Any]]:
+    """The year's ``state_recapture`` rows (#549) for its filing status (or
+    ``filing_status``, a spouse's separate return, #580); none without the
+    table."""
+    if series is None or not ty.has_table(registries.STATE_RECAPTURE, series):
+        return []
+    status = filing_status or ty.filing_status
+    return [r for r in ty.indexed(registries.STATE_RECAPTURE, series)
+            if r.get("filing_status") == status]
+
+
+def recapture(rows: Iterable[Mapping[str, Any]], agi: int) -> int:
+    """What ``rows`` (:func:`recapture_rows`) add to the tax at a state
+    ``agi``: each up to its ``amount`` over ``width`` above ``floor``, in a
+    straight line, or with ``step`` in whole steps, any part of one counting
+    as one (Connecticut's "more than $100,500, less than or equal to
+    $105,500" adds its first step)."""
+    total = 0
+    for row in rows:
+        over = min(agi - int(row["floor"]), int(row["width"]))
+        if over <= 0:
+            continue
+        amount, width, step = int(row["amount"]), int(row["width"]), row.get("step")
+        if step:
+            over = min(-(-over // int(step)) * int(step), width)
+        total += amount * over // width
+    return total
+
+
 def rate_table(ty: TaxYear, kind: str | None, series: str | None = None,
                filing_status: str | None = None) -> list[tuple[int, int]]:
     """The year's (floor, rate micros) rows of ``kind`` for its filing
