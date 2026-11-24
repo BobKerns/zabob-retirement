@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-10-28
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.1b (`allocations.csv`), §4.7 (chains), §4.12–§4.14 (`strategies/`, `targets.csv`, `strategy_vary/`); [ADR-002](ADR-002-storage-schema.md) (`strategy`, `strategy_source`, `strategy_vary`, `allocation_target`, `strategy_decision`); [ADR-006](ADR-006-ensemble-scenarios.md) §3b (varying a parameter); [ADR-004](ADR-004-reproducibility-and-activation.md) §2 (strategy code is data); issues [#326](https://github.com/BobKerns/zabob-retirement/issues/326) (the design, in stages), [#339](https://github.com/BobKerns/zabob-retirement/issues/339) (stage 1a), [#387](https://github.com/BobKerns/zabob-retirement/issues/387) (spending), [#421](https://github.com/BobKerns/zabob-retirement/issues/421) (year-end actions), [#441](https://github.com/BobKerns/zabob-retirement/issues/441) (triggers on guard rails), [#459](https://github.com/BobKerns/zabob-retirement/issues/459) (amortization spending) and [#463](https://github.com/BobKerns/zabob-retirement/issues/463) (down-market and bucket rules), [#305](https://github.com/BobKerns/zabob-retirement/issues/305) (guard rails, which later stages trigger on).
 
 ## Context
@@ -337,27 +336,3 @@ Issue #305 owns guard rails, their measures (`sim/measures.py`) and their evalua
 - Randomness for a strategy that wants it (`ctx.rng()`, keyed like the ensemble's streams).
 - Checking rails monthly as well as yearly, for a measure that isn't yearly.
 - Whether `place` should see a destination's remaining room before the engine applies `maximum_balance`.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#359](https://github.com/BobKerns/zabob-retirement/issues/359): allocation drift charts for a run, across an ensemble (the series store keeps class dollars per member) and for runs side by side; `sim ensemble drift`, `sim compare --section strategies` (§7, §8).
-- [#387](https://github.com/BobKerns/zabob-retirement/issues/387): spending strategies: `year_start` and `scale` hooks, rules owned by tag, `end`/`cpi`/`people`/`budget`/`annual_return` in the context (API version 2), the recorded baseline, built-ins `threshold`, `guardrail` and `ceiling_floor`, `sim report spending` (§1–§4, §6.2, §7, §8).
-- [#408](https://github.com/BobKerns/zabob-retirement/issues/408): spending across an ensemble's members (series store format 5), `sim ensemble spending`, `sim compare --section spending`, spending charts in the notebooks; a cut stays proportional, with separate strategies or a custom one for anything else (§6.2, §7, §8).
-- [#408](https://github.com/BobKerns/zabob-retirement/issues/408): a strategy is one file, `strategies/<name>.csv`; `strategy_vary/<name>.csv` varies its parameters across an ensemble (§1, §4, §8).
-- [#421](https://github.com/BobKerns/zabob-retirement/issues/421): year-end actions: the `year_end` hook with `Transfer` and `Realize` moves and `reason_kind` `strategy`, `ctx.tax`, `Account` and optional parameters, a kind's load `check` (`ScenarioView`), `LotView`'s `acquired`, `taxable_sale` and `gain` (API version 3), a year-end kind owns nothing, built-ins `harvest` and `gift`, the `harvested` gains column (§1–§4, §6.3, §7, §8).
-- [#430](https://github.com/BobKerns/zabob-retirement/issues/430): `sim report spending --chart` (§7).
-- [#441](https://github.com/BobKerns/zabob-retirement/issues/441): triggers on guard rails: a strategy's `trigger` column, rails checked each January on the run so far, the `on_breach` and `month_start` hooks, `ctx.history` and `ctx.rail` (API version 4), `strategy_trigger` and `breach_event`, guard rails in a triggered lineage's tree, `sim strategy log --breaches`, the explain and guard-rails report lines (§1–§4, §3.3, §7, §8).
-- [#459](https://github.com/BobKerns/zabob-retirement/issues/459): amortization spending: the built-in `amortize` (VPW, the RMD method, a survival horizon), `ctx.survival_years`, `life_expectancy` and `rmd_divisor`, `ScenarioView`'s people, aux tables and portfolio classes (API version 5) (§3, §4, §6.4).
-- [#463](https://github.com/BobKerns/zabob-retirement/issues/463): down-market and bucket rules: the built-ins `down_market` (Guyton's withdrawal rule) and `buckets` (a cash reserve refilled inside each account), with a `monthly` or `annual` cadence, `ctx.trailing_return` and `ScenarioView.portfolio_lots` (API version 6) (§3, §4, §6.5).
-- [#371](https://github.com/BobKerns/zabob-retirement/issues/371): a lot is classed by the asset class its growth series is named for, before its account subkind (§5).
-- [#377](https://github.com/BobKerns/zabob-retirement/issues/377): the built-in `cut_on_breach` answers a triggered rail with a flat cut, or a raise on a positive rail (§3.3, §6.6).
-- [#507](https://github.com/BobKerns/zabob-retirement/issues/507): `ctx.tax` reads the tax jurisdiction files (`taxes/<scope>.csv`) in place of `tax_accumulator` rules, and `ScenarioView.taxes` (the set of jurisdictions) replaces `tax_rules` (API version 7) (§3.2, §4).
-- [#507](https://github.com/BobKerns/zabob-retirement/issues/507): `API_VERSION` 8: `ctx.tax.last_year` carries the tax calculators' line names (`federal_agi`, `federal_tax`, ...) and `<scope>_ordinary_taxable` (§3).
-- [#410](https://github.com/BobKerns/zabob-retirement/issues/410): disabled strategies are stored (`strategy_disabled`) so drift views of a strategy-off run default to its targets and portfolio (§4 Stored).
-- [#508](https://github.com/BobKerns/zabob-retirement/issues/508): `API_VERSION` 9: the local tax is its own jurisdiction, so `ctx.tax` takes `scope="local"`, the state's estimate leaves it out, and `last_year`'s `state_local_tax` is refused, naming `local_tax` (§3.2).
-- [#410](https://github.com/BobKerns/zabob-retirement/issues/410): `sim strategy log` leaves a spending strategy's monthly `scale` lines out (counted; `--hook` selects hooks), and `threshold` and `guardrail` note every January (§6.2, §7).
-- [#265](https://github.com/BobKerns/zabob-retirement/issues/265): `API_VERSION` 10: `TaxEstimate.magi`, AGI plus tax-exempt interest; `agi` is no longer IRMAA's MAGI (§3).
-- [#411](https://github.com/BobKerns/zabob-retirement/issues/411): `API_VERSION` 11: `ctx.rule_budgets` and `ctx.with_memory`, `Strategy.delegate`, and the built-in kinds' classes are API, for a household's kind to subclass or delegate to (§3).
-- [#568](https://github.com/BobKerns/zabob-retirement/issues/568): an optional (`X | None`) parameter takes `null` whatever its default (§Parameters).

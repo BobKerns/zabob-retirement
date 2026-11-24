@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-10-03
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-006](ADR-006-ensemble-scenarios.md) (ensemble scenarios: `vary_*` rows, keyed RNG streams, member 0), [ADR-007](ADR-007-sensitivity-analysis.md) (sensitivity analysis, which assumes independent draws), [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.8 (`calendar.csv`), issues [#30](https://github.com/BobKerns/zabob-retirement/issues/30) (this design; decisions recorded there) and [#31](https://github.com/BobKerns/zabob-retirement/issues/31) (`quantile()` on every family, the median as center).
 
 ## Context
@@ -193,20 +192,3 @@ Schema 32 (#68): `calendar_event` gains `vary_tail_dependence REAL`.
 - **A separate `ν` per sub-tree** (a "grouped t" copula: one `W` per group), so a sub-factor's family could be turbulent independently of the rest of its tree. That's more than the data usually supports.
 - **A full correlation matrix** for rows that genuinely need more than a tree, with positive-semi-definite validation and a nearest-valid-matrix repair.
 - **Estimating ρ from history** (e.g. from a series' own CSV data), rather than authoring it by judgment.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#39](https://github.com/BobKerns/zabob-retirement/issues/39): one-at-a-time sensitivity can perturb a latent factor, moving its family to their conditional medians (§5, §6).
-- [#38](https://github.com/BobKerns/zabob-retirement/issues/38): the Monte Carlo report handles correlated rows (§6).
-- [#68](https://github.com/BobKerns/zabob-retirement/issues/68): an optional Student-t copula per tree for tail dependence (§1, §4–§7); the achieved-correlation check reads ρ through Kendall's τ (§6).
-- [#80](https://github.com/BobKerns/zabob-retirement/issues/80): several factors with no dependents are one warning (§4).
-- [#115](https://github.com/BobKerns/zabob-retirement/issues/115): a tree holding a process row (ADR-006 §4a) also computes a score per node for each calendar year of the path (§5, §7).
-- [#204](https://github.com/BobKerns/zabob-retirement/issues/204): only `sim check` prints the unused-factor and lone-`vary_tail_dependence` warnings (§4).
-- [#221](https://github.com/BobKerns/zabob-retirement/issues/221): a varying lifespan joins correlation trees as `lifespan:<person>` (§4).
-- [#222](https://github.com/BobKerns/zabob-retirement/issues/222): a `life_table` lifespan's score maps through its table's inverse distribution (§4).
-- [#261](https://github.com/BobKerns/zabob-retirement/issues/261): `ensemble_draw.noise` and `u`, `ensemble_tail_scale` (closing #72) and `ensemble_path_shock`; a batch's `draws.sqlite3` (§6, §7).
-- [#284](https://github.com/BobKerns/zabob-retirement/issues/284): `vary_innovation_sd` renamed `vary_shock_sd` (§5).
-- [#281](https://github.com/BobKerns/zabob-retirement/issues/281): a varying `date_marker` is a node; rows dated from it are not (§4).
-- [#369](https://github.com/BobKerns/zabob-retirement/issues/369): `sim ensemble factors` lists and draws the factor trees and the rows under each factor (§6).

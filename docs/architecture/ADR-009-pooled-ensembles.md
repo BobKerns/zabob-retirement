@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-10-28
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-006](ADR-006-ensemble-scenarios.md) (ensembles: keyed draws, batches, member 0, pairing, the series store and the draws database), [ADR-004](ADR-004-reproducibility-and-activation.md) §11-12 (what can't have changed; the background builder), [ADR-007](ADR-007-sensitivity-analysis.md) (sensitivity), [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.5 (`scenario.csv`), issues [#292](https://github.com/BobKerns/zabob-retirement/issues/292) (this design; decisions recorded there) and [#340](https://github.com/BobKerns/zabob-retirement/issues/340) (a compound-episode template and the history weights).
 
 ## Context
@@ -98,9 +97,3 @@ The draws database (ADR-006 §6) is kept per component. `member` gains `componen
 
 - Weighted members (importance sampling, oversampling the worst component), if more members ever isn't enough.
 - Weights that vary by member, such as a probability of trouble that depends on the year.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#340](https://github.com/BobKerns/zabob-retirement/issues/340): a compound episode template exists, so pool members can meet two episodes (Consequences, Limits).

@@ -4,7 +4,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-05-17
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Scope:** New top-level subsystem `src/zabob/retirement/sim/`, sibling to the existing `amazon/` subsystem. Shares utility code (logging, sqlite helpers) but not data.
 
 ## Context
@@ -88,7 +87,7 @@ These are project-wide rules that all subsequent ADRs and code reference:
 4. **Visible approximation beats invisible omission.** Zero-valued accounts for assets we choose not to model (ISOs, potential JPY inheritance); basis-with-sources lists for the home; `data/known_exclusions.md` for things deliberately out of scope.
 5. **The scenario is a checklist.** Life events are dated rows a reader can scan: a rule's `start`/`end`, `calendar.csv` events (`retire_scheduled`, `set_amount`, `swap_aux_table` for a move), and `lifespan.csv`. A bundled event per transition (retire, predecease, relocate) was planned and dropped: each would be as specific as the rules it stood for.
 6. **Schema is documentation.** Long-narrow tables, descriptive names, a `schema_overview` row per table for LLM priming. See [ADR-002](ADR-002-storage-schema.md).
-7. **Hard errors on impossible states.** Unresolvable references, unknown user, dirty data without override → halt before the run starts, report enough context to fix the scenario. *Amended:* running an account negative is **not** in this category. The draft had insufficient funds halt the run; in practice that made a scenario un-runnable at the first shortfall, which is exactly when you most want to see the projection. A debit that a chain cannot cover posts anyway, drives the balance negative, raises a `RuntimeWarning` once per negative transition, and is recorded under `simulation_run.run_args_json.$.negative_balance_warnings`, with the refill chain it tried and what that chain supplied — visible and queryable, per principle 4, rather than fatal.
+7. **Hard errors on impossible states.** Unresolvable references, unknown user, dirty data without override → halt before the run starts, report enough context to fix the scenario. Running an account negative is **not** in this category: halting would make a scenario un-runnable at its first shortfall, which is exactly when you most want to see the projection. A debit that a chain cannot cover posts anyway, drives the balance negative, raises a `RuntimeWarning` once per negative transition, and is recorded under `simulation_run.run_args_json.$.negative_balance_warnings`, with the refill chain it tried and what that chain supplied — visible and queryable, per principle 4, rather than fatal.
 
 ### Reproducibility and gating contract
 
@@ -174,15 +173,3 @@ These mutating commands are convenience wrappers around the same CSV edits an AI
 - [ADR-002](ADR-002-storage-schema.md): Storage schema (full DDL, views, indexes).
 - [ADR-003](ADR-003-registries-and-csv-schemas.md): Amount-rule registry and Calendar-event-kind registry.
 - [ADR-004](ADR-004-reproducibility-and-activation.md): Reproducibility contract and dual-repo gating.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [ADR-005](ADR-005-lots-and-per-lot-state.md) (lots and per-lot state): accounts are split into lots, and the engine's state is per lot.
-- [#105](https://github.com/BobKerns/zabob-retirement/issues/105): a negative-balance warning records the refill chain it tried and what that chain supplied (principle 7).
-- [#197](https://github.com/BobKerns/zabob-retirement/issues/197): principle 5 no longer relies on `life_transition` events, which are dropped.
-- [#186](https://github.com/BobKerns/zabob-retirement/issues/186): `sim explain` takes a scenario and lists negative-balance warnings; `sim networth` added (CLI surface).
-- [#214](https://github.com/BobKerns/zabob-retirement/issues/214): the prompt shows the current scenario (Activation).
-- [#332](https://github.com/BobKerns/zabob-retirement/issues/332): `sim explain`'s year-end net worth is after tax unless `--pre-tax`, like the other reports (CLI surface).
-- [#431](https://github.com/BobKerns/zabob-retirement/issues/431): the notebooks show a run's negative-balance warnings as `sim explain` lists them, each with its lowest balance (principle 7, CLI surface).

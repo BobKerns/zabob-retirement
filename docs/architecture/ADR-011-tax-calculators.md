@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-11-10
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-003](ADR-003-registries-and-csv-schemas.md) §2.6 (what the built-in calculators compute), §4.0 (the data repo's `taxes/` code), §4.15 (`taxes/<jurisdiction>.csv`), §4.16 (`residence.csv`); [ADR-002](ADR-002-storage-schema.md) (`tax_jurisdiction`, `tax_source`, `tax_year_summary`); [ADR-004](ADR-004-reproducibility-and-activation.md) §2 (tax code is data); [ADR-010](ADR-010-responsive-strategies.md) §4 (the import and snapshot this shares); issues [#506](https://github.com/BobKerns/zabob-retirement/issues/506) (the design, in phases), [#507](https://github.com/BobKerns/zabob-retirement/issues/507) (the API and jurisdiction files), [#508](https://github.com/BobKerns/zabob-retirement/issues/508) (a state from federal AGI, the local tax), [#509](https://github.com/BobKerns/zabob-retirement/issues/509) (residence), [#510](https://github.com/BobKerns/zabob-retirement/issues/510) (household calculators), [#511](https://github.com/BobKerns/zabob-retirement/issues/511) (state deductions that follow spending).
 
 ## Context
@@ -95,22 +94,3 @@ A guide with a worked example is [docs/guides/tax-calculators.md](../guides/tax-
 
 - A jurisdiction beyond federal, state and local (a non-resident state return, the credit for tax paid to another state).
 - Estimated quarterly payments, probably a strategy reading `ctx.tax`.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#511](https://github.com/BobKerns/zabob-retirement/issues/511): API 2: a state year's `other_deductions` and `credit_lines` steps; a state's own deductions and credits are rows of the built-in's `state_adjustments` table (§5, deferred questions).
-- [#277](https://github.com/BobKerns/zabob-retirement/issues/277): a `Person` carries its `final_month`, and a `TaxYear` its `household` and any earlier year's line (`line_in`); the built-in calculators end a decedent's share of the loss carryovers after the year of the death (§2).
-- [#547](https://github.com/BobKerns/zabob-retirement/issues/547): `drawn_gain` leaves out reinvested long-term gain distributions, which draw no gain out of a lot (§3).
-- [#497](https://github.com/BobKerns/zabob-retirement/issues/497): `TaxYear.hsa_gains` (an HSA withdrawal's gain over its basis) and the memo line `hsa_taxed` the after-tax drawdown reads (§2, §3); additive, so no API bump.
-- [#265](https://github.com/BobKerns/zabob-retirement/issues/265): `Return.magi`, the `magi` line or AGI, which `irmaa` and `fill_bracket` read (§2).
-- [#489](https://github.com/BobKerns/zabob-retirement/issues/489): API 3: a state year's `excise` step, a tax apart from the income tax added after credits, and `Extra.real_estate_ltcg`, the part of a what-if's gain that is a home's, and the memo line `drawn_real_estate_gain` (§2, §3, §5).
-- [#568](https://github.com/BobKerns/zabob-retirement/issues/568): API 4: a state year's `refundable_credits` step, which can take the tax below zero, and `TaxYear.grown`, a calculator's own figure grown with inflation (§2, §5).
-- [#542](https://github.com/BobKerns/zabob-retirement/issues/542): `TaxYear.mortgages` and `TaxYear.taxes_paid` for itemized deductions, and the `tax:` tags a `mortgage_payment` and an `irmaa` rule imply; a state year's `deductions_at` step figures deductions at the year's income, and its `itemized_lines` step the itemized lines from spending, which a subclass whose `deductions` comes from a module written for API 4, or declaring no version, doesn't get (§2, §5); API 5.
-- [#586](https://github.com/BobKerns/zabob-retirement/issues/586): `taxes_paid` is what went into each state or local jurisdiction's own account, with no exceptions for tags or a shared account (§2).
-- [#579](https://github.com/BobKerns/zabob-retirement/issues/579): `StateTables`' `refundable_credits` returns its `refundable` `state_adjustments` rows, which an override merges through `super()` (§5).
-- [#580](https://github.com/BobKerns/zabob-retirement/issues/580): API 6: a state year's `separate` step, spouses filing separately on one return, taken when lower than the joint tax (§5).
-- [#593](https://github.com/BobKerns/zabob-retirement/issues/593): API 7: `TaxPaid.refunded`, `TaxYear.tax_refunded`, and `TaxYear.prior_taxes_paid`/`prior_tax_paid` (the year before's payments), for the federal return's recapture of a state or local refund (§2).
-- [#610](https://github.com/BobKerns/zabob-retirement/issues/610): API 8: a state year's `standard` `state_adjustments` rows move from `other_deductions` into `deductions`' standard deduction, except for a `deductions` written for API 7 or before (§2).
-- [#549](https://github.com/BobKerns/zabob-retirement/issues/549): API 9: a state year's `tax_lines` step, lines that show a part of its tax; `StateTables`' tax adds its `state_recapture` table (§5).
