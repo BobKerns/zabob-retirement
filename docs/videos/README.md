@@ -494,7 +494,7 @@ first, or build and publish in one step (#562):
 analysis video build 03-base-scenario --publish [--new-upload] [--dry-run]
 ```
 
-`build --publish` takes publish's `--dry-run`, `--refresh` and
+`build --publish` takes publish's `--dry-run`, `--refresh`, `--force` and
 `--new-upload`, and publishes only after a build that succeeds, always on
 this machine (the build itself may run in the container). It says so when a
 language is already up and `--new-upload` is missing, since then the rebuilt
@@ -515,6 +515,26 @@ the same goes for the videos before and after it, whose descriptions link
 to it. Privacy is never touched after the upload. YouTube can't replace a
 video's picture, so after a rebuild, `--new-upload` makes a new video (with
 a new link); delete the old one in Studio.
+
+### API quota
+
+The YouTube Data API allows a project 10,000 units a day unless Google
+grants more, and resets it at midnight Pacific (#695). An upload costs
+about 2,100: 1,600 for the video (its title, description and settings go
+in the same call), 400 for captions, 50 for the thumbnail and about 50 for
+the playlist. Updating a description costs 50. So the default quota fits
+four uploads a day.
+
+To spend less, `publish` keeps a hash of each video's title, description
+and tags in `published.toml` (`snippet`) and sends an update only when it
+changed; `--force` sends them anyway (after an edit in Studio, say).
+`--dry-run` ends with an estimate of the units the run would use.
+
+When the quota runs out, `publish` stops and says when it resets. Run the
+same command again after that: videos already up aren't uploaded again,
+and if the quota ran out between an upload and its thumbnail, captions or
+playlist, `published.toml` lists those steps under `pending` and the next
+`publish` finishes them first.
 
 ### Titles and descriptions
 

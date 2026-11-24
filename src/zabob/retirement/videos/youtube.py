@@ -18,6 +18,7 @@ neighboring videos, and a link to each other language's version from its
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -27,9 +28,10 @@ import tomllib
 import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from zabob.retirement.videos import script as scripts
 from zabob.retirement.videos.script import Script, ScriptError
@@ -113,17 +115,51 @@ class Published:
         return [(str(i), float(s)) for i, s in entry["scenes"]] if entry else None
 
     def record(self, lang: str, video: str, lengths: Sequence[tuple[str, float]], when: datetime, *,
-               save: bool = True) -> None:
-        self.langs[lang] = {"video": video, "uploaded": when, "scenes": [list(x) for x in lengths]}
+               snippet: str | None = None, pending: Sequence[str] = (), save: bool = True) -> None:
+        entry: dict[str, Any] = {"video": video, "uploaded": when, "scenes": [list(x) for x in lengths]}
+        if snippet:
+            entry["snippet"] = snippet
+        if pending:
+            entry["pending"] = list(pending)
+        self.langs[lang] = entry
         if save:
             self.save()
 
+    def sent(self, lang: str) -> str | None:
+        """The hash of the title, description and tags last sent for ``lang``."""
+        entry = self.langs.get(lang)
+        return entry.get("snippet") if entry else None
+
+    def pending(self, lang: str) -> list[str]:
+        """Steps after the upload (thumbnail, captions, playlist) still to do."""
+        entry = self.langs.get(lang)
+        return list(entry.get("pending", ())) if entry else []
+
+    def update(self, lang: str, *, snippet: str | None = None, pending: Sequence[str] | None = None) -> None:
+        entry = self.langs[lang]
+        if snippet is not None:
+            entry["snippet"] = snippet
+        if pending is not None:
+            if pending:
+                entry["pending"] = list(pending)
+            else:
+                entry.pop("pending", None)
+        self.save()
+
     def save(self) -> None:
         out = ["# What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).",
-               "# scenes: each scene's length in seconds in the build that was uploaded."]
+               "# scenes: each scene's length in seconds in the build that was uploaded.",
+               "# snippet: a hash of the title, description and tags last sent, so an",
+               "# unchanged one isn't sent again; pending: steps after the upload that",
+               "# the next publish finishes (#695)."]
         for lang, entry in self.langs.items():
             when = entry["uploaded"].strftime("%Y-%m-%dT%H:%M:%SZ")
-            out += ["", f"[{lang}]", f'video = "{entry["video"]}"', f"uploaded = {when}", "scenes = ["]
+            out += ["", f"[{lang}]", f'video = "{entry["video"]}"', f"uploaded = {when}"]
+            if entry.get("snippet"):
+                out.append(f'snippet = "{entry["snippet"]}"')
+            if entry.get("pending"):
+                out.append("pending = [" + ", ".join(f'"{step}"' for step in entry["pending"]) + "]")
+            out.append("scenes = [")
             out += [f'  ["{sid}", {float(s):.2f}],' for sid, s in entry["scenes"]]
             out.append("]")
         self.path.write_text("\n".join(out) + "\n", encoding="utf-8")
@@ -456,6 +492,35 @@ def built(s: Script, out_dir: Path) -> Built:
     return Built(video, srt, thumb, lengths)
 
 
+# What each call costs against the YouTube Data API's daily quota (10,000
+# units unless Google grants more), from its published quota table (#695).
+DAILY_QUOTA = 10_000
+UNITS = {"upload": 1600, "thumbnail": 50, "captions": 400, "playlist": 52, "update": 50}
+QUOTA_TZ = "America/Los_Angeles"  # the quota resets at midnight Pacific
+
+
+def snippet_hash(snippet: dict[str, Any]) -> str:
+    """A short, stable hash of what an update sends, to skip sending it unchanged."""
+    text = json.dumps(snippet, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def quota_reset(now: datetime | None = None) -> datetime:
+    """When the quota next resets (midnight Pacific), in this machine's time zone."""
+    pacific = ZoneInfo(QUOTA_TZ)
+    here = (now or datetime.now(UTC)).astimezone(pacific)
+    midnight = datetime.combine(here.date() + timedelta(days=1), time(), tzinfo=pacific)
+    return midnight.astimezone()
+
+
+def _youtube_error(where: str, answer: dict[str, Any], hint: str = "") -> ScriptError:
+    if answer.get("quota"):
+        reset = quota_reset().strftime("%a %H:%M %Z")
+        return ScriptError(f"{where}: YouTube's daily API quota is used up{hint}. It resets at midnight "
+                           f"Pacific ({reset} here); run the same publish again then and it carries on.")
+    return ScriptError(f"{where}: YouTube: {answer.get('error')}{hint}")
+
+
 def publish(
     folders: Sequence[Path],
     *,
@@ -465,6 +530,7 @@ def publish(
     dry_run: bool = False,
     new_upload: bool = False,
     refresh_only: bool = False,
+    force: bool = False,
     worker: Callable[[dict[str, Any], Path], dict[str, Any]] = run_worker,
     log: Callable[[str], None] = print,
 ) -> None:
@@ -476,16 +542,24 @@ def publish(
     which is yours to change in Studio, and never its picture, which
     YouTube can't replace (``new_upload`` makes a new video instead).
     ``refresh_only`` uploads nothing.
-    Descriptions link to each other, so the neighbors' are refreshed too.
+    Descriptions link to each other, so the neighbors' are refreshed too,
+    but only those whose words changed since they were last sent, unless
+    ``force``: each update costs quota (#695). Steps an upload left undone
+    (the quota ran out) are finished first.
     """
     secrets = str(secrets_dir())
     cache: dict[Path, Published] = {}
+    units = 0
 
     def lookup(folder: Path) -> Published:
         key = folder.resolve()
         if key not in cache:
             cache[key] = load_published(folder)
         return cache[key]
+
+    def media(b: Built, lang: str, meta: Metadata) -> dict[str, Any]:
+        return {"thumbnail": str(b.thumbnail), "captions": {"file": str(b.captions), "language": lang},
+                "playlist": meta.playlist}
 
     # Each (folder, language) whose description to bring up to date, in order.
     refresh: dict[tuple[Path, str], None] = {}
@@ -500,14 +574,33 @@ def publish(
             for other in neighbors(s):
                 if other is not None:
                     refresh[(other, lang)] = None
-            if refresh_only or (published.video(lang) and not new_upload):
+            video, pending = published.video(lang), published.pending(lang)
+            if video and pending and not new_upload:
+                # An earlier upload stopped after the picture went up.
+                b = built(s, out_dir)
+                meta = metadata(s, published.lengths(lang) or b.lengths, published=lookup)
+                units += sum(UNITS[step] for step in pending)
+                if dry_run:
+                    log(f"{folder.name} [{lang}]: would finish {video}: {', '.join(pending)}")
+                    continue
+                log(f"{folder.name} [{lang}]: finishing {video_url(video)}: {', '.join(pending)}...")
+                answer = worker({"secrets": secrets, "video": video, "finish": pending, **media(b, lang, meta)},
+                                repo)
+                published.update(lang, pending=answer.get("pending", pending) if answer.get("error") else [])
+                if answer.get("error"):
+                    raise _youtube_error(f"{folder.name} [{lang}]", answer)
+            if refresh_only or (video and not new_upload):
                 continue
             b = built(s, out_dir)
             meta = metadata(s, b.lengths, published=lookup)
+            units += UNITS["upload"] + UNITS["thumbnail"] + UNITS["captions"] + (UNITS["playlist"] if meta.playlist
+                                                                                   else 0)
             if dry_run:
                 log(f"{folder.name} [{lang}]: would upload {b.video.name} as {meta.privacy}, with its "
-                    f"thumbnail and captions{f', to playlist {meta.playlist!r}' if meta.playlist else ''}")
-                published.record(lang, "NEW-VIDEO", b.lengths, datetime.now(UTC), save=False)
+                    f"thumbnail and captions{f', to playlist {meta.playlist!r}' if meta.playlist else ''}:")
+                log("    " + preview(meta).rstrip().replace("\n", "\n    "))
+                published.record(lang, "NEW-VIDEO", b.lengths, datetime.now(UTC), snippet=snippet_hash(meta.snippet()),
+                                 save=False)
                 continue
             log(f"{folder.name} [{lang}]: uploading {b.video.name}...")
             request = {
@@ -517,17 +610,19 @@ def publish(
                            "recording_date": datetime.fromtimestamp(b.video.stat().st_mtime, UTC)
                            .strftime("%Y-%m-%dT00:00:00Z")},
                 "snippet": meta.snippet(),
-                "thumbnail": str(b.thumbnail),
-                "captions": {"file": str(b.captions), "language": lang},
-                "playlist": meta.playlist,
+                **media(b, lang, meta),
             }
             answer = worker(request, repo)
             video = answer.get("video")
             if video:  # even after a later step failed: it's up, so a retry mustn't upload it again
-                published.record(lang, video, b.lengths, datetime.now(UTC))
+                published.record(lang, video, b.lengths, datetime.now(UTC), snippet=snippet_hash(meta.snippet()),
+                                 pending=answer.get("pending", ()) if answer.get("error") else ())
             if answer.get("error") or not video:
-                where = f" ({video_url(video)} is up; fix it in Studio)" if video else ""
-                raise ScriptError(f"{folder.name} [{lang}]: YouTube: {answer.get('error')}{where}")
+                if video and answer.get("pending"):
+                    hint = f" ({video_url(video)} is up; publish again to add its {', '.join(answer['pending'])})"
+                else:
+                    hint = f" ({video_url(video)} is up; fix it in Studio)" if video else ""
+                raise _youtube_error(f"{folder.name} [{lang}]", answer, hint)
             log(f"  -> {video_url(video)} ({meta.privacy})")
 
     for folder, lang in refresh:
@@ -539,6 +634,11 @@ def publish(
         if s is None:
             continue
         meta = metadata(s, lengths, published=lookup)
+        sent = snippet_hash(meta.snippet())
+        if sent == published.sent(lang) and not force:
+            log(f"{folder.name} [{lang}]: title and description unchanged; not sent")
+            continue
+        units += UNITS["update"]
         if dry_run:
             log(f"{folder.name} [{lang}]: would set the title and description of {video}:")
             log("    " + preview(meta).rstrip().replace("\n", "\n    "))
@@ -549,8 +649,12 @@ def publish(
             if str(answer["error"]).startswith("404"):
                 hint = (f" (deleted in Studio? remove [{lang}] from {published.path}, "
                         "and publish uploads it again)")
-            raise ScriptError(f"{folder.name} [{lang}]: YouTube: {answer['error']}{hint}")
+            raise _youtube_error(f"{folder.name} [{lang}]", answer, hint)
+        published.update(lang, snippet=sent)
         log(f"{folder.name} [{lang}]: title and description updated ({video_url(video)})")
+    if dry_run:
+        log(f"About {units:,} API quota units (YouTube allows {DAILY_QUOTA:,} a day unless it grants more; "
+            "it resets at midnight Pacific).")
 
 
 def published_folders(videos_root: Path) -> list[Path]:
