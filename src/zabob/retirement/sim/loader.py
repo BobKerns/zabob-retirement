@@ -4919,7 +4919,7 @@ def _validate_state_retirement_exclusions(
     forms the run can read, so a typo fails at load rather than excluding
     nothing."""
     kind = registries.STATE_RETIREMENT_EXCLUSION
-    incomes = {*registries.STATE_EXCLUSION_INCOME, "all"}
+    incomes = {*registries.STATE_EXCLUSION_INCOME, registries.STATE_EXCLUSION_SS, "all"}
     tiers: set[tuple[str | None, str, str, str, str]] = set()
     for row_kind, state, payload, effective in aux_rows:
         if row_kind != kind:
@@ -4945,8 +4945,13 @@ def _validate_state_retirement_exclusions(
         _check_not_negative(where, payload, ("amount", "income_limit", "phaseout"), issues)
         if payload.get("phaseout") is not None and payload.get("income_limit") is None:
             issues.append(f"{where}: a phaseout needs the income_limit it starts at")
-        if _check_yes(where, payload, "less_ss", issues) and payload.get("amount") is None:
-            issues.append(f"{where}: less_ss needs an amount for Social Security to reduce")
+        if _check_yes(where, payload, "less_ss", issues):
+            if payload.get("amount") is None:
+                issues.append(f"{where}: less_ss needs an amount for Social Security to reduce")
+            if registries.STATE_EXCLUSION_SS in words:
+                # #613: the Social Security it covers already uses up its cap.
+                issues.append(f"{where}: give less_ss or income ss, not both; "
+                              "either counts Social Security against the cap")
         tier = (state, effective, name, str(status or ""), str(months))
         if tier in tiers:
             issues.append(f"{where}: two rows for the same exclusion, filing status and min_age")

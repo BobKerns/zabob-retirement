@@ -1885,8 +1885,21 @@ def _apply_ytd_catchups(
                     con, step_id, post_date_s, graph, to_chain, from_account, amount,
                     tax_char, tid,
                 )
+    hsa_lots = {lot for (lot,) in con.execute(
+        "SELECT l.id FROM account_lot l JOIN account a ON a.id = l.account_id "
+        "WHERE a.subkind = 'hsa'")}
     for yid, y_from, y_to, y_amount, y_tax_char, y_year in year_to_date_rows:
         row_date_s = _year_to_date_row_date(start, y_year).isoformat()
+        if y_from == y_to and y_from in hsa_lots and y_tax_char in registries.HSA_GAIN_CHARACTERS:
+            # An HSA lot's withdrawal gain over basis (#605), which only a
+            # state that taxes an HSA reads: an hsa_gain row, as the
+            # withdrawal records it (#497), with no money moved.
+            if y_amount:
+                con.execute(
+                    "INSERT INTO hsa_gain(step_id, date, lot_id, amount, tax_character, "
+                    "tax_year, reason_kind, reason_id) VALUES (?, ?, ?, ?, ?, ?, 'ytd', ?)",
+                    (step_id, row_date_s, y_from, y_amount, y_tax_char, y_year, yid))
+            continue
         _post_ytd_transfer(
             con, step_id, row_date_s, y_from, y_to, y_amount, y_tax_char, "ytd", yid,
         )

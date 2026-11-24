@@ -11,7 +11,6 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import pytest
 
 from zabob.retirement.sim import registries
@@ -29,31 +28,9 @@ def _query(db: Path, sql: str, *args: Any) -> list[tuple]:
 
 
 @pytest.fixture
-def hsa_scenario(retire_alice_csv: Callable[[str], Path], write_series: Callable[[str, str], Path],
-                 add_state_tax: Callable[..., None], append_calendar_row: Callable[..., None]) -> None:
-    """Alice's HSA in California: $10,000 with a $6,000 basis, growing 6% a
-    year at ``hsa_fund``, 2% of it paid out as interest, and a $3,000
-    qualified medical withdrawal in June 2027."""
-    add_state_tax()
-    accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
-    accounts.loc[len(accounts)] = {
-        **dict.fromkeys(accounts.columns, ""),
-        "name": HSA, "kind": "asset", "subkind": "hsa", "owner": "alice",
-        "tax_treatment": "tax_deferred", "tax_character": "deferred",
-        "opened": "2020-01-31", "meta_json": "{}"}
-    accounts.to_csv(retire_alice_csv("accounts.csv"), index=False)
-    lots = pd.read_csv(retire_alice_csv("account_lots.csv"), dtype=str, keep_default_na=False)
-    lots.loc[len(lots)] = {
-        **dict.fromkeys(lots.columns, ""),
-        "account_name": HSA, "lot": "default", "series": "hsa_fund",
-        "opening_balance": "10000.00", "opening_cost_basis": "6000.00"}
-    lots.to_csv(retire_alice_csv("account_lots.csv"), index=False)
-    write_series("hsa_fund", "2026-01-31,6%")
-    write_series("hsa_fund_yield", "2026-01-31,2%")
-    append_calendar_row(
-        date="2027-06-30", kind="one_off_transfer", account_1=HSA, lot_1="default",
-        account_2="Expense_Healthcare", amount="3000.00", tax_character="none",
-        description="a qualified medical expense")
+def hsa_scenario(add_hsa: Callable[[str], str]) -> None:
+    """Alice's HSA in California (``add_hsa``), withdrawn from in June 2027."""
+    assert add_hsa("2027-06-30") == HSA
 
 
 def _lot(run: Path, month: str) -> tuple[int, int]:

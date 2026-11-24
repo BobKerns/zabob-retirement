@@ -205,6 +205,11 @@ class ProjectedRow:
 # or a refund).
 _NOT_PROJECTED = ("initial", "tax", "ytd", "ytd_rule")
 
+_GAINS_NOT_PROJECTED = ("initial", "ytd", "ytd_rule")
+"""An HSA gain's reasons a roll leaves out (#605): unlike its transfer leg, a
+gain realized by a tax payment drawn from the HSA is new income in the year
+it was paid, not part of a year already settled."""
+
 
 def projected_year_to_date(rc: RunConnection, old_start: str, new_start: str) -> list[ProjectedRow]:
     """The old run's flows from ``old_start`` (``YYYY-MM``, its first month)
@@ -230,10 +235,22 @@ def projected_year_to_date(rc: RunConnection, old_start: str, new_start: str) ->
         "GROUP BY 1, 2, 3, 4, 5, 6 HAVING SUM(t.amount) != 0 ORDER BY 1, 2, 3, 4, 5, 6",
         (f"{old_start}-01", f"{new_start}-01", *_NOT_PROJECTED, str(new_year)),
     )
-    if frame.empty:
-        return []
+    # An HSA withdrawal's gain over basis (#497) is no transfer leg, so only
+    # a state that taxes an HSA would miss it (#605): it projects as a row
+    # from the lot to itself, which the loader reads back as one.
+    gains = rc._read_sql(
+        "SELECT COALESCE(g.tax_year, CAST(substr(g.date, 1, 4) AS INTEGER)) AS year, "
+        "a.name AS from_account, l.lot AS from_lot, a.name AS to_account, l.lot AS to_lot, "
+        "g.tax_character, SUM(g.amount) AS amount "
+        "FROM hsa_gain g JOIN account_lot l ON l.id = g.lot_id "
+        "JOIN account a ON a.id = l.account_id "
+        "WHERE g.date >= ? AND g.date < ? "
+        f"AND g.reason_kind NOT IN ({', '.join('?' * len(_GAINS_NOT_PROJECTED))}) "
+        "GROUP BY 1, 2, 3, 6 HAVING SUM(g.amount) != 0 ORDER BY 1, 2, 3, 6",
+        (f"{old_start}-01", f"{new_start}-01", *_GAINS_NOT_PROJECTED),
+    )
     found = []
-    for row in named_rows(frame):
+    for row in [*named_rows(frame), *named_rows(gains)]:
         year = int(row.year)
         if year < new_year - 1 or year > new_year:
             continue

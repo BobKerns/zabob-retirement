@@ -565,7 +565,8 @@ class ExclusionGrant(NamedTuple):
     """One person's exclusion (#486), before the household income is known."""
     person: str
     income: tuple[str, ...]
-    """The ``STATE_EXCLUSION_INCOME`` kinds it covers, in the order it uses them."""
+    """The ``STATE_EXCLUSION_INCOME`` kinds it covers, and ``STATE_EXCLUSION_SS``
+    where Social Security uses up its cap (#613), in the order it uses them."""
     cap: int | None
     """The most it excludes; None for all of it."""
     income_limit: int | None
@@ -590,13 +591,14 @@ class RetirementExclusion(NamedTuple):
     grants: tuple[ExclusionGrant, ...] = ()
     net_gain: int = 0
 
-    def excluded(self, ordinary: int, ltcg: int) -> tuple[int, int]:
+    def excluded(self, ordinary: int, ltcg: int,
+                 ss: Mapping[str, tuple[int, int]] | None = None) -> tuple[int, int]:
         """How much of ``ordinary`` income and ``ltcg`` the exclusions take
         off (``split``, without its short-term part)."""
-        return self.split(ordinary, ltcg)[:2]
+        return self.split(ordinary, ltcg, ss=ss)[:2]
 
-    def split(self, ordinary: int, ltcg: int,
-              net_gain: int | None = None) -> tuple[int, int, int]:
+    def split(self, ordinary: int, ltcg: int, net_gain: int | None = None,
+              ss: Mapping[str, tuple[int, int]] | None = None) -> tuple[int, int, int]:
         """How much of ``ordinary`` income and ``ltcg`` the exclusions take
         off, with household income ``ordinary + ltcg`` for their income
         tests, and how much of the ordinary part is short-term gain;
@@ -605,20 +607,29 @@ class RetirementExclusion(NamedTuple):
         actually leaves out, so a later one can cover what an earlier one's
         test denied. Gain beyond the net capital gain (a loss offset it)
         isn't left out at all; the rest comes off the long-term gain first,
-        and never more than there is."""
-        return self.split_by_person(ordinary, ltcg, net_gain)[:3]
+        and never more than there is. ``ss`` is each person's Social
+        Security, for a grant covering it (:meth:`split_by_person`); without
+        it such a grant finds none, and its cap is left whole for the rest."""
+        return self.split_by_person(ordinary, ltcg, net_gain, ss)[:3]
 
     def split_by_person(
         self, ordinary: int, ltcg: int, net_gain: int | None = None,
-    ) -> tuple[int, int, int, dict[str, tuple[int, int]]]:
+        ss: Mapping[str, tuple[int, int]] | None = None,
+    ) -> tuple[int, int, int, dict[str, tuple[int, int]], dict[str, int]]:
         """:meth:`split`, and what each person's grants leave out before its
         caps at the income, with how much of that is their gain (#580):
         whose share of the exclusion it is, and of which kind, for a spouse
-        filing separately. One walk of the grants serves both."""
+        filing separately. One walk of the grants serves both.
+
+        ``ss`` is each person's Social Security for a grant covering
+        ``ss`` (#613): their federally taxable amount, which uses up the
+        cap, and what of it the state still taxes, which is all the grant
+        leaves out; the last part returned is what it leaves out of each
+        person's."""
         if not self.grants:
-            return 0, 0, 0, {}
+            return 0, 0, 0, {}, {}
         income = ordinary + ltcg
-        granted = self._granted(income, net_gain)
+        granted, off_ss = self._granted(income, net_gain, ss or {})
         total = sum(amount for amount, _ in granted.values())
         gains = sum(gain for _, gain in granted.values())
         total = min(total, max(0, income))
@@ -629,12 +640,19 @@ class RetirementExclusion(NamedTuple):
         # Gain left out past the long-term gain is short-term gain, which is
         # part of ordinary income: a state's short-term rates (#485) skip it.
         off_short = min(max(0, gains - off_ltcg), off_ordinary)
-        return off_ordinary, off_ltcg, off_short, granted
+        return off_ordinary, off_ltcg, off_short, granted, off_ss
 
-    def _granted(self, income: int, net_gain: int | None) -> dict[str, tuple[int, int]]:
+    def _granted(
+        self, income: int, net_gain: int | None, ss: Mapping[str, tuple[int, int]],
+    ) -> tuple[dict[str, tuple[int, int]], dict[str, int]]:
         """Each person's grants' total at a household ``income``, and how
-        much of it is gain (:meth:`split`)."""
+        much of it is gain (:meth:`split`); and what they leave out of each
+        person's Social Security, which isn't in that total."""
         pools = {person: dict(by_kind) for person, by_kind in self.pools.items()}
+        for person, by_kind in pools.items():
+            by_kind[registries.STATE_EXCLUSION_SS] = max(0, ss.get(person, (0, 0))[0])
+        ss_taxed = {person: max(0, ss.get(person, (0, 0))[1]) for person in pools}
+        off_ss = dict.fromkeys(pools, 0)
         out: dict[str, tuple[int, int]] = {}
         gains = 0
         gain_limit = max(0, self.net_gain if net_gain is None else net_gain)
@@ -650,16 +668,23 @@ class RetirementExclusion(NamedTuple):
                 eligible = min(eligible, grant.cap)
             granted = grant.after_income_test(eligible, income)
             total, gain = out.get(grant.person, (0, 0))
-            total += granted
             for kind, amount in covered:
                 take = min(amount, granted)
                 left[kind] -= take
                 granted -= take
+                if kind == registries.STATE_EXCLUSION_SS:
+                    # The cap is used up by the taxable benefits; what the
+                    # state's own table excluded already isn't left out again.
+                    off = min(take, ss_taxed[grant.person])
+                    ss_taxed[grant.person] -= off
+                    off_ss[grant.person] += off
+                    continue
+                total += take
                 if kind == "capital_gain":
                     gains += take
                     gain += take
             out[grant.person] = (total, gain)
-        return out
+        return out, off_ss
 
 
 _EXCLUSION_POOL_BY_CHARACTER: dict[str, tuple[str, int]] = {

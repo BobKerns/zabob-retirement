@@ -57,7 +57,7 @@ STATES: tuple[State, ...] = (
     State("AZ", "Arizona", PARTIAL),
     State("AR", "Arkansas", PARTIAL),
     State("CA", "California", SHIPPED),
-    State("CO", "Colorado", PARTIAL),
+    State("CO", "Colorado", TABLES_NEEDED),
     State("CT", "Connecticut", PARTIAL),
     State("DE", "Delaware", TABLES_NEEDED),
     State("DC", "District of Columbia", SHIPPED),

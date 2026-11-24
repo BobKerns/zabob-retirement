@@ -103,6 +103,11 @@ follows every rule, so no rule's order is tied to it. ``fill_bracket``'s
 conversions come last: an RMD can't be converted, so it must come out first,
 and the conversion's target needs the year's whole income."""
 
+HSA_GAIN_CHARACTERS: tuple[str, ...] = ("ltcg", "stcg")
+"""The characters of an HSA withdrawal's gain over basis (``hsa_gain``,
+#497), and of a year_to_date.csv row from an HSA lot to itself that
+carries one (#605)."""
+
 # Canonical year_to_date.csv column order (ADR-003 §4.10).
 YEAR_TO_DATE_CSV_HEADER: tuple[str, ...] = (
     "name", "from_account", "from_lot", "to_account", "to_lot", "amount",
@@ -676,7 +681,18 @@ in the order a row that covers several uses them up: ordinary income from a
 ``dividend``, ``qualified_dividend`` legs); a
 ``retirement_account`` distribution (``tax_deferred_out``, ``roth_nonqualified``);
 a ``capital_gain`` (``stcg``/``ltcg``); and ``other``, the rest of the state's
-taxable income. ``all`` in a row stands for every one of them."""
+taxable income. ``all`` in a row stands for every one of them.
+
+A row may also cover ``ss`` (:data:`STATE_EXCLUSION_SS`, #613), which
+``all`` doesn't stand for."""
+
+STATE_EXCLUSION_SS = "ss"
+"""The Social Security a ``state_retirement_exclusion`` row may cover
+(#613): Colorado's pension subtraction counts each person's taxable Social
+Security against its cap. It uses up the cap by the person's federally
+taxable Social Security, but leaves out only what the
+``state_social_security`` table left taxed, so the two never subtract the
+same dollar."""
 
 STATE_ADJUSTMENTS = "state_adjustments"
 """The aux kind of a state's own deductions and credits (#511, #488), keyed
