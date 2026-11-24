@@ -1,33 +1,38 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "WeRm1pjYMT4"
-uploaded = 2026-11-11T19:04:03Z
+video = "OhfOeNORB68"
+uploaded = 2026-11-23T20:21:52Z
+snippet = "b1b6a47e9365cfde"
 scenes = [
-  ["title", 11.81],
-  ["contents", 12.85],
-  ["recap", 23.44],
-  ["trips", 71.68],
-  ["where", 24.32],
-  ["class", 28.16],
-  ["year-start", 29.23],
-  ["scale", 25.89],
-  ["rules", 25.80],
-  ["check", 65.04],
-  ["use", 24.21],
-  ["futures", 43.16],
-  ["compare", 34.49],
-  ["lumpy", 22.25],
-  ["tradeoff", 22.08],
-  ["nb", 14.59],
-  ["ai", 14.62],
-  ["end", 8.29],
+  ["title", 13.73],
+  ["contents", 14.74],
+  ["recap", 26.39],
+  ["trips", 72.40],
+  ["where", 28.35],
+  ["class", 31.44],
+  ["year-start", 32.84],
+  ["scale", 29.67],
+  ["rules", 28.30],
+  ["check", 65.52],
+  ["use", 27.99],
+  ["futures", 44.00],
+  ["compare", 38.61],
+  ["lumpy", 26.07],
+  ["tradeoff", 25.11],
+  ["nb", 16.06],
+  ["ai", 16.71],
+  ["end", 9.53],
 ]
 
 [ja]
 video = "rs4Ya5Dq6-Q"
 uploaded = 2026-11-11T19:04:19Z
+snippet = "dbfb354e45f1ccc9"
 scenes = [
   ["title", 15.82],
   ["contents", 15.79],
