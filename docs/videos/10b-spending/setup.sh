@@ -100,7 +100,7 @@ demo_batch() {
     local batch
     batch="$(ls -t "state/runs/$1/monte-carlo" | head -1)"
     mv "state/runs/$1/monte-carlo/$batch" "state/runs/$1/monte-carlo/$2"
-    mv "state/intent/$1/$batch" "state/intent/$1/$2" 2>/dev/null || true
+    mv "state/intent/$1/monte-carlo/$batch" "state/intent/$1/monte-carlo/$2" 2>/dev/null || true
 }
 
 # 10a's rebalance scenario, as that video makes it.
