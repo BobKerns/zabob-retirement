@@ -86,22 +86,22 @@ jobs:
           printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/pr.txt"
           scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/pr.txt"
 
-  python:
-    name: Tests and lint
+  # Which jobs below have work to do. A change that only touches prose or
+  # editor settings can't change a test, lint or type result, so those jobs
+  # skip. The list names what may skip, not what must run, so a new directory
+  # is tested by default.
+  changes:
+    name: Changed files
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.changes.outputs.needed }}
     steps:
       - uses: actions/checkout@v7
         with:
           # The base commit, to list the changed files.
           fetch-depth: 0
 
-      # A change that only touches prose or editor settings can't change a
-      # test, lint or type result, so the rest of the job is skipped. The job
-      # itself still runs and passes: it is a required check, and a check
-      # skipped by a workflow-level paths filter never reports at all. The
-      # list names what may skip, not what must run, so a new directory is
-      # tested by default.
       - name: Changed files
         id: changes
         env:
@@ -132,15 +132,30 @@ jobs:
           echo "Tests needed: $needed"
           echo "needed=$needed" >> "$GITHUB_OUTPUT"
 
+  # The suite in four parallel shards, balanced by the test times in
+  # tests/.test_durations (pytest-split). A test missing from that file counts
+  # as an average one, so the file only needs refreshing when the shards drift
+  # apart: `pytest -n auto --store-durations --durations-path tests/.test_durations`.
+  tests:
+    name: Tests (${{ matrix.group }}/4)
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one run lists every failure.
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
       - uses: astral-sh/setup-uv@v7
-        if: steps.changes.outputs.needed == 'true'
         with:
           # Pinned: an unpinned setup asks the GitHub API for the latest
           # release on every run, and fails the job when that times out.
           version: "0.12.23"
 
       - name: Install Python and dependencies
-        if: steps.changes.outputs.needed == 'true'
         # uv reads the pinned version from .python-version.
         run: |
           uv python install
@@ -148,21 +163,62 @@ jobs:
 
       # The same data/private layout a developer has, from templates/.
       - name: Template data repo
-        if: steps.changes.outputs.needed == 'true'
         run: scripts/link-data.sh --template
 
       - name: Tests
-        if: steps.changes.outputs.needed == 'true'
-        run: uv run --no-sync python -m pytest -q -n auto
+        run: >-
+          uv run --no-sync python -m pytest -q -n auto
+          --splits 4 --group ${{ matrix.group }}
+          --durations-path tests/.test_durations
+
+  lint:
+    name: Lint and types
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.23"
+
+      - name: Install Python and dependencies
+        run: |
+          uv python install
+          uv sync --locked --group dev
 
       - name: Lint
-        if: steps.changes.outputs.needed == 'true'
         run: uv run --no-sync ruff check src tests plugins
 
       - name: Types
         # Run even when lint fails, so one run reports both.
-        if: ${{ !cancelled() && steps.changes.outputs.needed == 'true' }}
+        if: ${{ !cancelled() }}
         run: uv run --no-sync ty check
+
+  # The required check. It passes when the shards and lint passed, or when
+  # the change needed none of them; the ruleset names only this job, so the
+  # shard count can change without touching it.
+  python:
+    name: Tests and lint
+    needs: [changes, tests, lint]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          NEEDED: ${{ needs.changes.outputs.needed }}
+          TESTS: ${{ needs.tests.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          echo "Changed files: $CHANGES (tests needed: $NEEDED)"
+          echo "Tests: $TESTS"
+          echo "Lint and types: $LINT"
+          if [ "$CHANGES" != success ]; then exit 1; fi
+          if [ "$NEEDED" = true ] && { [ "$TESTS" != success ] || [ "$LINT" != success ]; }; then
+              exit 1
+          fi
 
   docs:
     name: Spelling and markdown
