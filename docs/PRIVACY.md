@@ -5,8 +5,8 @@ Effective 2026-11-24.
 Zabob Retirement is free, open-source software that runs on your own
 computer. Nobody operates it as a service. It has no accounts and no
 analytics, and it sends nothing to its developer. This policy describes what
-the software does with your data, including the part of it that uses the
-YouTube API Services.
+the software does with your data, including the video publishing tool that uses
+the YouTube API Services.
 
 ## Your planning data
 
@@ -33,15 +33,18 @@ GitHub and the Python package index.
 
 ## YouTube API Services
 
+This section applies only if you fork the project and choose to upload your
+own videos to your own YouTube channel. Using the simulator, or watching the
+project's videos, never involves it.
+
 The project's instructional videos are published with a tool in this
 repository (`analysis video publish`) that uses the YouTube API Services.
-By using it, you agree to be bound by the
+If you use it, you agree to be bound by the
 [YouTube Terms of Service](https://www.youtube.com/t/terms), and Google's
 handling of your data is governed by the
-[Google Privacy Policy](https://policies.google.com/privacy).
-
-The tool is used by the channel owner to upload and update their own
-videos. When you run it:
+[Google Privacy Policy](https://policies.google.com/privacy). It acts only
+on the channel you sign in to, with your own Google API project. When you
+run it:
 
 - **What it accesses.** You sign in with Google (OAuth) and grant it access
   to your YouTube account. It uses that access only to upload the videos you
