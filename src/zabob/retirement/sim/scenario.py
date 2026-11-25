@@ -58,7 +58,7 @@ A file here replaces the parent scenario's file of the same name; a series
 with no file here is inherited from the parent. A file with only its
 header empties the series: this scenario has none, and a scenario built on
 it that reads the series must supply its own. CPI is the exception: it
-lives in `aux/inflation__cpi.csv`, not here.
+lives in `tables/inflation__cpi.csv`, not here.
 
 `sim series list|show|add|edit|delete|revert` read and change these files.
 

@@ -1,5 +1,5 @@
 """``sim deduction add|list|edit|delete`` (#370): one itemized total per
-tax year in the scenario's own aux/federal_deductions.csv (or
+tax year in the scenario's own tables/federal_deductions.csv (or
 state_deductions.csv), with an itemization of the year's expenses beside it.
 An inherited file is copied into the scenario before it changes."""
 
@@ -36,7 +36,7 @@ def _items(path: Path) -> list[tuple[str, str]]:
 
 
 def _own(data: Path, scenario: str, kind: str = "federal_deductions") -> Path:
-    return data / "scenarios" / scenario / "aux" / f"{kind}.csv"
+    return data / "scenarios" / scenario / "tables" / f"{kind}.csv"
 
 
 def test_add_lists_the_items_and_references_them(test_data_dir: Path) -> None:

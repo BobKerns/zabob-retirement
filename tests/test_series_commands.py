@@ -51,7 +51,7 @@ def test_list_says_where_each_series_comes_from(sim: Callable[..., Result]) -> N
     assert "rate" in line and "6%" in line and "retire_alice" in line
     food = next(line for line in result.output.splitlines() if " food " in line)
     assert "inflation" in food and "t_inflation_series" in food
-    assert "aux/inflation__cpi.csv" in result.output
+    assert "tables/inflation__cpi.csv" in result.output
     rates = sim("series", "list", "--kind", "rate")
     assert " food " not in rates.output and " brokerage_growth " in rates.output
 
@@ -122,7 +122,7 @@ def test_editing_cpi_overrides_the_shared_file_in_the_scenarios_aux(
 ) -> None:
     result = sim("series", "edit", "cpi", "--set", "2027-01=3%")
     assert result.exit_code == 0, result.output
-    assert (test_scenarios_dir / "retire_alice" / "aux" / "inflation__cpi.csv").is_file()
+    assert (test_scenarios_dir / "retire_alice" / "tables" / "inflation__cpi.csv").is_file()
 
 
 def test_guided_edit_changes_adds_and_removes_rows(sim: Callable[..., Result], series_dir: Path) -> None:
@@ -280,9 +280,9 @@ def test_the_rate_at_the_start_follows_dates_not_file_order(sim: Callable[..., R
 
 def test_delete_empties_a_series_in_both_folders(sim: Callable[..., Result], test_scenarios_dir: Path,
                                                  series_dir: Path) -> None:
-    """The loader reads a name's series/ and aux/ files both, so emptying
+    """The loader reads a name's series/ and tables/ files both, so emptying
     only one would leave rates the run still uses."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
     result = sim("series", "delete", "food", "--yes")
@@ -298,7 +298,7 @@ def test_the_rate_at_the_start_counts_a_same_named_aux_file(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
     # The loader reads both files; the later dated row is the one in force.
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
     line = next(line for line in sim("series", "list").output.splitlines() if " brokerage_growth " in line)
@@ -308,12 +308,12 @@ def test_the_rate_at_the_start_counts_a_same_named_aux_file(
 def test_revert_finds_an_override_in_the_scenarios_aux(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    """series/ is inherited, but the child's aux/ has its own file of the name."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    """series/ is inherited, but the child's tables/ has its own file of the name."""
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
-    # Inherited from a parent's aux/ as well, so there is something to revert to.
-    base_aux = test_scenarios_dir / "base" / "aux"
+    # Inherited from a parent's tables/ as well, so there is something to revert to.
+    base_aux = test_scenarios_dir / "base" / "tables"
     base_aux.mkdir(exist_ok=True)
     (base_aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,1%\n")
     result = sim("series", "revert", input="food\n")
@@ -350,20 +350,20 @@ def test_list_gives_a_template_scenarios_rate_at_the_start(sim: Callable[..., Re
 def test_show_lists_each_folders_file_the_loader_reads(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
     result = sim("series", "show", "brokerage_growth")
     assert result.exit_code == 0, result.output
     assert "series/rate__brokerage_growth.csv" in result.output
-    assert "aux/rate__brokerage_growth.csv" in result.output
+    assert "tables/rate__brokerage_growth.csv" in result.output
     assert "2026-03" in result.output and "2%" in result.output
 
 
 def test_edit_refuses_a_series_with_rates_in_two_folders(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
     before = (series_dir / "rate__brokerage_growth.csv").read_text()
@@ -393,8 +393,8 @@ def test_guided_edit_keeps_a_changed_rows_other_cells(sim: Callable[..., Result]
 def test_revert_drops_an_own_aux_file_beside_an_inherited_series_file(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    """Only series/ is inherited; the child's own file is in aux/."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    """Only series/ is inherited; the child's own file is in tables/."""
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
     result = sim("series", "revert", input="food\n")
@@ -406,9 +406,9 @@ def test_revert_drops_an_own_aux_file_beside_an_inherited_series_file(
 def test_edit_changes_the_only_folders_file_with_rates(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
-    """series/ holds an empty file; aux/ holds the rates the loader reads."""
+    """series/ holds an empty file; tables/ holds the rates the loader reads."""
     (series_dir / "rate__spare.csv").write_text(_HEADER)
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n")
     result = sim("series", "edit", "spare", "--remove", "2030-01")
@@ -443,11 +443,11 @@ def test_list_counts_and_names_every_folders_file_with_rates(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
     (series_dir / "rate__spare.csv").write_text(_HEADER)
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
     (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n")
     line = next(line for line in sim("series", "list").output.splitlines() if " spare " in line)
-    assert " 2 " in line and "aux/rate__spare.csv" in line and "series/rate__spare.csv" not in line, line
+    assert " 2 " in line and "tables/rate__spare.csv" in line and "series/rate__spare.csv" not in line, line
 
 
 def test_edit_uses_the_rows_on_disk_after_asking_for_the_name(

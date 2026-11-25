@@ -33,7 +33,7 @@ HEADER = "effective_date,name,income,min_age,amount,filing_status,income_limit,p
 
 
 def _exclusions(repo: Path, rows: str) -> None:
-    (repo / "aux" / "state_retirement_exclusion__CA.csv").write_text(
+    (repo / "tables" / "state_retirement_exclusion__CA.csv").write_text(
         HEADER + rows, encoding="utf-8")
 
 
@@ -248,10 +248,10 @@ def test_a_move_takes_the_new_states_exclusions(
     with none excludes nothing."""
     _exclusions(state_ira, "2025-01,retirement,retirement_account,,,,,,\n")
     for state in ("WA", "NY"):
-        (state_ira / "aux" / f"state_brackets__{state}.csv").write_text(
+        (state_ira / "tables" / f"state_brackets__{state}.csv").write_text(
             "effective_date,filing_status,bracket_index,floor,marginal_rate\n"
             "2026-01-31,MFJ,0,0.00,1%\n", encoding="utf-8")
-    (state_ira / "aux" / "state_retirement_exclusion__NY.csv").write_text(
+    (state_ira / "tables" / "state_retirement_exclusion__NY.csv").write_text(
         HEADER + "2025-01,pension,retirement_account,59.5,20000,,,,\n", encoding="utf-8")
     for date, state in (("2028-03", "WA"), ("2030-03", "NY")):
         add_residence(date, state)
@@ -326,10 +326,10 @@ def test_a_move_to_a_state_whose_exclusions_start_later(
     """A new state's exclusion table dated after the move takes over on its
     own date, and the move doesn't fail for it."""
     _exclusions(state_ira, "2025-01,retirement,retirement_account,,,,,,\n")
-    (state_ira / "aux" / "state_brackets__NY.csv").write_text(
+    (state_ira / "tables" / "state_brackets__NY.csv").write_text(
         "effective_date,filing_status,bracket_index,floor,marginal_rate\n"
         "2026-01-31,MFJ,0,0.00,1%\n", encoding="utf-8")
-    (state_ira / "aux" / "state_retirement_exclusion__NY.csv").write_text(
+    (state_ira / "tables" / "state_retirement_exclusion__NY.csv").write_text(
         HEADER + "2030-01,pension,retirement_account,,5000,,,,\n", encoding="utf-8")
     add_residence("2028-03", "NY")
     con, _ = _run(state_ira, tmp_path)
@@ -390,7 +390,7 @@ def test_state_taxable_social_security_reads_income_before_the_exclusion(
     """A state that taxes Social Security (#484) starts from the federally
     taxable amount, which the state's own retirement exclusion doesn't
     change: the IRA draw it leaves out still counts toward it."""
-    (state_ira / "aux" / "state_social_security__CA.csv").write_text(
+    (state_ira / "tables" / "state_social_security__CA.csv").write_text(
         "effective_date,filing_status,exclusion_percent,phaseout_start,phaseout_end,"
         "phaseout_rate\n2020-01-31,MFJ,0%,,,\n2020-01-31,Single,0%,,,\n", encoding="utf-8")
     _exclusions(state_ira, "2025-01,retirement,retirement_account,,,,,,\n")
@@ -444,7 +444,7 @@ def test_load_rejects_an_exclusion_table_without_a_state(
     test_data_dir: Path, tmp_path: Path,
 ) -> None:
     """An empty suffix names no state, so no rule would read its rows."""
-    (test_data_dir / "aux" / "state_retirement_exclusion__.csv").write_text(
+    (test_data_dir / "tables" / "state_retirement_exclusion__.csv").write_text(
         HEADER + "2025-01,x,pension,,,,,,\n", encoding="utf-8")
     with pytest.raises(LoadError, match="name the state"):
         load_scenario(test_data_dir, "retire_alice", intent_dir=tmp_path / "intent",

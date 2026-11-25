@@ -547,7 +547,7 @@ KINDS: tuple[KindSpec, ...] = (
             Field(
                 "source_series", "replacement series",
                 choices=lambda ctx, answers: list(ctx.series.get(answers.get("aux_kind", ""), ())),
-                help="The table that takes over, aux/<kind>__<series>.csv or "
+                help="The table that takes over, tables/<kind>__<series>.csv or "
                      "series/<kind>__<series>.csv.",
             ),
             Field(

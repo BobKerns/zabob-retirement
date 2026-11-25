@@ -43,7 +43,7 @@ def test_ensemble_disable_refuses_a_plain_scenario(test_data_dir: Path) -> None:
 
 
 def test_disable_refuses_what_is_not_a_scenario_folder(test_data_dir: Path) -> None:
-    result = _sim(test_data_dir, "scenario", "disable", "../aux")
+    result = _sim(test_data_dir, "scenario", "disable", "../tables")
     assert result.exit_code != 0 and "scenario not found" in result.output
 
 

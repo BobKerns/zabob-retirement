@@ -1,4 +1,4 @@
-"""The code repository's templates/aux/ as the lowest aux tier, and the
+"""The code repository's templates/tables/ as the lowest aux tier, and the
 household's filing status checked at load (#317)."""
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _aux_kinds(intent: Path) -> set[str]:
 def test_a_data_repo_without_aux_tables_reads_the_templates(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    for path in (test_data_dir / "aux").glob("*.csv"):
+    for path in (test_data_dir / "tables").glob("*.csv"):
         if path.name != "filing_status.csv":
             path.unlink()
 
@@ -64,7 +64,7 @@ def test_a_tax_without_a_filing_status_fails_the_load(
     add_state_tax()
     write_aux("filing_status.csv", "effective_date,filing_status\n")
 
-    with pytest.raises(LoadError, match=r"taxes/\w+\.csv.*aux/filing_status\.csv has no row"):
+    with pytest.raises(LoadError, match=r"taxes/\w+\.csv.*tables/filing_status\.csv has no row"):
         load_test_copy()
 
 
@@ -97,7 +97,7 @@ def test_check_verbose_names_aux_files_that_copy_the_templates(test_data_dir: Pa
                                        "--data-dir", str(test_data_dir)])
 
     assert result.exit_code == 0, result.output
-    assert "note: aux/federal_brackets.csv is the same as templates/aux/federal_brackets.csv" in result.output
+    assert "note: tables/federal_brackets.csv is the same as templates/tables/federal_brackets.csv" in result.output
 
 
 # ---------- the template tables are complete (#319) ----------

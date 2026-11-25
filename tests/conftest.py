@@ -789,7 +789,7 @@ def write_lifespans(retire_alice_csv: Callable[[str], Path]) -> Callable[..., No
 @pytest.fixture(scope="function")
 def write_life_table(test_data_dir: Path) -> Callable[[str, str], Path]:
     """Write a life table CSV in the private data copy, at a path relative to
-    it (``scenarios/retire_alice/aux/life_table__jp.csv``), from rows of
+    it (``scenarios/retire_alice/tables/life_table__jp.csv``), from rows of
     ``effective_date,age,q_female,q_male`` after the header."""
     def _write(where: str, rows: str) -> Path:
         path = test_data_dir / where
@@ -947,7 +947,7 @@ def depreciating_car(test_data_dir: Path, retire_alice_csv: Callable[[str], Path
     """Add ``Asset_Car`` to the private retire_alice copy: a $30,000 vehicle
     whose ``jalopy`` rate series is -12% a year, so its value drains into the
     built-in ``depreciation`` expense account (ADR-003 §2.2). Returns its name."""
-    (test_data_dir / "aux" / "rate__jalopy.csv").write_text(
+    (test_data_dir / "tables" / "rate__jalopy.csv").write_text(
         "effective_date,annual_rate\n2020-01-31,-12%\n", encoding="utf-8")
     accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
     accounts.loc[len(accounts)] = {
@@ -1180,9 +1180,9 @@ def write_guard_rails(retire_alice_csv: Callable[[str], Path]) -> Callable[..., 
 
 @pytest.fixture(scope="function")
 def write_aux(test_data_dir: Path) -> Callable[[str, str], Path]:
-    """Write a file into the private data copy's ``aux/`` directory."""
+    """Write a file into the private data copy's ``tables/`` directory."""
     def _write(filename: str, text: str) -> Path:
-        path = test_data_dir / "aux" / filename
+        path = test_data_dir / "tables" / filename
         path.write_text(text)
         return path
     return _write
@@ -1506,7 +1506,7 @@ def two_lot_run_file(test_data_dir: Path, retire_alice_csv: Callable[[str], Path
     calendar = retire_alice_csv("calendar.csv")
     calendar.write_text(calendar.read_text().replace(
         ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"))
-    (test_data_dir / "aux" / "rate__AAA.csv").write_text(
+    (test_data_dir / "tables" / "rate__AAA.csv").write_text(
         "effective_date,annual_rate\n2026-01-31,2%\n")
     (retire_alice_csv("chains/source") / "lotb.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence\nAsset_Brokerage_Joint,b,,,,\n")
@@ -2318,7 +2318,7 @@ def fake_state(intent_dir: Path, runs_dir: Path) -> Callable[..., Path]:
 
 @pytest.fixture(scope="function")
 def without_template_aux(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hide the code repository's templates/aux/ (#317) from the loader, so a
+    """Hide the code repository's templates/tables/ (#317) from the loader, so a
     test that deletes one of the private copy's aux tables sees it missing
     instead of the template's copy filling in."""
     monkeypatch.setattr("zabob.retirement.sim.loader.TEMPLATE_AUX_DIR", tmp_path_factory.mktemp("no_template_aux"))
@@ -2334,7 +2334,7 @@ def state_tax_without_its_deduction(
     "state tax uses the federal standard deduction". The prototype's idle
     latent factors add their one note on things defined but not read yet."""
     add_state_tax()
-    (test_data_dir / "aux" / "state_standard_deduction__CA.csv").unlink()
+    (test_data_dir / "tables" / "state_standard_deduction__CA.csv").unlink()
 
 
 @pytest.fixture(scope="session")

@@ -90,7 +90,7 @@ def test_rows_merge_by_date_over_the_lineage(
     (("2028-01", "XX"), r"residence.csv line 3: state 'XX' is not a state's or territory's"),
     (("", "OR"), r"residence.csv line 3: effective_date is required"),
     (("2026-05", "OR"), r"residence.csv line 3: duplicate effective_date"),
-    (("2028-01", "NY"), r"residence.csv line 3: no aux/state_brackets__NY.csv for New York \(NY\)"),
+    (("2028-01", "NY"), r"residence.csv line 3: no tables/state_brackets__NY.csv for New York \(NY\)"),
 ])
 def test_the_loader_checks_each_row(
     row: tuple[str, str], message: str, add_state_tax: Callable[..., None],

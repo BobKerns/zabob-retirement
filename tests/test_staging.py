@@ -112,7 +112,7 @@ def test_interrupted_edit_writes_nothing(test_data_dir: Path) -> None:
 def test_staged_paths_outside_scenarios_are_refused(test_data_dir: Path) -> None:
     with staging.staged_edit(test_data_dir, "retire_alice") as edit:
         with pytest.raises(ValueError, match="not a stageable"):
-            edit.path(test_data_dir / "aux" / "anything.csv")
+            edit.path(test_data_dir / "tables" / "anything.csv")
 
 
 def test_multi_file_edit_commits_every_file(test_data_dir: Path) -> None:

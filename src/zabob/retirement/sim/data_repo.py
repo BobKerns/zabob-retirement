@@ -37,7 +37,7 @@ _IGNORED = (".analysis", ".current_scenario", ".analysis_user", RETENTION_FILENA
 # them (it describes the t_ scenarios and tables left behind), and the
 # template's sample user and ignore list, which are written fresh.
 _NOT_COPIED = frozenset({
-    "README.md", "aux/README.md", "scenarios/README.md",
+    "README.md", "tables/README.md", "scenarios/README.md",
     ".analysis_user", ".gitignore", RETENTION_FILENAME, "persons.csv",
 })
 
@@ -64,8 +64,8 @@ def _copied(relative: Path) -> bool:
     parts = relative.parts
     if parts[0] == "scenarios" and len(parts) > 1 and parts[1].startswith(TEMPLATE_PREFIX):
         return False
-    # Every aux table is read from templates/aux but the household's status.
-    return not (parts[0] == "aux" and relative.name != "filing_status.csv")
+    # Every aux table is read from templates/tables but the household's status.
+    return not (parts[0] == "tables" and relative.name != "filing_status.csv")
 
 
 def _copy_templates(sim: Path) -> None:
@@ -126,7 +126,7 @@ def create_data_repo(
     _write_csv(sim / "persons.csv", registries.PERSONS_CSV_HEADER,
                [{**person, "role": "primary", "meta_json": person.get("meta_json") or "{}"}])
     start = _start_scenario(sim, person["id"])
-    _write_csv(sim / "aux" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
+    _write_csv(sim / "tables" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
                [{"effective_date": start, "filing_status": filing_status}])
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
     write_current_scenario(sim, START_SCENARIO)

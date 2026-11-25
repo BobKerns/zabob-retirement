@@ -160,7 +160,7 @@ look = "files"
 heading = "A strategy plugin is a file in the data repo"
 title = "sim"
 address = "~/zabob-retirement/sim"
-lines = ["strategies", "scenarios", "aux", "allocations.csv", "persons.csv", "securities.csv"]
+lines = ["strategies", "scenarios", "tables", "allocations.csv", "persons.csv", "securities.csv"]
 note = "strategies/whole_trips.py: for every scenario, versioned with the data, copied into each run"
 speaker = "bill"
 ```

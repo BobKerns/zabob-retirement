@@ -10,7 +10,7 @@ inflation series and fund asset class, and a latent factor for each series,
 linked into a tree, so a child scenario or mix-in can vary any of them with
 one row. The templates are explained under "Template scenarios" in the
 historical calibration guide (`docs/guides/historical-calibration.md`). CPI
-itself stays in the shared `aux/inflation__cpi.csv`. Its own `series/` keeps
+itself stays in the shared `tables/inflation__cpi.csv`. Its own `series/` keeps
 only the IRMAA threshold and premium series.
 
 `retire_alice` derives from this scenario and adds the household.

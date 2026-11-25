@@ -54,7 +54,7 @@ def state_gains(
 
 
 def _ca_brackets(test_data_dir: Path) -> list[tuple[int, int]]:
-    with (test_data_dir / "aux" / "state_brackets__CA.csv").open() as f:
+    with (test_data_dir / "tables" / "state_brackets__CA.csv").open() as f:
         return sorted(
             (units.dollars_to_cents(r["floor"]), units.percent_to_micros(r["marginal_rate"]))
             for r in csv.DictReader(f)

@@ -1,4 +1,4 @@
-# `aux/` — auxiliary lookup tables
+# `tables/` — lookup tables
 
 These CSVs hold the slowly-changing tax-law and demographic facts the simulator
 looks up by date: tax brackets, standard deductions, RMD factors and start age,
@@ -13,7 +13,7 @@ per-scenario projections, so each scenario has its own `series/` folder (no
 shared default here) — see "Per-scenario overrides" below. The prototype's root
 scenario, `base`, builds on the template scenarios, which ship a default for
 each inflation series and fund asset class that every scenario derived from it
-inherits (CPI stays here, in `aux/inflation__cpi.csv`); see "Template
+inherits (CPI stays here, in `tables/inflation__cpi.csv`); see "Template
 scenarios" in `docs/guides/historical-calibration.md`.
 
 ## How a row is used
@@ -55,9 +55,9 @@ dollars or percents.
 
 ## Filename pattern
 
-- `aux/<kind>.csv` — a kind that has exactly one table
+- `tables/<kind>.csv` — a kind that has exactly one table
   (`federal_brackets`, `standard_deduction`, `rmd_factors`, …).
-- `aux/<kind>__<series>.csv` — a kind with several named tables. In this
+- `tables/<kind>__<series>.csv` — a kind with several named tables. In this
   folder: `inflation__cpi.csv` and `state_brackets__<state>.csv` (state tax
   law is a shared fact, like the federal brackets beside it). `rate__*` is
   per-scenario, under `series/`.
@@ -69,7 +69,7 @@ kind and series; the required columns per kind are listed in
 ## Per-scenario overrides
 
 A scenario can replace one of these files for itself (and its descendants) by
-adding `scenarios/<name>/aux/<same filename>.csv` — the loader uses that file
+adding `scenarios/<name>/tables/<same filename>.csv` — the loader uses that file
 in place of this shared one, whole file, not merged row by row. A derived
 scenario without its own override inherits its parent's, all the way up to this
 shared default ([ADR-003](../../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.1d).
@@ -86,17 +86,17 @@ shared default ([ADR-003](../../docs/architecture/ADR-003-registries-and-csv-sch
 | `state_surcharge__<state>.csv` | A state's surcharge on high taxable income, in the columns of its brackets, whose rates add to the brackets' rates. Optional, keyed by state like `state_brackets__<state>.csv`. `__CA` is California's Behavioral Health Services Tax: 1% of taxable income over $1 million, the same for every filing status and not indexed, so its `floor_series` is blank. |
 | `state_local_tax__<state>.csv` | Optional: a local income tax (county, city, school district) on the state's taxable income, in the columns of its brackets: Maryland's county rate as one band, New York City's brackets, or a Portland-area tax as a 0% band below its threshold. Named for a county (`residence.csv` names the household's) or, for one table across the state, the state; paid by `taxes/local.csv` into its own `taxes_local` account, and shown as `local_tax` in `sim report tax`. Two local taxes on the same base, such as Portland's Metro and Multnomah County taxes, go in one table, their rates added. Needs a row for every filing status the state's brackets have. None ships. |
 | `state_hsa__<state>.csv` | How a state taxes a health savings account: `treatment` `taxable` or `federal`. Optional, keyed by state; without one the HSA follows the federal rules. `__CA` says `taxable`: California doesn't recognize HSAs and taxes one like a brokerage account, so a contribution isn't deducted, its dividends and interest are taxed the year they're paid, and a withdrawal is taxed on its gain over the account's cost basis. |
-| `state_retirement_exclusion__<state>.csv` | Optional: the state's retirement income exclusions, keyed by state like `state_brackets__<state>.csv` and read by a state tax. None ships (California has none); the code repository's `templates/aux/README.md` describes its columns. |
-| `state_adjustments__<state>.csv` | Optional: the state's own deductions and credits, keyed by state like `state_brackets__<state>.csv` and read by a state tax. California's ships in the code repository's `templates/aux/`, whose README describes the columns. |
-| `federal_deductions.csv` / `state_deductions.csv` | Optional itemized-deduction totals, one row per tax year that counts for that year only (no filing-status split); `sim deduction` writes them. They add to the itemized lines figured from spending under the code repository's `templates/aux/itemized_limits.csv`, and a tax jurisdiction uses whichever is greater, the itemized total or the standard deduction. `amount` can be `@name` (an itemizations/ rollup). They hold only what no line figures (a casualty loss, investment interest): medical bills, charity, property tax and mortgage interest go in tagged spending, where their floors and limits apply. `state_deductions.csv` falls back to `federal_deductions.csv`'s figure if the scenario has no `state_deductions.csv` at all; a state that figures no lines of its own (none but California's ships) then misses what the federal lines figure, so give it its own total, or `itemized_limits_aux` `itemized_limits` on `taxes/state.csv` to figure the federal lines for it (loading warns). |
-| `filing_status.csv` | The household's filing status from each effective date, one row per change (here MFJ). The code repository's `templates/aux/` ships it empty. |
+| `state_retirement_exclusion__<state>.csv` | Optional: the state's retirement income exclusions, keyed by state like `state_brackets__<state>.csv` and read by a state tax. None ships (California has none); the code repository's `templates/tables/README.md` describes its columns. |
+| `state_adjustments__<state>.csv` | Optional: the state's own deductions and credits, keyed by state like `state_brackets__<state>.csv` and read by a state tax. California's ships in the code repository's `templates/tables/`, whose README describes the columns. |
+| `federal_deductions.csv` / `state_deductions.csv` | Optional itemized-deduction totals, one row per tax year that counts for that year only (no filing-status split); `sim deduction` writes them. They add to the itemized lines figured from spending under the code repository's `templates/tables/itemized_limits.csv`, and a tax jurisdiction uses whichever is greater, the itemized total or the standard deduction. `amount` can be `@name` (an itemizations/ rollup). They hold only what no line figures (a casualty loss, investment interest): medical bills, charity, property tax and mortgage interest go in tagged spending, where their floors and limits apply. `state_deductions.csv` falls back to `federal_deductions.csv`'s figure if the scenario has no `state_deductions.csv` at all; a state that figures no lines of its own (none but California's ships) then misses what the federal lines figure, so give it its own total, or `itemized_limits_aux` `itemized_limits` on `taxes/state.csv` to figure the federal lines for it (loading warns). |
+| `filing_status.csv` | The household's filing status from each effective date, one row per change (here MFJ). The code repository's `templates/tables/` ships it empty. |
 | `ss_taxation_thresholds.csv` | Provisional-income thresholds for Social Security benefit taxation (50% tier and 85% tier). These are **not** indexed for inflation — they have stayed at the 1984/1993 amounts. Leave alone unless Congress changes them. |
 | `inflation__cpi.csv` | Annual inflation rate (CPI = Consumer Price Index, the standard cost-of-living measure published by the US Bureau of Labor Statistics) used to grow non-indexed amounts, and by the CPI-constant-dollar views regardless of what any scenario's own CSVs reference. Kept here, rather than in `series/`, so that lookup always has a default. |
 | `rmd_factors.csv` | IRS Uniform Lifetime Table divisors used to compute Required Minimum Distributions. One row per (effective_date, age). |
-| `rmd_start_age.csv` | First age at which an RMD is required: 73 here. SECURE 2.0 sets it by birth year (73 if born 1951–1959, 75 if born 1960 or later), but this table is keyed by date, so a household born in 1960 or later puts its own `rmd_start_age.csv` with 75 in its `aux/`. |
+| `rmd_start_age.csv` | First age at which an RMD is required: 73 here. SECURE 2.0 sets it by birth year (73 if born 1951–1959, 75 if born 1960 or later), but this table is keyed by date, so a household born in 1960 or later puts its own `rmd_start_age.csv` with 75 in its `tables/`. |
 | `ltcg_brackets.csv` | Federal long-term capital gain brackets — see "Long-term capital gain rates" below. |
 | `life_table.csv` | SSA's period life table: `q_female` and `q_male`, the chance of dying before the next birthday at each age 0–119. Read only by a lifespan with `vary_distribution` `life_table`, which draws the age at death from it around the median you give. Refresh it from a newer Trustees Report with `scripts/extract_ssa_life_table.py`, keeping the old rows: each vintage is dated December of its year. |
-| `life_table__<name>.csv` | Another country's life table, in the same columns, for a lifespan whose `lifespan.csv` `life_table` cell names it (blank uses `life_table.csv`), per scenario. `sim lifespan blend` mixes two or more into a scenario's `aux/`. `__jp` is Japan's 2023 table from the Human Life-Table Database, extracted with `scripts/extract_hld_life_table.py`; it ends at an open "105 and over" group, extrapolated to 108 with a death rate that keeps rising, and no one reaches 110 (the few recorded cases past it are largely record errors). Use a country's own table rather than shifting `life_table.csv` older or younger: the shift keeps the US spread, and the US tail past 95 is much fatter than Japan's. |
+| `life_table__<name>.csv` | Another country's life table, in the same columns, for a lifespan whose `lifespan.csv` `life_table` cell names it (blank uses `life_table.csv`), per scenario. `sim lifespan blend` mixes two or more into a scenario's `tables/`. `__jp` is Japan's 2023 table from the Human Life-Table Database, extracted with `scripts/extract_hld_life_table.py`; it ends at an open "105 and over" group, extrapolated to 108 with a death rate that keeps rising, and no one reaches 110 (the few recorded cases past it are largely record errors). Use a country's own table rather than shifting `life_table.csv` older or younger: the shift keeps the US spread, and the US tail past 95 is much fatter than Japan's. |
 | `capital_loss_limit.csv` | How much of a year's net capital loss offsets ordinary income, by filing status (IRC §1211(b)): $3,000, or $1,500 married filing separately, not inflation-indexed. The rest carries forward to later years. |
 | `irmaa_tiers.csv` | Medicare's income-related surcharges (IRMAA): for each filing status, the MAGI floor of each tier (the tier applies above it) and its monthly Part B and Part D add-ons, from CMS's fact sheet for the year. Read by an `irmaa` rule, which charges the tier set by MAGI from two years earlier. Each row names optional growth series for its floor and each add-on (`series/inflation__<name>.csv`); blank holds the figure flat. Add the next year's rows each November, when CMS publishes them. |
 
@@ -173,7 +173,7 @@ Worked example, very rough, using the 2026-effective figures in
   `$96,950 + $31,500 - $20,000 = $108,450` from Traditional IRA to Roth fills
   the 10% and 12% brackets exactly, with federal tax of about $11,000 on the
   conversion. (California taxes the same dollars at its own rates; see
-  `state_brackets__CA.csv`, right here in `aux/`.)
+  `state_brackets__CA.csv`, right here in `tables/`.)
 - Once Social Security starts and RMDs begin at age 73, the same dollars
   withdrawn from the Traditional IRA would land in the 22% bracket or higher
   *and* would push more Social Security into the 85%-taxable tier
@@ -202,14 +202,14 @@ October) — these tables need a new row per filing status.
 
 The cleanest way is to ask the AI assistant. A prompt that works:
 
-> Update `prototype_data/aux/federal_brackets.csv`,
-> `prototype_data/aux/standard_deduction.csv`,
-> `prototype_data/aux/state_brackets__CA.csv`, and
-> `prototype_data/aux/filing_status.csv` with the latest IRS and CA FTB
+> Update `prototype_data/tables/federal_brackets.csv`,
+> `prototype_data/tables/standard_deduction.csv`,
+> `prototype_data/tables/state_brackets__CA.csv`, and
+> `prototype_data/tables/filing_status.csv` with the latest IRS and CA FTB
 > figures. Use the most recent IRS Revenue Procedure for federal and FTB's
 > annual indexing announcement (in "Tax News") for California. Filing statuses:
 > MFJ, Single, MFS. Leave out CA's Behavioral Health Services Tax (the extra
-> 1% over $1M): it's in `state_surcharge__CA.csv`, which isn't indexed. Then mirror the four files into `templates/aux/`
+> 1% over $1M): it's in `state_surcharge__CA.csv`, which isn't indexed. Then mirror the four files into `templates/tables/`
 > and run `uv run pytest`.
 
 Authoritative sources the AI should pull from:

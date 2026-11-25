@@ -637,7 +637,7 @@ def test_long_term_gains_are_taxed_at_the_preferential_rates(
         finally:
             con.close()
 
-    aux = test_data_dir / "aux"
+    aux = test_data_dir / "tables"
     ltcg_file = aux / "ltcg_brackets.csv"
     kept = ltcg_file.read_text()
     ltcg_file.unlink()
@@ -700,7 +700,7 @@ def test_state_tax_still_treats_gains_as_ordinary(
             con.close()
 
     with_table = state_liability("with.sqlite3")
-    (test_data_dir / "aux" / "ltcg_brackets.csv").unlink()
+    (test_data_dir / "tables" / "ltcg_brackets.csv").unlink()
     assert state_liability("without.sqlite3") == with_table > 0
 
 

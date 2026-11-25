@@ -3,8 +3,8 @@
 
 A life table is an aux file, ``life_table.csv`` (the default) or
 ``life_table__<name>.csv`` (one a lifespan.csv row names, #315), found in the
-code repository's ``templates/aux/``, the data repo's ``aux/``, and any
-scenario's own ``aux/``. Each file's latest vintage is shown, by sex: ``q``,
+code repository's ``templates/tables/``, the data repo's ``tables/``, and any
+scenario's own ``tables/``. Each file's latest vintage is shown, by sex: ``q``,
 the chance of dying before the next birthday, and the expected age at death
 for someone alive at that age.
 
@@ -65,11 +65,11 @@ def find_tables(data_dir: Path) -> list[TableFile]:
     name found in more than one place is labelled ``<location>/<name>`` after
     its first."""
     folders = [
-        (TEMPLATE_AUX_DIR, "templates/aux"),
-        *((d / "aux", f"templates/scenarios/{d.name}/aux")
+        (TEMPLATE_AUX_DIR, "templates/tables"),
+        *((d / "tables", f"templates/scenarios/{d.name}/tables")
           for d in sorted(TEMPLATE_SCENARIOS_DIR.glob("*/"))),
-        (data_dir / "aux", "aux"),
-        *((d / "aux", f"scenarios/{d.name}/aux") for d in sorted((data_dir / "scenarios").glob("*/"))),
+        (data_dir / "tables", "tables"),
+        *((d / "tables", f"scenarios/{d.name}/tables") for d in sorted((data_dir / "scenarios").glob("*/"))),
     ]
     found: list[TableFile] = []
     seen: set[str] = set()
