@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -52,12 +53,14 @@ class _Repo:
         self.git("commit", "-q", "-m", message)
         return self.git("rev-parse", "HEAD")
 
-    def merge_pull(self, number: int, make) -> str:
-        """Merge, as GitHub does, a branch off dev on which make() commits."""
+    def merge_pull(self, number: int, make, title: str = "") -> str:
+        """Merge, as GitHub does, a branch off dev on which make() commits:
+        the merge's message names the pull request, then gives its title."""
         self.git("checkout", "-q", "-b", f"pr{number}", "dev")
         make()
         self.git("checkout", "-q", "dev")
-        self.git("merge", "-q", "--no-ff", "-m", f"Merge pull request #{number} from x/pr{number}", f"pr{number}")
+        self.git("merge", "-q", "--no-ff", "-m", f"Merge pull request #{number} from x/pr{number}",
+                 *(["-m", title] if title else []), f"pr{number}")
         return self.git("rev-parse", "HEAD")
 
     def revert(self, sha: str) -> None:
@@ -111,27 +114,61 @@ def test_closed_issues_follow_github_keywords(promote: ModuleType) -> None:
     assert promote.closed_issues(text) == (704, 12, 9, 13, 14)
 
 
+def test_the_merge_commits_own_message_counts(promote: ModuleType, repo: _Repo) -> None:
+    """GitHub's merge message carries the title, and reaches main with the rest."""
+    repo.merge_pull(1, lambda: repo.commit("a", "Plain change"), title="Fix #9 in passing")
+    assert [m.commit_closes for m in promote.dev_merges(repo.root, "main", "dev")] == [(9,)]
+
+
 def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
     pulls = [promote.Pull(714, "Test areas", (706,)), promote.Pull(716, "Typo", ()),
              promote.Pull(717, "Dev branch", (707, 706))]
     body = promote.promotion_body(pulls)
     assert "3 pull requests" in body
-    assert "- #714 Test areas (closes #706)\n- #716 Typo\n- #717 Dev branch (closes #707, #706)" in body
+    assert "- #714 Test areas (for #706)\n- #716 Typo\n- #717 Dev branch (for #707, #706)" in body
     assert body.endswith("\nFixes #706\nFixes #707\n")
 
 
 def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(promote: ModuleType) -> None:
-    reverted = [promote.Pull(714, "Test areas", (706, 705), commit_closes=(705,))]
+    reverted = [promote.Pull(714, "Fixes #704: test areas", (706, 705), commit_closes=(705,))]
     body = promote.promotion_body([promote.Pull(716, "Typo", ())], reverted)
-    assert "- #714 Test areas (would close #706, #705)" in body
-    assert "Fixes #706" not in body and "Fixes #705" not in body
-    assert "close #705 anyway when this merges: reopen them afterwards." in body
+    assert "- #714 Fixes issue 704: test areas (left open: #706, #705)" in body
+    assert "#705 with a closing keyword, so GitHub closes those when this merges: reopen them afterwards." in body
+    # Nothing in the body closes a reverted pull request's issues.
+    assert promote.closed_issues(body) == ()
+
+
+def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
+    pulls = [promote.Pull(716, "Closes #3 by accident: typo", (706,))]
+    body = promote.promotion_body(pulls, [promote.Pull(714, "Resolves BobKerns/zabob-retirement#5", (8,))])
+    assert promote.closed_issues(body) == (706,)
 
 
 def test_an_issue_a_promoted_pull_fixes_is_not_listed_against_a_reverted_one(promote: ModuleType) -> None:
     body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], [promote.Pull(714, "Areas", (706,))])
     assert "- #714 Areas\n" in body
     assert body.endswith("Fixes #706\n")
+
+
+@pytest.mark.parametrize(("node", "found"), [
+    ("tests/test_x.py::TestThing::test_old", True),
+    ("tests/test_x.py::TestThing::test_new", False),
+    ("tests/test_x.py::test_case[1]", True),
+    ("tests/test_x.py::test_case[2]", False),
+])
+def test_bisect_skips_a_node_pytest_cant_find(bisect: ModuleType, tmp_path: Path, node: str, found: bool) -> None:
+    """A method or parameter case added later skips the merge, through pytest itself."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text(
+        "import pytest\n\n\nclass TestThing:\n    def test_old(self):\n        pass\n\n\n"
+        "@pytest.mark.parametrize('n', [1])\ndef test_case(n):\n    pass\n")
+    assert bisect.collects([node], tmp_path, dict(os.environ)) is found
+
+
+def test_bisect_lets_a_collection_error_be_blamed(bisect: ModuleType, tmp_path: Path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("import no_such_module\n\n\ndef test_old():\n    pass\n")
+    assert bisect.collects(["tests/test_x.py::test_old"], tmp_path, dict(os.environ))
 
 
 @pytest.mark.parametrize(("pytest_code", "verdict"), [(0, 0), (1, 1), (2, 1), (4, 1), (5, 1), (-9, 128)])
