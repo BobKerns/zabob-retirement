@@ -1682,7 +1682,7 @@ def _write_pool(
         meta["reserve"] = reserve
     # A pool's row has no dates, seed or parents (ADR-009 §1).
     row = {**dict.fromkeys(registries.SCENARIO_HEADER, ""), "name": name, "description": description,
-           "created_by": created_by or sc.current_user(),
+           "created_by": created_by or sc.current_user(data),
            "meta_json": json.dumps(meta, separators=(",", ":"))}
     existed = folder.is_dir()
     old_csv = (folder / "scenario.csv").read_bytes() if (folder / "scenario.csv").is_file() else None
@@ -5697,7 +5697,7 @@ def init_command(
         _init_builder(sim)
     activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
         else _shown(sim / "activate-analysis")
-    _next_steps(sim, activate)
+    _next_steps(sim, activate, no_builder=no_builder)
 
 
 def _init_installed(
@@ -5714,7 +5714,7 @@ def _init_installed(
     click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: analysis jupyter")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    _next_steps(sim, _shown(sim / "activate-analysis"))
+    _next_steps(sim, _shown(sim / "activate-analysis"), no_builder=no_builder)
 
 
 @sim_group_command.command("use")
@@ -5748,10 +5748,18 @@ def use_command(directory: Path | None) -> None:
     _remember_default(data_dir)
 
 
-def _next_steps(data_dir: Path, activate: str) -> None:
+def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
     # No activation step (#687): the commands find the data repo through
-    # the user's default, in any shell, PowerShell included.
-    _remember_default(data_dir)
+    # the user's default, in any shell, PowerShell included. A script, test
+    # or recording (--no-builder) must leave a default it finds alone: a
+    # throwaway demo repo would otherwise become the user's data repo.
+    from zabob.retirement import user_config
+
+    if no_builder and (kept := user_config.default_data_dir()) is not None:
+        click.echo(f"left your default data repo as {_shown_repo(kept)} (--no-builder); "
+                   f"`sim use {_shown_repo(data_dir)}` switches to this one")
+    else:
+        _remember_default(data_dir)
     click.echo()
     click.echo("Next, add the rest of the household with `sim person add` and accounts to the base "
                "scenario with `sim account add`.")
@@ -18584,7 +18592,7 @@ def _copy_scenario(old: str | None, new: str | None, data_dir: Path | None, *, w
     # Preflights OLD, then copies it and checks the copy loads, in a staged copy.
     with _scenario_edit(data, old, remember=False, template_parent=True) as edit:
         try:
-            written = rename.copy_scenario(edit.data_dir, old, new, created_by=sc.current_user())
+            written = rename.copy_scenario(edit.data_dir, old, new, created_by=sc.current_user(edit.data_dir))
         except (OSError, ValueError) as exc:
             raise click.ClickException(str(exc).replace(str(edit.data_dir), str(data))) from None
     target = data / "scenarios" / new
@@ -18884,7 +18892,7 @@ def scenario_roll(name: str | None, start: str | None, keep: str | None, no_keep
                     "Nothing was written; start again.")
         if keep is not None:
             try:
-                rename.copy_scenario(edit.data_dir, name, keep, created_by=sc.current_user())
+                rename.copy_scenario(edit.data_dir, name, keep, created_by=sc.current_user(edit.data_dir))
             except (OSError, ValueError) as exc:
                 raise click.ClickException(str(exc).replace(str(edit.data_dir), str(data))) from None
         staged_dir = edit.path(scenario_dir)

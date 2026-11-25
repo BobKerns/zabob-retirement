@@ -425,7 +425,7 @@ def test_init_shows_paths_as_typed(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "made retirement your default data repo" in here.output
     assert "`source retirement/sim/activate-analysis` in bash or zsh" in here.output
     assert "created a data repo in ~/other; its data dir is ~/other/sim" in there.output
-    assert "made ~/other your default data repo, in place of retirement" in there.output
+    assert "left your default data repo as retirement (--no-builder); `sim use ~/other` switches" in there.output
     assert str(tmp_path) not in here.output + there.output
 
 

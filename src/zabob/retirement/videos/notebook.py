@@ -226,6 +226,9 @@ class _Lab:
             "HOME": str(home),
             "ANALYSIS_DATA_DIR": str(data_dir),
             "ANALYSIS_NO_BUILDER": "1",
+            # Nor the recording user's default data repo (#687).
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "APPDATA": str(home / ".config"),
             "JUPYTER_CONFIG_DIR": str(jupyter_dir / "config"),
             "JUPYTER_RUNTIME_DIR": str(jupyter_dir / "runtime"),
             "JUPYTER_DATA_DIR": str(jupyter_dir / "data"),
