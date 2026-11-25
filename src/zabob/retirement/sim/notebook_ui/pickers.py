@@ -877,10 +877,11 @@ def _load_multi(
     scenarios = [baseline, *resolved_variants]
     compare.align_cpi(connections, baseline)
 
-    import matplotlib.pyplot as plt
+    import matplotlib
 
+    # matplotlib.rcParams, not pyplot's: importing pyplot is all it would add.
     colors = dict(
-        zip(scenarios, plt.rcParams["axes.prop_cycle"].by_key()["color"], strict=False)
+        zip(scenarios, matplotlib.rcParams["axes.prop_cycle"].by_key()["color"], strict=False)
     )
 
     warnings = []
