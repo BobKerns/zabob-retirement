@@ -17,7 +17,7 @@ Notes:
 
 VS Code's notebook renderer clips a table that is wider than the window instead of
 scrolling it, and VS Code plus a Python kernel needs a fair amount of memory. If a
-notebook is not satisfactory there, run `analysis jupyter` and open it in JupyterLab
+notebook is not satisfactory there, run `sim jupyter start` and open it in JupyterLab
 instead: wide tables scroll sideways, and it can use less memory. (It may still be too
 much for a small machine with many browser tabs open.)
 

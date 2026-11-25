@@ -2366,9 +2366,16 @@ None of them need you to write any code.
 | `events.ipynb` | Every dollar movement in a run, filterable by reason (which rule fired, a refill/overflow, a catch-up fact), tax character, account, and date range, with a running balance for one account and each refill linked to the debit that triggered it — good for auditing "why did this happen." `sim items` shows the same table, with the same filters, at the command line. |
 | `ensemble.ipynb` | For an ensemble recipe (Part 4.10): net worth's mean/median over quintile bands shaded out to the 5th–95th percentiles, plus a year-end table of mean/median/SD and the 5th, 20th, ... 95th percentiles, and the share of members past each guard rail. |
 
-Open one with `analysis jupyter` (or the **Jupyter** VS Code task, below), or
-in VS Code directly if it runs well enough there for your machine
+Open them with `sim jupyter start` (or the **Jupyter** VS Code task, below),
+or in VS Code directly if it runs well enough there for your machine
 ([notebooks/README.md](../notebooks/README.md) has notes on this).
+`sim jupyter start` runs JupyterLab in the background and opens it in your
+browser; if it is already running, it opens that one again. Name a notebook
+to open it directly (`sim jupyter start net_worth`; TAB completes the
+names). `--no-browser` prints the address instead, and `--foreground` keeps
+JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
+it is running and its address, and `sim jupyter stop` stops it and its
+notebooks' kernels: save your notebooks first.
 
 ### The same views from the terminal
 
@@ -2477,7 +2484,7 @@ notebook views don't have a terminal command yet.
 If your workspace has these set up (Command Palette → "Tasks: Run Task"),
 three common jobs are one click instead of a typed command:
 
-- **Jupyter** — opens JupyterLab (same as `analysis jupyter`).
+- **Jupyter** — opens JupyterLab (same as `sim jupyter start`).
 - **Fetch Prices** — runs `sim prices fetch` (Part 4.2).
 - **Run All Scenarios** — runs every scenario in the data repo (`sim all`).
 

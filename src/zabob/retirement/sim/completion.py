@@ -403,6 +403,16 @@ def _import_sources(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: A
     return sources_with_maps(data_dir)
 
 
+def _notebooks(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import server
+
+    folder = _given(ctx, "notebook_dir") or server.root() / "notebooks"
+    return [n.removesuffix(".ipynb") for n in server.notebook_names(Path(folder))]
+
+
+# A notebook `sim jupyter start` opens. Unchecked: the command checks it
+# itself, since its place may hold an option meant for jupyter lab.
+NOTEBOOK = NameType(_notebooks, "notebook", check=False)
 # A source with saved mappings: a folder under the data dir's imports/.
 IMPORT_SOURCE = NameType(_import_sources, "import source")
 # A lot may hold a symbol nothing names yet, and prices can fetch one.

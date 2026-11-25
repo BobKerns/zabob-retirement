@@ -187,7 +187,7 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
         # outputs show the household's numbers, which a pushed data repo
         # shouldn't carry in its history.
         _ignore(root / ".gitignore", "/notebooks/")
-        # `analysis jupyter` keeps its token here.
+        # `sim jupyter start` keeps its token here.
         _ignore(root / ".gitignore", "/.mcp.json")
     if commit:
         return _commit(root, person)
