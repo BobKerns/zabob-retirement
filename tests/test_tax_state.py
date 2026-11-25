@@ -255,7 +255,7 @@ def test_a_state_without_tables_says_which_to_write(
     result = _tax(test_data_dir, "state", "Montana", "--yes")
 
     assert result.exit_code != 0
-    assert "aux/state_brackets__MT.csv and aux/state_standard_deduction__MT.csv" in result.output
+    assert "tables/state_brackets__MT.csv and tables/state_standard_deduction__MT.csv" in result.output
     assert _residence(retire_alice_csv("")) == [("2026-05", "CA", "")]
 
 
@@ -300,7 +300,7 @@ def test_a_county_needs_its_local_tax_table(
 
     missing = _tax(test_data_dir, "state", "CA", "--county", "CA-county", "--yes")
     assert missing.exit_code != 0
-    assert "no aux/state_local_tax__CA-county.csv" in missing.output
+    assert "no tables/state_local_tax__CA-county.csv" in missing.output
 
     write_aux("state_local_tax__CA-county.csv",
               "effective_date,filing_status,bracket_index,floor,marginal_rate\n"

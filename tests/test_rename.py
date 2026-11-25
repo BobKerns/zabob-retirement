@@ -67,9 +67,9 @@ def test_relink_markdown_follows_the_folder() -> None:
         "[c]: ../retire_early/chains/\n")
     # From inside the folder, a link to itself through its parent moves too;
     # the scenario's other links stay as they are.
-    inside = "[me](../retire_alice/scheduled.csv) [up](../../aux/README.md) [here](chains/README.md)"
+    inside = "[me](../retire_alice/scheduled.csv) [up](../../tables/README.md) [here](chains/README.md)"
     assert rename.relink_markdown(inside, old / "README.md", old, new) == (
-        "[me](../retire_early/scheduled.csv) [up](../../aux/README.md) [here](chains/README.md)")
+        "[me](../retire_early/scheduled.csv) [up](../../tables/README.md) [here](chains/README.md)")
     # A longer name that only starts with the old one is another scenario.
     assert rename.relink_markdown("`retire_alice_2` scenarios/retire_alice_2", scenarios / "x.md", old, new) == (
         "`retire_alice_2` scenarios/retire_alice_2")
@@ -282,7 +282,7 @@ def test_series_rename_leaves_a_same_named_account_alone(test_data_dir: Path, te
 
 
 @pytest.mark.parametrize(("old", "new", "message"), [
-    ("cpi", "prices", "shared aux/inflation__cpi.csv"),
+    ("cpi", "prices", "shared tables/inflation__cpi.csv"),
     ("stock", "equities", "is an asset class"),
     ("brokerage_growth", "Asset_Checking", "a series 'Asset_Checking' already applies in"),
     ("food", "two words", "one word, without spaces"),
@@ -308,8 +308,8 @@ def test_series_rename_refuses_a_series_read_by_name(test_data_dir: Path, write_
 def test_series_rename_leaves_other_aux_kinds_alone(local_templates: Path) -> None:
     # A symbol's prices or a state's brackets end in __<name> too, but aren't a series.
     folder = local_templates / "t_inflation_series"
-    (folder / "aux").mkdir(exist_ok=True)
-    prices = folder / "aux" / "security_price__food.csv"
+    (folder / "tables").mkdir(exist_ok=True)
+    prices = folder / "tables" / "security_price__food.csv"
     prices.write_text("date,price\n", encoding="utf-8")
     changed = rename.rename_series(folder, "food", "groceries")
     assert "series/inflation__food.csv -> series/inflation__groceries.csv" in changed
@@ -337,18 +337,18 @@ def test_lot_rename_of_an_unknown_lot(test_data_dir: Path) -> None:
 def test_series_rename_follows_a_scenarios_own_tax_table(
     test_data_dir: Path, test_scenarios_dir: Path, write_series, loads: Callable[[str], None],
 ) -> None:
-    """An indexed tax table in a scenario's aux/ names its growth series (#467)."""
+    """An indexed tax table in a scenario's tables/ names its growth series (#467)."""
     folder = test_scenarios_dir / "retire_alice"
     (folder / "series" / "inflation__wages.csv").write_text("effective_date,annual_rate\n2026-01-31,3%\n",
                                                             encoding="utf-8")
-    (folder / "aux").mkdir(exist_ok=True)
-    table = folder / "aux" / "standard_deduction.csv"
+    (folder / "tables").mkdir(exist_ok=True)
+    table = folder / "tables" / "standard_deduction.csv"
     table.write_text("effective_date,filing_status,amount,amount_series\n"
                      "2026-01-31,MFJ,31500.00,wages\n2026-01-31,Single,15750.00,\n"
                      "2026-01-31,MFS,15750.00,\n", encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "wages", "pay")
     assert result.exit_code == 0, result.output
-    assert "aux/standard_deduction.csv" in result.output
+    assert "tables/standard_deduction.csv" in result.output
     assert _column(table, "amount_series") == ["pay", "", ""]
     loads("retire_alice")
 

@@ -55,7 +55,7 @@ def test_the_last_close_of_each_month_is_kept_and_the_final_month_is_the_latest(
 
 def test_a_new_file_gets_the_month_ends_and_an_existing_one_is_only_added_to(tmp_path: Path) -> None:
     provider = FakeProvider({"AAA": DAILY})
-    aux = tmp_path / "aux"
+    aux = tmp_path / "tables"
     first = fetch_prices(aux, ["AAA"], provider, since=date(2026, 4, 1), today=date(2026, 6, 2))
     assert (first[0].added, first[0].changed) == (3, 0)
     path = aux / "security_price__AAA.csv"

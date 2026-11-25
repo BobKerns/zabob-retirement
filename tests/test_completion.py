@@ -70,7 +70,7 @@ def test_series_names_by_kind(data_dir: Path) -> None:
     rates = names.series_names(data_dir, "retire_alice", "rate")
     inflation = names.series_names(data_dir, "retire_alice", "inflation")
     assert {"stock", "brokerage_growth"} <= set(rates)  # base's and retire_alice's own
-    assert "cpi" in inflation  # the shared aux/ folder's
+    assert "cpi" in inflation  # the shared tables/ folder's
     assert "cpi" not in rates
     assert set(rates) | set(inflation) <= set(names.series_names(data_dir, "retire_alice"))
 

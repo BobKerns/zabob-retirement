@@ -16,7 +16,7 @@ long-term care premiums), first see whether a row of the state's
 income, up to a cap (less Social Security, if the state says so), for
 filers from an age, below an income, as a subtraction, deduction or
 credit, refundable or not (the code repository's
-`templates/aux/README.md` lists the columns). Most renter's, 529 and
+`templates/tables/README.md` lists the columns). Most renter's, 529 and
 premium rules fit. When one doesn't (a circuit breaker, figured from
 property tax above a share of income, say), you can write a calculator of your own, a small
 Python class in your data repo, and have a scenario use it. A calculator

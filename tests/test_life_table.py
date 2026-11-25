@@ -23,7 +23,7 @@ from zabob.retirement.sim.sensitivity import parameters
 
 # Alice (f) was born 1965-03-15 and Bill (m) 1967-08-20 (prototype persons.csv);
 # retire_alice starts 2026-05, when Alice is 61 years 2 months old. The
-# prototype's aux/life_table.csv is SSA's 2023 period table.
+# prototype's tables/life_table.csv is SSA's 2023 period table.
 _ALICE_START = months_since_birth("1965-03-15", "2026-05-31")
 
 
@@ -163,7 +163,7 @@ def test_a_life_table_lifespan_needs_the_aux_table(
     write_lifespans: Callable[..., None], load_test_copy: Callable[[], LoadResult],
     test_data_dir: Path,
 ) -> None:
-    (test_data_dir / "aux" / "life_table.csv").unlink()
+    (test_data_dir / "tables" / "life_table.csv").unlink()
     write_lifespans("alice,80,life_table,,,,,")
 
     with pytest.raises(LoadError, match="no aux life_table.csv"):
@@ -173,7 +173,7 @@ def test_a_life_table_lifespan_needs_the_aux_table(
 def test_a_life_table_with_a_gap_fails_the_load(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    path = test_data_dir / "aux" / "life_table.csv"
+    path = test_data_dir / "tables" / "life_table.csv"
     path.write_text("".join(
         line for line in path.read_text(encoding="utf-8").splitlines(keepends=True)
         if not line.startswith("2023-12-31,50,")
@@ -225,7 +225,7 @@ def test_a_named_life_table_must_be_in_the_lineage(
 ) -> None:
     write_lifespans("bill,84,,,,,,,xx")  # a fixed age too: `sim person show` reads the table
 
-    with pytest.raises(LoadError, match=r"life_table 'xx' needs aux/life_table__xx\.csv"):
+    with pytest.raises(LoadError, match=r"life_table 'xx' needs tables/life_table__xx\.csv"):
         load_test_copy()
 
 
@@ -241,7 +241,7 @@ def test_a_life_table_name_must_be_a_plain_name(
 def test_a_named_life_table_with_a_gap_names_its_file(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    path = test_data_dir / "aux" / "life_table__jp.csv"
+    path = test_data_dir / "tables" / "life_table__jp.csv"
     path.write_text("".join(
         line for line in path.read_text(encoding="utf-8").splitlines(keepends=True)
         if not line.startswith("2023-12-31,50,")

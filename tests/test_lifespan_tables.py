@@ -32,17 +32,17 @@ def sim(test_data_dir: Path) -> Callable[..., Result]:
 
 def test_find_tables_finds_the_templates_tables(data_dir: Path) -> None:
     found = {t.label: t.location for t in lifespan_tables.find_tables(data_dir)}
-    assert found["default"] == "templates/aux"
-    assert found["jp"] == "templates/aux"
+    assert found["default"] == "templates/tables"
+    assert found["jp"] == "templates/tables"
 
 
 def test_a_name_found_again_is_labelled_with_its_location(
     test_data_dir: Path, write_life_table: Callable[[str, str], Path],
 ) -> None:
-    write_life_table("scenarios/retire_alice/aux/life_table__jp.csv", "2023-12-31,0,1,1\n")
+    write_life_table("scenarios/retire_alice/tables/life_table__jp.csv", "2023-12-31,0,1,1\n")
     labels = [t.label for t in lifespan_tables.find_tables(test_data_dir)]
     assert labels.count("jp") == 1
-    assert "scenarios/retire_alice/aux/jp" in labels
+    assert "scenarios/retire_alice/tables/jp" in labels
 
 
 def test_read_table_takes_the_latest_vintage(write_life_table: Callable[[str, str], Path]) -> None:
@@ -113,15 +113,15 @@ def test_lifespan_check_refuses_an_age_past_the_last(sim: Callable[..., Result])
 def test_lifespan_tables_lists_the_tables_and_every_age(sim: Callable[..., Result]) -> None:
     result = sim("lifespan", "tables")
     assert result.exit_code == 0, result.output
-    assert "templates/aux" in result.output
+    assert "templates/tables" in result.output
     assert "0-119" in result.output and "0-109" in result.output
     assert "│ 119 │" in result.output
 
 
 def test_at_age_frame_has_a_row_per_table_and_years_left(data_dir: Path) -> None:
     frame = lifespan_tables.at_age_frame(data_dir, 67.5)
-    assert ("default", "templates/aux") in frame.index
-    row = frame.loc[("default", "templates/aux")]
+    assert ("default", "templates/tables") in frame.index
+    row = frame.loc[("default", "templates/tables")]
     assert row[("female", "years left")] == pytest.approx(row[("female", "expected")] - 67.5)
     assert 0 < row[("male", "q")] < 1
 
@@ -214,7 +214,7 @@ def test_find_table_takes_a_label_or_a_file(
 
 
 def _blended(test_data_dir: Path, name: str) -> dict[str, LifeTable]:
-    path = test_data_dir / "scenarios" / "retire_alice" / "aux" / f"life_table__{name}.csv"
+    path = test_data_dir / "scenarios" / "retire_alice" / "tables" / f"life_table__{name}.csv"
     return lifespan_tables.read_table(path)[1]
 
 
@@ -253,7 +253,7 @@ def test_lifespan_blend_asks_for_what_is_left_out(
     result = sim("lifespan", "blend", "--scenario", "retire_alice",
                  input="mix\ndefault\n3\njp\n\n\n")
     assert result.exit_code == 0, result.output
-    assert (test_data_dir / "scenarios" / "retire_alice" / "aux" / "life_table__mix.csv").is_file()
+    assert (test_data_dir / "scenarios" / "retire_alice" / "tables" / "life_table__mix.csv").is_file()
 
 
 def test_lifespan_blend_asks_for_the_rest_after_one_table(sim: Callable[..., Result]) -> None:
@@ -293,7 +293,7 @@ def test_lifespan_blend_shadows_a_table_the_scenario_reads_only_when_asked(
     refused = sim(*args)
     assert refused.exit_code != 0 and "already reads a life table 'jp'" in refused.output
     assert sim(*args, "--replace").exit_code == 0
-    assert (test_data_dir / "scenarios" / "retire_alice" / "aux" / "life_table__jp.csv").is_file()
+    assert (test_data_dir / "scenarios" / "retire_alice" / "tables" / "life_table__jp.csv").is_file()
 
 
 def test_lifespan_blend_refuses_an_unknown_scenario_before_asking(sim: Callable[..., Result]) -> None:

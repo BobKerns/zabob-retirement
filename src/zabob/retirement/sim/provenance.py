@@ -6,7 +6,7 @@ SHA, computed via a sidecar index (the user's index is never touched), over
 the data repo paths a scenario's load can read: ``scenarios/<name>/`` plus the
 folder of every scenario it inherits from via ``parent_scenario`` (mix-ins
 included), ``persons.csv``, ``securities.csv``, ``allocations.csv``, and the
-whole shared ``aux/``, ``prices/``, and ``itemizations/`` folders (each also
+whole shared ``tables/``, ``prices/``, and ``itemizations/`` folders (each also
 resolved per scenario under ``scenarios/<name>/``, ADR-003 §4.1d; covered
 automatically since that whole folder is already in scope). ``series/`` has no
 shared root tier at all -- only the per-scenario ``scenarios/<name>/series/``
@@ -231,7 +231,7 @@ def _scoped_paths(data_dir: Path, scenario_name: str) -> list[str]:
         "allocations.csv",
         "strategies",  # strategy code (#326): an edit can change any run that uses it
         "taxes",  # tax calculator code (#510), likewise
-        "aux",
+        "tables",
         "prices",
         "itemizations",
     ]

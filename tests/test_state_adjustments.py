@@ -102,7 +102,7 @@ def test_each_row_is_a_line_of_the_state_return(
 def test_the_shipped_california_table_gives_exemption_credits(
     add_state_tax: Callable[..., None], run_test_copy: Callable[[], Path],
 ) -> None:
-    """templates/aux/state_adjustments__CA.csv (2025's figures): $153 for
+    """templates/tables/state_adjustments__CA.csv (2025's figures): $153 for
     each filer, and $153 more for each from 65."""
     add_state_tax()
     run = run_test_copy()

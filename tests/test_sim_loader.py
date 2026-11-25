@@ -1852,7 +1852,7 @@ def test_calendar_set_rate_series_with_no_file_rejected(
     test_data_dir: Path, append_calendar_row: Callable[..., None], intent_dir: Path,
 ) -> None:
     """set_rate adjusts an existing series; it doesn't create one. A pair
-    with no series/aux/prices file is an unresolved reference (#204): here a
+    with no series/tables/prices file is an unresolved reference (#204): here a
     typo, and the wrong aux_kind for a series that does exist."""
     append_calendar_row(
         date="2027-01-31", kind="set_rate", name="typo_series",

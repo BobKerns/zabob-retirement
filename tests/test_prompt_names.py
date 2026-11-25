@@ -364,7 +364,7 @@ def test_series_rename_offers_only_series_it_can_rename(sim: Callable[..., Resul
     offered = next(line for line in result.output.splitlines() if line.startswith("series: "))
     choices = offered.removeprefix("series: ").split(", ")
     assert "brokerage_growth" in choices
-    assert "cpi" not in choices  # in the shared aux/ folder
+    assert "cpi" not in choices  # in the shared tables/ folder
     assert "stock" not in choices  # an asset class
 
 

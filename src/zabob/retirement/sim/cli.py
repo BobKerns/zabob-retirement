@@ -489,7 +489,7 @@ def _load_locked(
     "-v", "--verbose", is_flag=True, default=False,
     help="With --all, also warn of things defined but not read yet (unused "
     "latent factors, set_rate rows nothing reads), as a single check does. "
-    "Also list the data repo's aux/ files that only copy templates/aux/.",
+    "Also list the data repo's tables/ files that only copy templates/tables/.",
 )
 def check(
     scenario_name: str | None, data_dir: Path | None, check_all: bool, verbose: bool,
@@ -499,7 +499,7 @@ def check(
     A single scenario's check also warns of things defined but not read yet;
     --all leaves those out unless --verbose is given (#204), since base and
     mix-in scenarios define many on purpose for the scenarios built on them.
-    --verbose also names the shared aux/ files that only copy templates/aux/
+    --verbose also names the shared tables/ files that only copy templates/tables/
     (#317), which can be deleted.
     """
     if check_all and scenario_name is not None:
@@ -508,7 +508,7 @@ def check(
     if verbose:
         for name in template_aux_copies(resolved):
             click.echo(
-                f"note: aux/{name} is the same as templates/aux/{name}, which is read "
+                f"note: tables/{name} is the same as templates/tables/{name}, which is read "
                 "anyway; deleting it lets later template updates through", err=True)
     if not check_all:
         ref = _resolve_scenario(resolved, scenario_name)
@@ -17616,11 +17616,11 @@ def series_group_command() -> None:
 @_scenario_options
 def series_rename(old: str | None, new: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Rename series OLD to NEW in every scenario that shares it: its rate
-    files (series/<kind>__OLD.csv and a scenario's aux/<kind>__OLD.csv), and
+    files (series/<kind>__OLD.csv and a scenario's tables/<kind>__OLD.csv), and
     every column naming it -- accounts', lots', rules', calendar rows' and
     chain steps' series, and a scenario's own aux tables' growth series.
 
-    A series with a file in the shared aux/ folder (cpi), or one a shared
+    A series with a file in the shared tables/ folder (cpi), or one a shared
     aux table names (an IRMAA tier's growth), is read by every scenario and
     isn't renamed here, nor is an asset class's series, or one
     named for a symbol (or <symbol>.<class>), which lots read by name.
@@ -17652,7 +17652,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
             raise click.ClickException(f"{why}; it can't be renamed")
         if shared := rename.shared_series_files(data, name):
             raise click.ClickException(
-                f"series {name!r} has rates in the shared {', '.join(f'aux/{p.name}' for p in shared)}, "
+                f"series {name!r} has rates in the shared {', '.join(f'tables/{p.name}' for p in shared)}, "
                 "which every scenario reads; it can't be renamed")
     if named_by := rename.shared_series_references(data, old):
         raise click.ClickException(
@@ -17680,7 +17680,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
             if shared := rename.shared_series_files(data, old_yield):
                 raise click.ClickException(
                     f"{old!r}'s payout series {old_yield!r} has rates in the shared "
-                    f"{', '.join(f'aux/{p.name}' for p in shared)}, which every scenario reads; "
+                    f"{', '.join(f'tables/{p.name}' for p in shared)}, which every scenario reads; "
                     f"{old!r} can't be renamed")
             outside = {each: source for each, found in rename.sources(
                            scenarios, affected, rename.series_mentioned(old_yield)).items()
@@ -17695,7 +17695,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
                     "rename or delete it first")
             if shared := rename.shared_series_files(data, new_yield):
                 raise click.ClickException(
-                    f"series {new_yield!r} has rates in the shared {', '.join(f'aux/{p.name}' for p in shared)}, "
+                    f"series {new_yield!r} has rates in the shared {', '.join(f'tables/{p.name}' for p in shared)}, "
                     f"which every scenario reads; {new!r}'s lots would start paying it")
             following.append((old_yield, new_yield, [
                 each for each in affected if rename.series_mentioned(old_yield)(scenarios / each)]))
@@ -17870,7 +17870,7 @@ def _own_series_path(ref_path: Path, file: series_files.SeriesFile) -> Path:
 def _series_unchanged(edit: StagedEdit, before: Mapping[Path, bytes | None]) -> None:
     """Refuse a series edit whose files changed since they were read, while
     its prompts waited: writing then would undo that change. A file outside
-    the scenarios (shared aux/, templates) isn't staged, so is compared on disk."""
+    the scenarios (shared tables/, templates) isn't staged, so is compared on disk."""
     for path, was in before.items():
         try:
             _require_unchanged(edit, path, was)
@@ -18257,7 +18257,7 @@ def series_delete(
         raise click.ClickException(
             "cpi can't be deleted: CPI-constant dollars need it (`sim series edit cpi` "
             "gives this scenario its own rates)")
-    # The loader reads a name's series/ and aux/ files both, so each folder
+    # The loader reads a name's series/ and tables/ files both, so each folder
     # that still has rates for it is emptied, or its file removed.
     parts = [s for s in found.parts if not s.empty]
     below = next((s.below for s in parts if s.below is not None), None)
@@ -19710,7 +19710,7 @@ def _life_tables(data: Path) -> list[tuple[Any, str, dict[str, Any], dict[str, l
         found.append((each, effective, by_sex,
                       {sex: lifespan_tables.expected_ages(t) for sex, t in by_sex.items()}))
     if not found:
-        raise click.ClickException(f"no life tables under templates/aux or {data}")
+        raise click.ClickException(f"no life tables under templates/tables or {data}")
     return found
 
 
@@ -19720,8 +19720,8 @@ def _life_tables(data: Path) -> list[tuple[Any, str, dict[str, Any], dict[str, l
 def lifespan_tables_command(data_dir: Path | None) -> None:
     """List every life table and its values at each age.
 
-    The tables are the code repository's templates/aux/, the data repo's
-    aux/ and each scenario's aux/ life_table.csv (default) and
+    The tables are the code repository's templates/tables/, the data repo's
+    tables/ and each scenario's tables/ life_table.csv (default) and
     life_table__<name>.csv files, each at its latest vintage. For each sex,
     q is the chance of dying before the next birthday, and expected is the
     expected age at death for someone who has just reached that age, as the
@@ -19797,7 +19797,7 @@ def lifespan_check_command(age: float | None, data_dir: Path | None) -> None:
                                  param_hint="AGE")
     frame = at_age_frame(data, age)
     if frame.empty:
-        raise click.ClickException(f"no life tables under templates/aux or {data}")
+        raise click.ClickException(f"no life tables under templates/tables or {data}")
     if output.machine():
         # A row per table and sex: the fields stay the same whatever sexes a table has.
         shown = (frame.stack("sex", future_stack=True).dropna(how="all")
@@ -19840,7 +19840,7 @@ def lifespan_blend_command(
     a table's last age its death rate is 1, so the blend ends where the
     shortest does.
 
-    It is written to the scenario's aux/, where the scenario and those built
+    It is written to the scenario's tables/, where the scenario and those built
     on it (a mix-in's, wherever it is mixed in) find it, and is used by a
     lifespan whose lifespan.csv life_table is NAME (`sim person lifespan set
     PERSON AGE --vary life_table --life-table NAME`). A table of that name
@@ -19860,7 +19860,7 @@ def lifespan_blend_command(
         raise click.ClickException(problem)
     if name == lifespan_tables.DEFAULT_NAME:
         raise click.ClickException(f"{name!r} is the unnamed life_table.csv; give the blend a name")
-    folder = ref.path / "aux"
+    folder = ref.path / "tables"
     path = folder / table_file(name)
     if not replace:
         if path.exists():
@@ -20547,7 +20547,7 @@ def lifespan_set(
     is drawn from the aux life table for the person's sex, shifted so its
     median is AGE (no --low, --high or --mode); the shift and the
     percentile ages it gives are printed. --life-table reads another
-    population's table, aux/life_table__<name>.csv, for this person in this
+    population's table, tables/life_table__<name>.csv, for this person in this
     scenario; AGE is then the median on that table.
 
     With no AGE and no options, asks for each field with its current value
@@ -21643,12 +21643,12 @@ def itemization_show(name: str | None, scenario: str | None, data_dir: Path | No
 @sim_group_command.group(name="deduction")
 def deduction_group_command() -> None:
     """See and change the scenario's hand-typed itemized deductions: one
-    total per tax year, federal (aux/federal_deductions.csv) or, with
-    --state, the state's (aux/state_deductions.csv). ADR-003 §4.4.
+    total per tax year, federal (tables/federal_deductions.csv) or, with
+    --state, the state's (tables/state_deductions.csv). ADR-003 §4.4.
 
     The total adds to the itemized lines figured from the year's spending
     (property and income taxes, mortgage interest, charity, medical; see
-    aux/itemized_limits.csv), so leave those out of it. A year's deduction
+    tables/itemized_limits.csv), so leave those out of it. A year's deduction
     is the larger of the itemized total and the standard deduction. A total
     counts for its own tax year only.
     """
@@ -21776,14 +21776,14 @@ class _DeductionEdit(NamedTuple):
     kind: str
     found: deductions.InForce
     rows: list[dict[str, str]]  # the rows in force, to start the scenario's own file from
-    own: Path  # the scenario's own aux/<kind>.csv
+    own: Path  # the scenario's own tables/<kind>.csv
 
 
 def _deduction_edit(scenario_dir: Path, data_dir: Path, state: bool) -> _DeductionEdit:
     kind = deductions.KINDS[state]
     found = deductions.in_force(data_dir, scenario_dir, kind)
     return _DeductionEdit(kind, found, deductions.read_rows(found.path),
-                          scenario_dir / "aux" / f"{kind}.csv")
+                          scenario_dir / "tables" / f"{kind}.csv")
 
 
 def _deduction_row(rows: list[dict[str, str]], year: int) -> int | None:
@@ -21860,7 +21860,7 @@ def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> 
     the total each counts (an @itemization summed).
 
     Without any rows, a year itemizes only what it figures from spending
-    (aux/itemized_limits.csv), when that beats the standard deduction.
+    (tables/itemized_limits.csv), when that beats the standard deduction.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -24158,9 +24158,9 @@ def _state_series(data_dir: Path, scenario: str, state: states.State) -> str | N
     if series == state.code and not has_tables:
         raise click.ClickException(
             f"{states.label(state.code)} has no tax tables here yet. Add "
-            f"aux/state_brackets__{state.code}.csv and "
-            f"aux/state_standard_deduction__{state.code}.csv to your data repo (the "
-            "code repository's templates/aux/README.md says how), then run this again. "
+            f"tables/state_brackets__{state.code}.csv and "
+            f"tables/state_standard_deduction__{state.code}.csv to your data repo (the "
+            "code repository's templates/tables/README.md says how), then run this again. "
             "Nothing was written.")
     return series
 
@@ -24275,7 +24275,7 @@ def _checked_county(data: Path, scenario: str, county: str | None) -> str:
     county = (county or "").strip()
     if county and county not in names.series_names(data, scenario, registries.STATE_LOCAL_TAX):
         raise click.ClickException(
-            f"no aux/{registries.STATE_LOCAL_TAX}__{county}.csv: add the county's local tax "
+            f"no tables/{registries.STATE_LOCAL_TAX}__{county}.csv: add the county's local tax "
             "bands first (one 0% band per filing status for a county without one). "
             "Nothing was written.")
     return county
@@ -24285,7 +24285,7 @@ def _checked_county(data: Path, scenario: str, county: str | None) -> str:
 @click.argument("state", required=False, type=completion.STATE)
 @click.option("--county", type=completion.COUNTY, default=None,
               help="The county, for its local income tax: the <county> of an "
-                   "aux/state_local_tax__<county>.csv.")
+                   "tables/state_local_tax__<county>.csv.")
 @click.option("--here", is_flag=True,
               help="Change this scenario only (an override), not the scenario where "
                    "the residence is defined.")
@@ -24388,7 +24388,7 @@ def tax_state_command(
 @click.argument("state", required=False, type=completion.STATE)
 @click.option("--county", type=completion.COUNTY, default=None,
               help="The county moved to, for its local income tax: the <county> of an "
-                   "aux/state_local_tax__<county>.csv. A move within a state names the "
+                   "tables/state_local_tax__<county>.csv. A move within a state names the "
                    "same state.")
 @click.option("--yes", is_flag=True, help="Don't ask before writing.")
 @click.option("--scenario", type=completion.SCENARIO, default=None,

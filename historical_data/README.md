@@ -43,7 +43,7 @@ re-extract them by hand before committing a new vintage:
 
 `ssa/life_table.csv` is the period life table as the aux kind `life_table` reads it
 (`effective_date,age,q_female,q_male`), dated December of the table's year,
-and `templates/aux/` and `prototype_data/aux/` carry copies. For a new vintage,
+and `templates/tables/` and `prototype_data/tables/` carry copies. For a new vintage,
 save the page from a browser, run
 `scripts/extract_ssa_life_table.py PAGE.html historical_data/ssa/life_table.csv`,
 and copy the result to both.
@@ -51,8 +51,8 @@ and copy the result to both.
 `hld/life_table__jp.csv` is Japan's table in the same form, extracted from
 the PDF beside it by
 `scripts/extract_hld_life_table.py JPN000020232023CU1.pdf historical_data/hld/life_table__jp.csv`
-(which needs poppler's `pdftotext`), and `templates/aux/` and
-`prototype_data/aux/` carry copies too. The table ends at an open
+(which needs poppler's `pdftotext`), and `templates/tables/` and
+`prototype_data/tables/` carry copies too. The table ends at an open
 "105 and over" group; the script extrapolates ages 105 to 108 from a
 quadratic in log hazard fitted to ages 90 to 104, ends the table with
 everyone dying at 109, and prints the group's remaining life expectancy

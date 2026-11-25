@@ -76,7 +76,7 @@ if [ "$mode" = template ]; then
     # §4.5a); a copy in the data would replace them and go stale.
     find "$PRIVATE/sim/scenarios" -mindepth 1 -maxdepth 1 -name 't_*' -exec rm -r {} +
     # So are the aux tables (#317), all but the household's filing status.
-    find "$PRIVATE/sim/aux" -name '*.csv' ! -name filing_status.csv -delete
+    find "$PRIVATE/sim/tables" -name '*.csv' ! -name filing_status.csv -delete
     printf '%s\n' "$REPO" > "$PRIVATE/sim/.analysis"
     echo "Built template data in $PRIVATE, used as 'test'."
     echo "Activate it with: source $PRIVATE/sim/activate-analysis"

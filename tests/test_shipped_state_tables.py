@@ -1,4 +1,4 @@
-"""The states whose tables ship in templates/aux/ (#483), and a state tax
+"""The states whose tables ship in templates/tables/ (#483), and a state tax
 reading those of the state the household lives in (residence.csv, #509)."""
 
 from __future__ import annotations

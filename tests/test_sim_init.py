@@ -67,7 +67,7 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 
 _OS_JUNK = (".DS_Store", "scenarios/.DS_Store", "scenarios/base/._scenario.csv",
-            "Thumbs.db", "aux/desktop.ini")
+            "Thumbs.db", "tables/desktop.ini")
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def test_init_asks_for_what_its_options_leave_out(code_repo: Path) -> None:
         "id": "alice", "display": "Alice Example", "birthdate": "1960-05-01", "sex": "f",
         "role": "primary", "meta_json": "{}", "kind": "",
     }]
-    assert _rows(sim / "aux" / "filing_status.csv") == [
+    assert _rows(sim / "tables" / "filing_status.csv") == [
         {"effective_date": "2026-01", "filing_status": "Single"}]
     assert "checking base: ok" in result.output
 
@@ -115,7 +115,7 @@ def test_init_copies_what_the_household_edits_and_reads_the_rest_from_templates(
     assert result.exit_code == 0, result.output
     sim = tmp_path / "repo" / "sim"
     assert sorted(p.name for p in (sim / "scenarios").iterdir()) == ["base"]
-    assert [p.name for p in (sim / "aux").iterdir()] == ["filing_status.csv"]
+    assert [p.name for p in (sim / "tables").iterdir()] == ["filing_status.csv"]
     assert (sim / "activate-analysis").is_file()
     assert (sim / ".retention.yaml").is_file()
     assert not (sim / "README.md").exists()  # describes the code repo's templates/
@@ -138,7 +138,7 @@ def test_init_commits_everything_but_the_per_machine_files(tmp_path: Path) -> No
     assert len(git("rev-list", "--all").splitlines()) == 1
     assert git("status", "--porcelain") == ""
     tracked = set(git("ls-files").split())
-    assert {"sim/persons.csv", "sim/aux/filing_status.csv", "sim/scenarios/base/scenario.csv",
+    assert {"sim/persons.csv", "sim/tables/filing_status.csv", "sim/scenarios/base/scenario.csv",
             ".gitignore", ".gitattributes", ".cspell/data-words.txt"} <= tracked
     assert not tracked & {"sim/.analysis", "sim/.analysis_user", "sim/.current_scenario",
                           "sim/.retention.yaml"}

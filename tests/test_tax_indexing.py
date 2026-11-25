@@ -14,7 +14,7 @@ from zabob.retirement.sim import engine
 from zabob.retirement.sim.engine import run_scenario
 from zabob.retirement.sim.loader import LoadError, load_scenario
 
-# prototype_data/aux/standard_deduction.csv: 2027 MFJ, indexed by cpi.
+# prototype_data/tables/standard_deduction.csv: 2027 MFJ, indexed by cpi.
 MFJ_2027 = 32_200_00
 
 
@@ -116,7 +116,7 @@ def test_a_table_without_the_column_holds_flat(
     test_data_dir: Path, tmp_path: Path, fund_asset_savings: Callable[..., None],
     write_tax: Callable[..., Path],
 ) -> None:
-    (test_data_dir / "aux" / "standard_deduction.csv").write_text(
+    (test_data_dir / "tables" / "standard_deduction.csv").write_text(
         "effective_date,filing_status,amount\n"
         "2026-01-31,MFJ,31500.00\n2026-01-31,Single,15750.00\n2026-01-31,MFS,15750.00\n"
         "2027-01-31,MFJ,32200.00\n2027-01-31,Single,16100.00\n2027-01-31,MFS,16100.00\n",
@@ -133,7 +133,7 @@ def test_a_growth_series_must_exist(
     test_data_dir: Path, tmp_path: Path, fund_asset_savings: Callable[..., None],
     write_tax: Callable[..., Path],
 ) -> None:
-    (test_data_dir / "aux" / "standard_deduction.csv").write_text(
+    (test_data_dir / "tables" / "standard_deduction.csv").write_text(
         "effective_date,filing_status,amount,amount_series\n"
         "2027-01-31,MFJ,32200.00,no_such_series\n",
         encoding="utf-8",
@@ -147,9 +147,9 @@ def test_a_growth_series_must_have_a_rate_from_the_tables_date(
     write_tax: Callable[..., Path],
 ) -> None:
     """Growing 2027's table into 2028 reads the series from February 2027."""
-    (test_data_dir / "aux" / "inflation__late.csv").write_text(
+    (test_data_dir / "tables" / "inflation__late.csv").write_text(
         "effective_date,annual_rate\n2028-01-31,3%\n", encoding="utf-8")
-    (test_data_dir / "aux" / "standard_deduction.csv").write_text(
+    (test_data_dir / "tables" / "standard_deduction.csv").write_text(
         "effective_date,filing_status,amount,amount_series\n"
         "2026-01-31,MFJ,31500.00,\n2027-01-31,MFJ,32200.00,late\n",
         encoding="utf-8",

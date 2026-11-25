@@ -21,7 +21,7 @@ from zabob.retirement.sim.registries import SCHEDULED_CSV_HEADER
 
 def _top_22(run: Path, year: int, status: str = "MFJ") -> int:
     """The top of the 22% bracket for ``status`` in tax ``year``, as the run
-    indexed the prototype's aux/federal_brackets.csv (#467): the floor of
+    indexed the prototype's tables/federal_brackets.csv (#467): the floor of
     the 24% bracket above it."""
     with closing(sqlite3.connect(run)) as con:
         aux = engine._load_aux(con)

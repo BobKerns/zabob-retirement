@@ -14,6 +14,6 @@ Each file has two columns:
 
 A file here replaces the parent scenario's file of the same name; a series
 with no file here is inherited from the parent. CPI is the exception: it
-lives in `aux/inflation__cpi.csv`, not here.
+lives in `tables/inflation__cpi.csv`, not here.
 
 Details: ADR-003 sections 4.1d and 4.4 in the analysis code repository.
