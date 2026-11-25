@@ -14,10 +14,12 @@ when it runs; this test catches one before it merges.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 import re
 
 import pytest
+import yaml
 
 USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<ref>\S+)(?P<rest>.*)$")
 PINNED = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
@@ -34,13 +36,32 @@ def _files(repo_root: Path) -> list[Path]:
     ])
 
 
+def _line_uses(text: str) -> Iterator[tuple[int, str, str]]:
+    """Each block-style `uses:` line: its number, the ref, and what follows
+    (where the version comment is, which a YAML parser drops)."""
+    for number, line in enumerate(text.splitlines(), 1):
+        if match := USES.match(line):
+            yield number, match["ref"].strip("'\""), match["rest"]
+
+
+def _yaml_uses(node: object) -> Iterator[str]:
+    """Every `uses` value in the parsed file, however it is written."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "uses" and isinstance(value, str):
+                yield value
+            else:
+                yield from _yaml_uses(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _yaml_uses(item)
+
+
 def _uses(repo_root: Path) -> list[tuple[str, str, str]]:
     found = []
     for path in _files(repo_root):
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            if match := USES.match(line):
-                where = f"{path.relative_to(repo_root)}:{number}"
-                found.append((where, match["ref"].strip("'\""), match["rest"]))
+        for number, ref, rest in _line_uses(path.read_text()):
+            found.append((f"{path.relative_to(repo_root)}:{number}", ref, rest))
     return found
 
 
@@ -74,6 +95,26 @@ def test_every_action_is_pinned_to_a_commit(repo_root: Path) -> None:
         "Pin each to a full commit SHA with its release as a comment, "
         "e.g. actions/checkout@<40-hex sha>  # v7.0.1\n" + "\n".join(unpinned)
     )
+
+
+@pytest.mark.parametrize("text", [
+    "steps:\n  - {uses: actions/checkout@v7}\n",
+    'steps:\n  - "uses": actions/checkout@v7\n',
+    "steps:\n  - name: x\n    uses: >-\n      actions/checkout@v7\n",
+])
+def test_a_uses_the_line_scan_misses_is_caught(text: str) -> None:
+    lines = sorted(ref for _, ref, _ in _line_uses(text))
+    assert lines != sorted(_yaml_uses(yaml.safe_load(text)))
+
+
+def test_every_uses_is_one_block_style_line(repo_root: Path) -> None:
+    # The pin check reads lines, to see the version comment. A `uses:` written
+    # another way (flow style, a quoted key, a folded value) would slip past
+    # it, so the lines must account for every `uses` YAML itself finds.
+    for path in _files(repo_root):
+        text = path.read_text()
+        lines = sorted(ref for _, ref, _ in _line_uses(text))
+        assert lines == sorted(_yaml_uses(yaml.safe_load(text))), path.relative_to(repo_root)
 
 
 def test_one_action_one_version(repo_root: Path) -> None:
