@@ -1,0 +1,99 @@
+![Contributing](docs/assets/brand/banners/contributing.svg)
+
+# Contributing
+
+Zabob Retirement is built by a person working with several AI agents, and
+the agents follow the same workflow as everyone else. It's written down in
+three places: this page, for a person starting out;
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md), the
+fuller project guide, which the agents read too (architecture, invariants,
+conventions); and [`CLAUDE.md`](CLAUDE.md), for branches and worktrees.
+
+## Setting up
+
+Clone the repository and run `./scripts/setup.sh`; [docs/SETUP.md](docs/SETUP.md)
+says what it does. The simulator reads its scenarios from a separate data
+repository. Without one of your own, `scripts/link-data.sh --template` gives
+the tests and spell checker the template data.
+
+## Branches
+
+```mermaid
+gitGraph
+    commit id: "release v1.2.0" tag: "v1.2.0"
+    branch dev
+    commit id: "dev"
+    branch issue/42-fix
+    commit id: "the change"
+    checkout dev
+    merge issue/42-fix id: "pull request"
+    checkout main
+    merge dev id: "promotion" tag: "v1.3.0"
+```
+
+- **`dev`** is where work lands. Branch from `origin/dev`, name the branch
+  `issue/<number>-<short-description>`, and open the pull request against
+  `dev`.
+- **`main`** moves only when `dev` is promoted: one pull request, merged
+  with a merge commit (never a squash), after the whole test suite has
+  passed on it. So `main` is always fully tested. Releases are tagged on it.
+- **A hotfix**, a fix `main` can't wait for, branches from `origin/main`
+  rather than `dev`, goes to `main` in a pull request labeled `hotfix`, and
+  is then merged into `dev` too.
+- **`release/x.y`** branches exist only when a release needs one; see
+  [Releasing](docs/releasing.md#branches-and-versions).
+
+"Fixes #N" in a pull request into `dev` doesn't close the issue: GitHub acts
+on it only in a pull request into `main`. The issue closes when `dev` is
+promoted, and the promotion's pull request lists every issue it closes.
+
+## A pull request
+
+1. Open it as a **draft**. Checks and reviews skip drafts, so iterate there
+   with the local gates (below).
+2. Before marking it ready, merge `origin/dev` into the branch and resolve
+   any conflicts, so the review sees the final change.
+3. Mark it ready. That runs the **Gates** workflow once, at quick depth:
+   the blocked-keyword, lint, type, spelling and markdown checks, and the
+   tests [`tests/areas.toml`](tests/areas.toml) maps to the files you
+   changed. A change to the simulator's core selects the whole suite, which
+   then runs on `dev` after merge rather than here; label the pull request
+   `full-gates` to run all of it before merge instead.
+4. If a ready pull request needs several more pushes, turn it back into a
+   draft first, so they cost one more run instead of several.
+
+A failure that reaches `dev` anyway is found by the full run after merge.
+`scripts/bisect_dev.py TEST...` names the merge that caused it; fix it
+forward, or revert that merge.
+
+## The local gates
+
+Run these before marking a pull request ready:
+
+```sh
+.venv/bin/python scripts/affected_tests.py --slow   # the tests your change affects
+.venv/bin/python -m ruff check src tests plugins    # lint
+.venv/bin/ty check                                  # types
+npm run spell                                       # spelling
+npm run markdownlint                                # markdown
+```
+
+`.venv/bin/python -m pytest -q -n auto -m "not slow"` runs the everyday
+suite, and `.venv/bin/analysis sim check --all` checks that real scenarios
+still load after a change to the simulator or its loader.
+
+## Things to know
+
+- **Real names stay out.** Account, person and payee names from anyone's
+  real data never go in this repository: code, tests, docs, commit messages
+  and pull requests use the example household (Alice and Bill). A hook and
+  the Gates check block commits with words that give real names away; see
+  [docs/SETUP.md](docs/SETUP.md#blocked-keywords).
+- **The architecture decision records are the specification.** Read
+  [docs/architecture/](docs/architecture/README.md) before changing the
+  simulator, and update the record a change makes wrong in the same pull
+  request.
+- **Money is integer cents** past the loader, and spaces, never tabs, indent
+  every file.
+- **Notebooks are committed without output**; the setup script installs the
+  `nbstripout` filter that strips it.
