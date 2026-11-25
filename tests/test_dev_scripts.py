@@ -197,6 +197,49 @@ def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
     assert promote.closed_issues(body) == (706,)
 
 
+def _github(promote: ModuleType, monkeypatch: pytest.MonkeyPatch, open_body: str | None) -> list[tuple[str, str]]:
+    """Stand in for git and GitHub around _promote: dev carries #716, and the
+    open promotion (#800) has open_body, or there is none. Returns the writes."""
+    writes: list[tuple[str, str]] = []
+    monkeypatch.setattr(promote, "_run", lambda *args, **kw: "")
+    monkeypatch.setattr(promote, "dev_merges", lambda: [promote.Merge(716, "abc", True, ())])
+    monkeypatch.setattr(promote, "main_only", lambda: [])
+    monkeypatch.setattr(promote.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
+    repo = {"full_name": "o/r"}
+    promotion = {"number": 800, "html_url": "u/800", "body": open_body, "head": {"ref": "dev", "repo": repo},
+                 "base": {"repo": repo}}
+
+    def api(path: str, method: str = "GET", fields: dict | None = None) -> object:
+        if method != "GET":
+            writes.append((method, path))
+            return {"html_url": "u"}
+        if path.endswith("/pulls/716"):
+            return {"title": "Typo", "body": "Fixes #706"}
+        return [] if open_body is None else [promotion]
+
+    monkeypatch.setattr(promote, "_api", api)
+    return writes
+
+
+@pytest.mark.parametrize(("open_body", "write"), [
+    (None, ("POST", "repos/{owner}/{repo}/pulls")),
+    ("Stale body\n", ("PATCH", "repos/{owner}/{repo}/pulls/800")),
+])
+def test_promote_opens_or_refreshes_the_promotion(promote: ModuleType, monkeypatch: pytest.MonkeyPatch,
+                                                  open_body: str | None, write: tuple[str, str]) -> None:
+    writes = _github(promote, monkeypatch, open_body)
+    assert promote._promote(dry_run=False) == 0
+    assert writes == [write]
+
+
+def test_promote_leaves_an_up_to_date_promotion_alone(promote: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The Promotion workflow runs on every push to dev; most leave the body as it was.
+    current = promote.promotion_body([promote.Pull(716, "Typo", (706,))])
+    writes = _github(promote, monkeypatch, current)
+    assert promote._promote(dry_run=False) == 0
+    assert writes == []
+
+
 def test_an_issue_a_promoted_pull_fixes_is_not_listed_against_a_reverted_one(promote: ModuleType) -> None:
     body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], [promote.Pull(714, "Areas", (706,))])
     assert "- #714 Areas\n" in body

@@ -18,6 +18,10 @@ gates on it once. Merge it with a merge commit, never a squash: dev's merges the
 stay on main's history, where scripts/bisect_dev.py and
 `git log --first-parent` find them. Needs `gh`, signed in; it uses only
 GitHub's REST API.
+
+The Promotion workflow (.github/workflows/promotion.yml) runs this on every
+push to dev, so a promotion is open whenever dev has something main lacks;
+running it by hand (or `/promote`) is the fallback when that run fails.
 """
 
 from __future__ import annotations
@@ -256,6 +260,11 @@ def _promote(dry_run: bool) -> int:
         body = keep_added_fixes(existing["body"] or "", body)
     if dry_run:
         print(body, end="")
+        return 0
+    if existing and body == existing["body"]:
+        # Nothing new: an edit would only add noise to the pull request's
+        # timeline (and, made with a user's token, rerun its checks).
+        print(f"{existing['html_url']} is up to date")
         return 0
     if existing:
         pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})
