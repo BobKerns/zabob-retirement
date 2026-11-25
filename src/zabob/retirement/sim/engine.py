@@ -1,4 +1,5 @@
 """Engine loop. Mirrors ADR-001/002.
+# Throwaway: tests quick-depth Gates (#707). Not for merging.
 
 Liability sign convention: account balances for ``kind='liability'`` store
 outstanding-debt magnitude as a non-negative integer; the engine inverts the
