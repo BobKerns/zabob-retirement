@@ -413,3 +413,5 @@ Use an absolute path for `command` if the agent does not inherit your shell's
 `PATH` (for example, `~/.local/bin/ripwire`). MCP registration is intentionally
 not performed by `setup.sh` because it changes user- and client-specific
 configuration.
+
+<!-- Throwaway: tests quick-depth Gates (#707). Not for merging. -->
