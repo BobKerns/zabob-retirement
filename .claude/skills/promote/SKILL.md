@@ -9,6 +9,15 @@ disable-model-invocation: true
 The user decides when dev is promoted; this skill runs only when they ask
 (`/promote`). It never merges: the user merges the promotion.
 
+## 0. Acknowledge at once
+
+Before running anything, tell the user in one line that you're starting
+the promotion (in a chat, a message; in a terminal, a line of text). The
+steps below take a minute or more and print nothing to them until the pull
+request appears, so without this the command looks ignored. Once the
+dry run is back, tell them which pull requests the promotion will carry
+(one line each), and anything in step 1 that needs their answer.
+
 ## 1. Look before opening
 
 ```sh
