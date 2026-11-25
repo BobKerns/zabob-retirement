@@ -91,6 +91,22 @@ def test_sim_run_errors_when_intent_missing(tmp_path: Path) -> None:
     assert "intent file not found" in result.output
 
 
+def test_sim_run_refuses_an_intent_from_another_schema(retire_alice_intent_file: Path, intent_dir: Path,
+                                                       runs_dir: Path) -> None:
+    # A copy, since the session's intent is shared.
+    intent = intent_dir / retire_alice_intent_file.name
+    intent.write_bytes(retire_alice_intent_file.read_bytes())
+    with closing(sqlite3.connect(intent)) as con, con:
+        con.execute("UPDATE intent_manifest SET schema_version = schema_version - 1")
+    result = CliRunner().invoke(
+        main, ["sim", "run", "retire_alice", "--intent-dir", str(intent_dir), "--runs-dir", str(runs_dir)],
+        env={"ANALYSIS_DATA_DIR": None},
+    )
+    assert result.exit_code != 0
+    assert "run: analysis sim load retire_alice" in result.output, result.output
+    assert not list(runs_dir.glob("*.sqlite3"))
+
+
 def test_sim_run_loads_first_when_no_prior_load(
     test_data_dir: Path, tmp_path: Path,
 ) -> None:

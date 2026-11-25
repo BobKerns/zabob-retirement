@@ -133,6 +133,7 @@ from zabob.retirement.sim.loader import (
     DISABLE_FILE,
     KEEP_SCENARIO_ENV,
     calendar_row_key,
+    roth_clock_year,
     current_scenario_path,
     list_scenario_names,
     template_aux_copies,
@@ -193,7 +194,7 @@ from zabob.retirement.sim.overlay import (
 from zabob.retirement.frames import clip_years, index_years, named_rows, row_years
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS, Death, DollarMode, InvestmentAssetSubkind, ItemType
 from zabob.retirement.sim.retention import RETENTION_FILENAME, RetentionError, prune_state
-from zabob.retirement.sim.schema import connect_sim_file
+from zabob.retirement.sim.schema import SCHEMA_VERSION, connect_sim_file
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -853,9 +854,11 @@ def _load_and_run(
                 f"intent file not found: {intent_path}\n"
                 f"  run: analysis sim load {scenario_name}"
             )
-        elif _intent_is_mixin_only(intent_path):
-            # Without the data repo, the intent a `sim check` left says so.
-            _refuse_mixin_only_run(scenario_name, [])
+        else:
+            _refuse_stale_intent(intent_path, scenario_name)
+            if _intent_is_mixin_only(intent_path):
+                # Without the data repo, the intent a `sim check` left says so.
+                _refuse_mixin_only_run(scenario_name, [])
         resolved_by = run_by or login_name()
         _run_loaded(
             scenario_name, intent_path, resolved_intent_dir, resolved_runs_dir,
@@ -892,14 +895,31 @@ def _runnable_users(scenarios_dir: Path, name: str) -> list[str]:
     return sorted(found)
 
 
+def _refuse_stale_intent(intent_path: Path, scenario_name: str) -> None:
+    """Refuse an intent loaded under another schema than this code's: its
+    tables don't match the run file's, so snapshotting it would fail with a
+    raw sqlite error (#347). Only a fresh `sim load` can bring it up to date."""
+    con = connect_sim_file(intent_path)
+    try:
+        row = con.execute("SELECT schema_version FROM intent_manifest WHERE id = 1").fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        con.close()
+    if row is None or row[0] != SCHEMA_VERSION:
+        found = "no schema version" if row is None else f"schema {row[0]}"
+        raise click.ClickException(
+            f"{intent_path} was loaded under {found}, and this code uses schema {SCHEMA_VERSION}\n"
+            f"  run: analysis sim load {scenario_name}")
+
+
 def _intent_is_mixin_only(intent_path: Path) -> bool:
     """Whether the intent was loaded from a mix-in only scenario, as the
-    loader recorded (``scenario.mixin_only``)."""
+    loader recorded (``scenario.mixin_only``). Only for an intent
+    :func:`_refuse_stale_intent` accepted, which has the column."""
     con = connect_sim_file(intent_path)
     try:
         row = con.execute("SELECT mixin_only FROM scenario").fetchone()
-    except sqlite3.Error:
-        return False
     finally:
         con.close()
     return bool(row and row[0])
@@ -1474,6 +1494,7 @@ def _run_one_member(
         # A member's negative balances are recorded in its run file
         # (negative_balance_warnings); printed, eighty members' warnings
         # would bury the batch (#369), so the batch counts them instead.
+        # Its inherited Roth IRA warnings (#257) are recorded too, and not shown.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             run_scenario(
@@ -1485,6 +1506,8 @@ def _run_one_member(
         for warning in caught:
             if issubclass(warning.category, RuntimeWarning) and "went negative" in str(warning.message):
                 short = True
+            elif issubclass(warning.category, RuntimeWarning) and "inherited Roth IRA" in str(warning.message):
+                pass
             else:
                 warnings.showwarning(warning.message, warning.category, warning.filename,
                                      warning.lineno, warning.file, warning.line)
@@ -4587,6 +4610,7 @@ def _explain(runfile: Path, pre_tax: bool, data_dir: Path | None) -> dict[str, A
         click.echo("")
         _echo_recorded_load_warnings(con)
         _echo_negative_balance_warnings(con)
+        inherited_roth = _echo_inherited_roth_warnings(con)
         _echo_basis_step_ups(con)
         _echo_inheritances(con)
         _echo_strategies(con)
@@ -4597,6 +4621,7 @@ def _explain(runfile: Path, pre_tax: bool, data_dir: Path | None) -> dict[str, A
             negative = shortfalls.negative_balances(con)
             output.collect("negative_balances", output.from_items(negative, shortfalls.NegativeBalance))
             facts["negative_balance_warnings"] = shortfalls.warning_lines(negative)
+            facts["inherited_roth_warnings"] = inherited_roth
     finally:
         con.close()
     _echo_guard_rail_episodes(runfile, data_dir, facts)
@@ -4795,6 +4820,21 @@ def _echo_negative_balance_warnings(con: sqlite3.Connection) -> None:
     click.echo(f"negative-balance warnings ({len(found)}):")
     for line in shortfalls.warning_lines(found):
         click.echo(f"  {line}")
+
+
+def _echo_inherited_roth_warnings(con: sqlite3.Connection) -> list[str]:
+    """The run's recorded inherited Roth IRA warnings (#257, ADR-003 §1a):
+    money left past the ten-year deadline, moved in, or rolled over. Shown
+    only when there are any, and returned as the lines shown."""
+    raw = con.execute(
+        "SELECT json_extract(run_args_json, '$.inherited_roth_warnings') FROM simulation_run"
+    ).fetchone()
+    lines = [f"{e['month']}: {e['account']}: {e['message']}" for e in json.loads(raw[0] or "[]")] if raw else []
+    if lines:
+        click.echo(f"inherited Roth IRA warnings ({len(lines)}):")
+        for line in lines:
+            click.echo(f"  {line}")
+    return lines
 
 
 @sim_group_command.command("networth")
@@ -5759,6 +5799,9 @@ def _create_data_repo(
     fields = _person_fields(
         {}, [], guided=display is None or birthdate is None,
         display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
+        # A first setup asks only what every household needs; `sim person
+        # edit` sets a Roth clock that predates the scenario's Roth lots.
+        roth_clock_start="",
     )
     if filing_status is None:
         filing_status = _prompt_choice("filing status", registries.FILING_STATUSES, default="MFJ")
@@ -6360,7 +6403,8 @@ _BACKFILLABLE_CALENDAR_COLUMNS = frozenset({
 
 # lifespan.csv's life_table (#315) is optional too.
 # #274 added accounts.csv beneficiary; an older file gains it, blank.
-_BACKFILLABLE_COLUMNS = _BACKFILLABLE_CALENDAR_COLUMNS | {"life_table", "beneficiary"}
+_BACKFILLABLE_COLUMNS = _BACKFILLABLE_CALENDAR_COLUMNS | {
+    "life_table", "beneficiary", registries.ROTH_CLOCK_COLUMN}
 
 
 def _append_csv_row(path: Path, header: tuple[str, ...],
@@ -19293,7 +19337,8 @@ def _apply_scenario_edit(
         raise click.UsageError("nothing to change: give at least one option (see --help)")
 
     readme: bool | str | None = None
-    runnable = [n for n in sc.list_scenario_names(data) if not is_mixin_only(data / "scenarios", n)]
+    # Only the edited scenario and those built on it can change (#347).
+    runnable = [n for n in _self_and_users(data, name) if not is_mixin_only(data / "scenarios", n)]
     # Validates this scenario and every scenario built on it before writing.
     with _scenario_edit(data, name) as edit:
         folder = edit.scenario_dir
@@ -19339,6 +19384,23 @@ def _apply_scenario_edit(
     elif readme is False:
         click.echo(f"WARN: {data / 'scenarios' / name / 'README.md'} is what listings and notebooks show, "
                    "and it has been edited by hand; update it to match", err=True)
+
+
+def _self_and_users(data: Path, name: str) -> list[str]:
+    """``name`` and every scenario built on it, directly or not, sorted;
+    each ``scenario.csv`` read once."""
+    users: dict[str, list[str]] = {}
+    for other in sc.list_scenario_names(data):
+        for parent in read_parents(data / "scenarios" / other):
+            users.setdefault(parent, []).append(other)
+    found = {name}
+    pending = [name]
+    while pending:
+        for user in users.get(pending.pop(), ()):
+            if user not in found:
+                found.add(user)
+                pending.append(user)
+    return sorted(found)
 
 
 def _new_mixin_only(scenarios_dir: Path, runnable: Sequence[str]) -> list[str]:
@@ -20131,6 +20193,9 @@ def _read_persons(path: Path) -> pd.DataFrame:
     if "kind" not in df.columns:
         # #274 added kind (person, trust, charity); an older file gains it, blank.
         df["kind"] = ""
+    if registries.ROTH_CLOCK_COLUMN not in df.columns:
+        # #257 added roth_clock_start; an older file gains it, blank.
+        df[registries.ROTH_CLOCK_COLUMN] = ""
     missing = [c for c in registries.PERSONS_CSV_HEADER if c not in df.columns]
     if missing:
         raise click.ClickException(
@@ -20177,18 +20242,31 @@ def _check_person_kind(text: str) -> str:
     return kind
 
 
+def _check_roth_clock(text: str) -> str:
+    """Blank, or a year (a date's year) a Roth IRA clock could start (#257)."""
+    try:
+        year = roth_clock_year(text)
+    except ValueError as e:
+        raise click.ClickException(f"{registries.ROTH_CLOCK_COLUMN} {e}") from None
+    return "" if year is None else str(year)
+
+
 def _person_fields(
     current: dict[str, str], roles: list[str], *, guided: bool,
     display: str | None, birthdate: str | None, role: str | None, meta_json: str | None,
     sex: str | None = None, default_role: str = "", kind: str | None = None,
+    roth_clock_start: str | None = None,
 ) -> dict[str, str]:
-    """A person's display, birthdate, sex, role, kind and meta_json: each
+    """A person's display, birthdate, sex, role, kind, roth_clock_start and
+    meta_json: each
     one given, or when ``guided``, asked for with ``current``'s value as the
     default; or else ``current``'s. A blank role is no role (asked for as
     ``none``; ``default_role`` is what a new person's question offers):
     someone outside the household (#274), who may have no birthdate and
     whose kind (person, trust or charity; blank is person) is asked for. A
-    blank sex is none (only a life_table lifespan needs one)."""
+    blank sex is none (only a life_table lifespan needs one). A household
+    member is asked for the year their Roth IRA clock started (#257); blank
+    leaves it to their Roth IRA lots."""
     if guided:
         if display is None:
             display = click.prompt("display", default=current.get("display") or None)
@@ -20223,6 +20301,11 @@ def _person_fields(
                 "blank for a stand-in such as joint)", list(registries.PERSON_KINDS),
                 default=current.get("kind") or "",
             )
+        if roth_clock_start is None and role.strip() not in ("", _NO_ROLE):
+            roth_clock_start = click.prompt(
+                "Roth IRA clock start (year of the first Roth IRA contribution or conversion, "
+                "if before every Roth IRA lot here; blank for none)",
+                default=current.get(registries.ROTH_CLOCK_COLUMN) or "", show_default=False)
         if meta_json is None:
             meta_json = click.prompt("meta_json", default=current.get("meta_json") or "{}")
     if role is not None and role.strip() == _NO_ROLE:
@@ -20237,6 +20320,9 @@ def _person_fields(
         "sex": _check_sex(sex if sex is not None else current.get("sex", "")),
         "role": role,
         "kind": _check_person_kind(kind if kind is not None else current.get("kind", "")),
+        registries.ROTH_CLOCK_COLUMN: _check_roth_clock(
+            roth_clock_start if roth_clock_start is not None
+            else current.get(registries.ROTH_CLOCK_COLUMN, "")),
         # An edit leaves a meta_json it wasn't given exactly as it is, blank included.
         "meta_json": _check_meta_json(meta_json) if meta_json is not None
         else current.get("meta_json", "{}"),
@@ -20261,6 +20347,9 @@ _PERSON_OPTIONS = (
     click.option("--kind", default=None,
                  help="person, trust or charity: someone outside the household (an heir), "
                       "with no role; '' for someone in it."),
+    click.option("--roth-clock-start", default=None,
+                 help="Year of the person's first Roth IRA contribution or conversion, "
+                      "when before every Roth IRA lot in the scenario; '' for none."),
     click.option("--meta-json", default=None, help="JSON metadata (default {})."),
     click.option("--scenario", type=completion.SCENARIO, default=None,
                  help="Scenario checked first (default: the current one); "
@@ -20305,8 +20394,8 @@ def _write_persons(
 @_person_options
 def person_add(
     person_id: str | None, display: str | None, birthdate: str | None, sex: str | None,
-    role: str | None, kind: str | None, meta_json: str | None, scenario: str | None,
-    data_dir: Path | None,
+    role: str | None, kind: str | None, roth_clock_start: str | None, meta_json: str | None,
+    scenario: str | None, data_dir: Path | None,
 ) -> None:
     """Add a person to persons.csv, asking for a display name and birthdate
     not given (and then the sex, role, kind and meta_json). Someone with no
@@ -20331,6 +20420,7 @@ def person_add(
     fields = _person_fields(
         {}, _role_choices(df), guided=display is None or birthdate is None,
         display=display, birthdate=birthdate, role=role, meta_json=meta_json, sex=sex, kind=kind,
+        roth_clock_start=roth_clock_start,
         # The usual answer, until the household has its two spouses.
         default_role="primary" if (df["role"] == "primary").sum() < 2 else "",
     )
@@ -20344,8 +20434,8 @@ def person_add(
 @_person_options
 def person_edit(
     person_id: str | None, display: str | None, birthdate: str | None, sex: str | None,
-    role: str | None, kind: str | None, meta_json: str | None, scenario: str | None,
-    data_dir: Path | None,
+    role: str | None, kind: str | None, roth_clock_start: str | None, meta_json: str | None,
+    scenario: str | None, data_dir: Path | None,
 ) -> None:
     """Change a person in persons.csv. With no options, asks for each field
     with its current value as the default; options change just those fields.
@@ -20367,10 +20457,11 @@ def person_edit(
             f"unknown person {person_id!r}; persons: {sorted(df['id'])}")
     idx = matches[0]
     current = {c: str(df.at[idx, c]) for c in df.columns}
-    guided = all(v is None for v in (display, birthdate, sex, role, kind, meta_json))
+    guided = all(v is None for v in (display, birthdate, sex, role, kind, roth_clock_start, meta_json))
     fields = _person_fields(
         current, _role_choices(df), guided=guided,
         display=display, birthdate=birthdate, role=role, meta_json=meta_json, sex=sex, kind=kind,
+        roth_clock_start=roth_clock_start,
     )
     if all(fields[k] == current.get(k, "") for k in fields):
         click.echo(f"person '{current['id']}' unchanged")
