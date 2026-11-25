@@ -197,21 +197,25 @@ def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
     assert promote.closed_issues(body) == (706,)
 
 
-def _github(promote: ModuleType, monkeypatch: pytest.MonkeyPatch, open_body: str | None) -> list[tuple[str, str]]:
+def _github(promote: ModuleType, monkeypatch: pytest.MonkeyPatch, open_body: str | None,
+            payloads: list[dict] | None = None, open_title: str = "Promote dev to main") -> list[tuple[str, str]]:
     """Stand in for git and GitHub around _promote: dev carries #716, and the
-    open promotion (#800) has open_body, or there is none. Returns the writes."""
+    open promotion (#800) has open_title and open_body, or there is none.
+    Returns the writes; payloads, if given, collects what each one sent."""
     writes: list[tuple[str, str]] = []
     monkeypatch.setattr(promote, "_run", lambda *args, **kw: "")
     monkeypatch.setattr(promote, "dev_merges", lambda: [promote.Merge(716, "abc", True, ())])
     monkeypatch.setattr(promote, "main_only", lambda: [])
     monkeypatch.setattr(promote.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0))
     repo = {"full_name": "o/r"}
-    promotion = {"number": 800, "html_url": "u/800", "body": open_body, "head": {"ref": "dev", "repo": repo},
-                 "base": {"repo": repo}}
+    promotion = {"number": 800, "html_url": "u/800", "title": open_title, "body": open_body,
+                 "head": {"ref": "dev", "repo": repo}, "base": {"repo": repo}}
 
     def api(path: str, method: str = "GET", fields: dict | None = None) -> object:
         if method != "GET":
             writes.append((method, path))
+            if payloads is not None:
+                payloads.append(fields or {})
             return {"html_url": "u"}
         if path.endswith("/pulls/716"):
             return {"title": "Typo", "body": "Fixes #706"}
@@ -247,11 +251,29 @@ def test_promote_writes_nothing_with_a_blocked_keyword(promote: ModuleType, monk
     assert writes == []
 
 
+@pytest.mark.parametrize("open_body", [None, "Stale body\nFixes #12\n"])
+def test_promote_checks_exactly_what_it_writes(promote: ModuleType, monkeypatch: pytest.MonkeyPatch,
+                                              open_body: str | None) -> None:
+    payloads: list[dict] = []
+    _github(promote, monkeypatch, open_body, payloads, open_title="Promote dev to main, edited")
+    checked: list[str] = []
+    monkeypatch.setattr(promote, "_keywords_clear", lambda text: checked.append(text) or True)
+    assert promote._promote(dry_run=False) == 0
+    [sent] = payloads
+    # A refresh sends only the body and keeps the title the promotion has.
+    title = sent.get("title", "Promote dev to main, edited")
+    assert checked == [title + "\n\n" + sent["body"]]
+    if open_body:
+        assert "Fixes #12" in sent["body"]
+
+
 def test_keywords_clear_runs_the_check_on_the_text(promote: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
 
     def run(args: list[str], **kw: object) -> subprocess.CompletedProcess:
         seen.append(Path(args[-1]).read_text())
+        # Its output is dropped: a matching line can hold a private keyword.
+        assert kw.get("capture_output")
         return subprocess.CompletedProcess(args, 1 if "bad" in seen[-1] else 0)
 
     monkeypatch.setattr(promote.subprocess, "run", run)

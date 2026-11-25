@@ -219,17 +219,18 @@ def _api(path: str, method: str = "GET", fields: dict | None = None) -> object:
 
 
 def _keywords_clear(text: str) -> bool:
-    """Whether text passes scripts/check-blocked-keywords.sh (which never
-    prints a private keyword). Checked here, on the exact text about to be
-    written: Gates checks a pull request's body only when its own edit
-    starts a run, and an edit made with a workflow's GITHUB_TOKEN doesn't.
-    A merged pull request's title, which the body repeats, can be edited
-    at any time."""
+    """Whether text passes scripts/check-blocked-keywords.sh. Checked here,
+    on the exact text about to be written: Gates checks a pull request's
+    title and body only when its own edit starts a run, and an edit made
+    with a workflow's GITHUB_TOKEN doesn't. A merged pull request's title,
+    which the body repeats, can be edited at any time. The checker's output
+    is dropped: it prints each matching line, and a line a public keyword
+    matches can hold a private one too."""
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(text)
     try:
         return subprocess.run([str(REPO / "scripts" / "check-blocked-keywords.sh"), "--text", f.name],
-                              cwd=REPO).returncode == 0
+                              cwd=REPO, capture_output=True).returncode == 0
     finally:
         os.unlink(f.name)
 
@@ -283,9 +284,12 @@ def _promote(dry_run: bool) -> int:
         # timeline (and, made with a user's token, rerun its checks).
         print(f"{existing['html_url']} is up to date")
         return 0
-    if not _keywords_clear(TITLE + "\n\n" + body):
-        print("The promotion's body has a blocked keyword (a pull request's title?); "
-              "it was not written.", file=sys.stderr)
+    # A refresh writes only the body and keeps the promotion's title, which
+    # someone may have edited, so check the title it will have.
+    title = existing["title"] if existing else TITLE
+    if not _keywords_clear(title + "\n\n" + body):
+        print("The promotion's title or body has a blocked keyword (a pull request's title?); "
+              "nothing was written.", file=sys.stderr)
         return 3
     if existing:
         pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})

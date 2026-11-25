@@ -28,14 +28,15 @@ permissions:
   pull-requests: write
   issues: write
 
-concurrency:
-  group: retarget-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   retarget:
     name: Retarget to dev
     if: ${{ github.event.action != 'edited' || github.event.changes.base }}
+    # On the job, not the workflow, so an edit this job skips (a title or
+    # body) can't cancel a retarget halfway.
+    concurrency:
+      group: retarget-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - name: Retarget unless a promotion or a hotfix
