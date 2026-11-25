@@ -29,6 +29,7 @@ from pathlib import Path
 
 from zabob.retirement.oscompat import login_name
 from zabob.retirement.sim import flock
+from zabob.retirement.user_config import current_user
 
 __all__ = [
     "BUILDER_CHILD_ENV",
@@ -191,7 +192,7 @@ def build_lock(
             flock.lock(fd)
         record = {
             "pid": os.getpid(),
-            "user": os.environ.get("ANALYSIS_USER") or login_name(),
+            "user": current_user() or login_name(),
             "host": socket.gethostname(),
             "since": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%SZ"),
             "by": "builder" if os.environ.get(BUILDER_CHILD_ENV) else "manual",

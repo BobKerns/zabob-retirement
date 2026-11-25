@@ -175,8 +175,9 @@ To use the simulator, install it from PyPI with [uv](https://docs.astral.sh/uv/)
 uv tool install zabob-retirement
 sim init --example     # Alice and Bill's household, to try things on
 sim init               # or your own data repo, in ~/zabob-retirement
-source ~/zabob-retirement/sim/activate-analysis
 ```
+`sim init` makes the data repo your default, so the commands find it from any
+folder and shell, Windows PowerShell included.
 Upgrade with `uv tool upgrade zabob-retirement`. See
 [docs/SETUP.md](./docs/SETUP.md#install-the-program) for more.
 
@@ -259,8 +260,10 @@ ensembles, accounts, lots, chains, scheduled rules, calendar rows, persons,
 series, tags, symbols and itemizations. Names come from the scenario named on
 the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
-before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir` or
-`$ANALYSIS_DATA_DIR`, which the data repo's `activate-analysis` sets.
+before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
+`$ANALYSIS_DATA_DIR` (which the data repo's `activate-analysis` sets), or
+your default data repo (`sim use`). TAB completion needs bash or zsh with
+`activate-analysis` sourced.
 
 A command run without a name it needs asks for it, listing the choices,
 with the same completion at the prompt.
