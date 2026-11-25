@@ -57,7 +57,7 @@ def data_dir(session: dict[str, str]) -> Path:
     root = Path(session["HOME"]) / "zabob-retirement"
     if WINDOWS:
         # Its one line of activation, as PowerShell takes it (#687).
-        assert f'$env:ANALYSIS_DATA_DIR = "{root / "sim"}"' in out
+        assert f"$env:ANALYSIS_DATA_DIR = '{root / 'sim'}'" in out
     return root / "sim"
 
 

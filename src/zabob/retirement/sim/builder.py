@@ -538,16 +538,20 @@ def _sim_executable() -> list[str]:
     return [str(sim)] if sim.exists() else [sys.executable, "-m", "zabob.retirement", "sim"]
 
 
+def _pair_sim(paths: BuilderPaths) -> list[str]:
+    """The pair's own code, whichever checkout asked (a reader, a hook in
+    another worktree linking the same data): what it builds with."""
+    code = (read_config(paths) or {}).get("code_dir")
+    sim = program_sim(code) if code else None
+    return [str(sim)] if sim is not None and sim.exists() else _sim_executable()
+
+
 def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
     """Start a daemon for this workspace, detached. A second one started at
     the same moment finds the daemon lock taken and exits."""
     paths.dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, BUILDER_SWITCH_ENV: "off"}
-    # The pair's own code, whichever checkout asked (a reader, a hook in
-    # another worktree linking the same data).
-    code = (read_config(paths) or {}).get("code_dir")
-    sim = program_sim(code) if code else None
-    command = [str(sim)] if sim is not None and sim.exists() else _sim_executable()
+    command = _pair_sim(paths)
     # The daemon writes its log itself; only what it can't (a traceback) goes
     # to stderr, kept in the log unindented, so shown without -v.
     log = builder_log.file_for(paths.log_dir, datetime.now())
@@ -569,11 +573,12 @@ def notify(data_dir: Path, *, start: bool = True) -> str:
     paths = BuilderPaths.for_data(data_dir)
     if read_config(paths) is None:
         return "background builds aren't installed here (sim builder install)"
+    if WINDOWS:
+        # Nothing would read a request (#748); a reader checks for itself.
+        return NO_DAEMON
     _request(paths, "rescan")
     if daemon_alive(paths):
         return "asked the background builder to look again"
-    if WINDOWS:
-        return NO_DAEMON
     if not start:
         return "background builder isn't running"
     spawn_daemon(paths, data_dir)
@@ -1275,7 +1280,10 @@ def await_fresh(
     paths, data_dir, jobs = found
     echo = echo or (lambda text: print(text, file=sys.stderr))
     if WINDOWS:
-        _build_here(data_dir, jobs, echo)
+        try:
+            _build_here(paths, data_dir, jobs, echo)
+        except KeyboardInterrupt:
+            echo(f"stopped building {scenario}; opening its latest results, which may be out of date")
         return
     # Every step it reads, not only those pending now: one a pending job
     # turns up (a series store a run needs) is then waited on, so no other
@@ -1289,19 +1297,65 @@ def await_fresh(
         echo(f"gave up waiting for {scenario}; opening its latest results, which may be out of date")
 
 
-def _build_here(data_dir: Path, jobs: Sequence[str], echo: Callable[[str], None]) -> None:
+def _build_here(paths: BuilderPaths, data_dir: Path, jobs: Sequence[str],
+                echo: Callable[[str], None]) -> None:
     """Build ``jobs`` now, in this process's terminal, as the daemon would
-    (#748: no daemon on Windows). A failed one is said, and its latest
-    results are opened."""
-    env = {**os.environ, BUILDER_SWITCH_ENV: "off"}
+    (#748: no daemon on Windows): the pair's code, as a builder child, its
+    output on stderr so the reader's stdout stays the reader's. A failed one
+    is said and recorded as the daemon records it, so it isn't run again
+    until its data or code changes, and its latest results are opened."""
+    from zabob.retirement.sim.freshness import code_tree
+    from zabob.retirement.sim.provenance import data_stamps
+
+    env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+    config = read_config(paths) or {}
+    trees, _reason = main_check(config_branch(config), home_checkout(config.get("code_dir") or ""))
+    out = _stderr_fd()
     for job in jobs:
         name, step = parse_job(job)
         echo(f"building {job} first: its data or code changed")
-        done = subprocess.run([*_sim_executable(), *step_command(data_dir, name, step)],
-                              stdin=subprocess.DEVNULL, env=env, check=False)
-        if done.returncode:
-            echo(f"{job} failed (exit {done.returncode}); opening its latest results, which may be out of date")
+        done = subprocess.run([*_pair_sim(paths), *step_command(data_dir, name, step)],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE if out is None else out,
+                              env=env, check=False)
+        if out is None and done.stdout:
+            sys.stderr.write(done.stdout.decode("utf-8", "replace"))
+        code = done.returncode
+        # As in the daemon: an ensemble with failed members exits 0, yet is
+        # still to build, and would be built again on every open.
+        incomplete = code == 0 and step in needed_steps(data_dir, paths.runs_dir, name, code_tree())
+        if code == 0 and not incomplete:
+            _record_failure(paths, job, None)
+            continue
+        message = (f"exit {code}" if code else "built, but not every member succeeded") + \
+            "; built in the foreground"
+        if trees is not None:
+            _record_failure(paths, job, {"key": [list(trees), data_stamps(data_dir, name).tree_id],
+                                         "exit": code, "at": time.time(), "message": message})
+        echo(f"{job} failed ({message}); opening its latest results, which may be out of date. "
+             "It isn't built again until its data or code changes.")
+        return
+
+
+def _stderr_fd() -> int | None:
+    """stderr's file descriptor, or None where it has none (a test's runner)."""
+    try:
+        sys.stderr.flush()
+        return sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _record_failure(paths: BuilderPaths, job: str, failure: dict[str, Any] | None) -> None:
+    """Record (or with None, clear) ``job``'s failure in the status file, where
+    the daemon keeps its own and :func:`_pending` looks."""
+    status = read_status(paths)
+    failed = dict(status.get("failed") or {})
+    if failure is None:
+        if failed.pop(job, None) is None:
             return
+    else:
+        failed[job] = failure
+    _write_json(paths.status, {**status, "failed": failed})
 
 
 def build_pending(runs_dir: Path, scenario: str, mode: str | None = "monte_carlo") -> bool:

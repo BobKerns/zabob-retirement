@@ -90,17 +90,40 @@ def test_kill_tree_stops_a_process_and_its_children(tmp_path: Path) -> None:
               "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
               f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid))\n"
               "time.sleep(60)\n")
-    proc = subprocess.Popen([sys.executable, "-c", script], start_new_session=True)
+    proc = oscompat.start_tree([sys.executable, "-c", script])
+    child = _child_pid(marker)
+    oscompat.kill_tree(proc)
+    proc.wait(timeout=10)
+    _assert_ends(child)
+
+
+def test_kill_tree_stops_the_children_of_a_process_that_has_exited(tmp_path: Path) -> None:
+    """The case kill_tree runs for at the end of a research run: claude gone,
+    a child of its still holding the pipe (taskkill /T can't find those)."""
+    marker = tmp_path / "child.pid"
+    script = ("import subprocess, sys\n"
+              "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+              f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid))\n")
+    proc = oscompat.start_tree([sys.executable, "-c", script])
+    child = _child_pid(marker)
+    proc.wait(timeout=20)
+    assert oscompat.pid_alive(child)
+    oscompat.kill_tree(proc)
+    _assert_ends(child)
+
+
+def _child_pid(marker: Path) -> int:
     deadline = time.monotonic() + 20
     while not (marker.exists() and marker.read_text(encoding="utf-8")) and time.monotonic() < deadline:
         time.sleep(0.05)
-    child = int(marker.read_text(encoding="utf-8"))
-    oscompat.kill_tree(proc)
-    proc.wait(timeout=10)
+    return int(marker.read_text(encoding="utf-8"))
+
+
+def _assert_ends(pid: int) -> None:
     deadline = time.monotonic() + 10
-    while oscompat.pid_alive(child) and time.monotonic() < deadline:
+    while oscompat.pid_alive(pid) and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert not oscompat.pid_alive(child)
+    assert not oscompat.pid_alive(pid)
 
 
 def test_output_to_a_pipe_is_utf8_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:

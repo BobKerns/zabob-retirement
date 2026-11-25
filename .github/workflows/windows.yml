@@ -98,3 +98,12 @@ jobs:
         run: |
           & $env:PROGRAM_PYTHON -m pytest -q -p no:cacheprovider -o pythonpath= tests/install/test_install_native.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: The portable pieces
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        # Locks, process trees and console encodings, which only Windows can
+        # show work on Windows.
+        run: |
+          & $env:PROGRAM_PYTHON -m pytest -q -p no:cacheprovider -o pythonpath= tests/test_oscompat.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

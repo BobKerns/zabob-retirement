@@ -5724,8 +5724,9 @@ def _next_steps(activate: str) -> None:
     if WINDOWS:
         # activate-analysis is bash or zsh; in PowerShell, its one essential
         # line by hand (#687).
-        data_dir = str(Path(activate).expanduser().parent.resolve())
-        click.secho(f'    $env:ANALYSIS_DATA_DIR = "{data_dir}"', bold=True)
+        # Single quotes: PowerShell expands $ and backticks inside double.
+        data_dir = str(Path(activate).expanduser().parent.resolve()).replace("'", "''")
+        click.secho(f"    $env:ANALYSIS_DATA_DIR = '{data_dir}'", bold=True)
     else:
         click.secho(f"    source {activate}", bold=True)
     click.echo()
@@ -5855,7 +5856,8 @@ def _init_builder(sim: Path) -> None:
         return
     for line in done:
         click.echo(line)
-    click.echo(builder.notify(sim))
+    if (line := builder.notify(sim)) not in done:
+        click.echo(line)
 
 
 @sim_group_command.command("switch")
@@ -22546,7 +22548,9 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         click.echo(price_schedule.install_timer(resolved, _builder_sim(resolved)))
     elif line := price_schedule.uninstall_timer(resolved):
         click.echo(line)
-    click.echo(builder.notify(resolved))
+    # On Windows install has said there is no daemon already (#748).
+    if (line := builder.notify(resolved)) not in done:
+        click.echo(line)
 
 
 def _builder_sim(data_dir: Path) -> Path:

@@ -4,7 +4,6 @@ scripts/migrate_687.py moves a data repo to the new one."""
 from __future__ import annotations
 
 import importlib.util
-import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -25,19 +24,11 @@ def _migration():
     return module
 
 
-def _old_layout(data_dir: Path) -> list[Path]:
-    """Put the copy's tables back in aux/ folders, shared and a scenario's own."""
-    (data_dir / "tables").rename(data_dir / "aux")
-    own = data_dir / "scenarios" / "retire_alice" / "aux"
-    own.mkdir()
-    shutil.copy(data_dir / "aux" / "inflation__cpi.csv", own)
-    return [data_dir / "aux", own]
-
-
 def test_the_loader_refuses_aux_folders_and_the_migration_renames_them(
-    test_data_dir: Path, load_test_copy: Callable[[], LoadResult], capsys: pytest.CaptureFixture[str],
+    test_data_dir: Path, old_aux_layout: list[Path], load_test_copy: Callable[[], LoadResult],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    old = _old_layout(test_data_dir)
+    old = old_aux_layout
     with pytest.raises(LoadError,
                        match=r"tables/ now \(#687\).*git mv aux tables.*scripts/migrate_687.py") as caught:
         load_test_copy()
@@ -69,7 +60,7 @@ def test_the_migration_renames_tracked_folders_with_git(data_repo_sim: Path) -> 
     assert any("sim/aux/inflation__cpi.csv\tsim/tables/inflation__cpi.csv" in line for line in staged)
 
 
-def test_the_migration_stops_when_both_folders_exist(test_data_dir: Path) -> None:
-    shutil.copytree(test_data_dir / "tables", test_data_dir / "aux")
+def test_the_migration_stops_when_both_folders_exist(test_data_dir: Path, old_aux_layout: list[Path]) -> None:
+    (test_data_dir / "tables").mkdir()
     assert _migration().main([str(test_data_dir), "--write"]) == 1
     assert (test_data_dir / "aux").is_dir()

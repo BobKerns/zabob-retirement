@@ -270,6 +270,18 @@ def test_data_dir(tmp_path, prototype_data: Path) -> Path:
     shutil.copytree(prototype_data, data_dir, dirs_exist_ok=True)
     return data_dir
 
+@pytest.fixture(scope="function")
+def old_aux_layout(test_data_dir: Path) -> list[Path]:
+    """The private data copy in the layout before #687: its lookup tables in
+    ``aux/`` folders, the shared one and a scenario's own (retire_alice's).
+    Returns the two folders."""
+    (test_data_dir / "tables").rename(test_data_dir / "aux")
+    own = test_data_dir / "scenarios" / "retire_alice" / "aux"
+    own.mkdir()
+    shutil.copy(test_data_dir / "aux" / "inflation__cpi.csv", own)
+    return [test_data_dir / "aux", own]
+
+
 @pytest.fixture(scope="session")
 def scenarios_dir(data_dir: Path) -> Path:
     """Create a temporary scenario directory within the temporary data directory for tests."""
