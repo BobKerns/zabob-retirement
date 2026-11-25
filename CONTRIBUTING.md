@@ -52,14 +52,24 @@ promoted, and the promotion's pull request lists every issue it closes.
 
 ## Promoting dev
 
-The maintainer decides when `dev` is promoted. With Claude Code, `/promote`
-(the skill in [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md))
-does it the same way each time: it checks the promotion's body against
-`dev`'s merges, opens or refreshes the promotion as a draft, then watches
-it, fixing review findings and Gates failures in pull requests into `dev`,
-and says when it is clean to merge. It never merges.
+The maintainer decides when `dev` is promoted. Until then, a promotion is
+always open: the **Promotion** workflow
+([`.github/workflows/promotion.yml`](.github/workflows/promotion.yml)) runs
+`scripts/promote_dev.py` on every push to `dev`, which opens the promotion
+as a draft when none is open and otherwise refreshes its body, so what is
+waiting for `main` is listed in one place. It is opened by
+`github-actions[bot]`, which needs the repository setting "Allow GitHub
+Actions to create and approve pull requests" (Settings, Actions, General).
 
-Without Claude, run the script it uses, signed in to `gh`:
+With Claude Code, `/promote` (the skill in
+[`.claude/skills/promote/`](.claude/skills/promote/SKILL.md)) is the
+fallback when that workflow's run failed, and the step before merging: it
+checks the promotion's body against `dev`'s merges, refreshes it if needed,
+then watches it, fixing review findings and Gates failures in pull requests
+into `dev`, and says when it is clean to merge. It never merges.
+
+Without Claude, run the script by hand, signed in to `gh`, or rerun the
+workflow ("Run workflow" on the Promotion workflow):
 
 ```sh
 .venv/bin/python scripts/promote_dev.py --dry-run   # the body it would write
