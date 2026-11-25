@@ -64,6 +64,8 @@ runs the full Gates and Copilot's review, once.
   the body.
 
 Tell the user when the promotion is clean to merge: Gates green on dev's
-current head, every finding fixed on dev or answered, nothing open into dev
+current head, both the push run on dev and the promotion's own latest run
+(a body refresh is an `edited` event, which reruns the promotion's checks
+and cancels the run before it), every finding fixed on dev or answered, nothing open into dev
 that was meant to go with it. Remind them to merge with a merge commit,
 never a squash.
