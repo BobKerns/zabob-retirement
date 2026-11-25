@@ -8,6 +8,9 @@
 # instead install a published version from PyPI, as a user would, to see
 # how a release fares (`source: pypi`, `version: 1.0.0b1`).
 #
+# Like Gates, the promotion pull request (head dev) reuses the push run on
+# dev's tip instead of installing again (#759).
+#
 # Like Gates, it skips a draft pull request, unless it is labeled windows:
 # a draft that changes something Windows-specific can be checked as it goes.
 name: Windows
@@ -38,13 +41,48 @@ concurrency:
   cancel-in-progress: ${{ github.event.action != 'labeled' }}
 
 jobs:
+  # A promotion's head is dev's tip, which the push to dev already installed
+  # and tested: wait for that run and pass or fail with it. When a later push
+  # cancelled it there is nothing to reuse, and the install below runs.
+  reuse:
+    name: Installed program on Windows (push run on dev)
+    if: >-
+      ${{ github.event_name == 'pull_request'
+          && github.event.action != 'labeled'
+          && !github.event.pull_request.draft
+          && github.event.pull_request.head.ref == 'dev'
+          && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      result: ${{ steps.reuse.outputs.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Push run on dev
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          result=$(scripts/push-run-result.sh windows.yml "Installed program on Windows" "$SHA")
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          [ "$result" != failed ]
+
   install:
     name: Installed program on Windows
+    needs: reuse
+    # !cancelled(): reuse is skipped on everything but a promotion.
     if: >-
-      ${{ github.event_name != 'pull_request'
-          || (github.event.action != 'labeled' && !github.event.pull_request.draft)
-          || contains(github.event.pull_request.labels.*.name, 'windows')
-             && (github.event.action != 'labeled' || github.event.label.name == 'windows') }}
+      ${{ !cancelled()
+          && (needs.reuse.result == 'skipped' || needs.reuse.outputs.result == 'none')
+          && (github.event_name != 'pull_request'
+              || (github.event.action != 'labeled' && !github.event.pull_request.draft)
+              || contains(github.event.pull_request.labels.*.name, 'windows')
+                 && (github.event.action != 'labeled' || github.event.label.name == 'windows')) }}
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:
