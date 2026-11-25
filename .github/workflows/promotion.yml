@@ -16,7 +16,7 @@
 # requests", and GitHub holds the Gates runs that bot's events start until
 # someone approves them. A GITHUB_TOKEN refresh of a ready promotion's body
 # starts no Gates run either; the push to dev that caused it does
-# (synchronize), and the blocked-keyword step below checks the body itself.
+# (synchronize), and the script checks the body itself.
 name: Promotion
 
 on:
@@ -46,14 +46,13 @@ jobs:
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
 
-      # Gates checks a pull request's title and body, but GITHUB_TOKEN's
-      # edits start no Gates run, so with that fallback a refresh of a ready
-      # promotion would go unchecked (a merged pull request's title can be
-      # edited later). Check the body before it is written; the title is the
-      # script's own.
-      - name: Check the body for blocked keywords
+      # The script checks the exact title and body it is about to write for
+      # blocked keywords, and writes nothing on a hit: with the GITHUB_TOKEN
+      # fallback, its edit starts no Gates run to check them.
+      - name: Open or refresh
         env:
           GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
+          # gh fills in {owner}/{repo} from this.
           GH_REPO: ${{ github.repository }}
           # The private keyword list (docs/SETUP.md). The check never prints it.
           BLOCKED_KEYWORDS_PRIVATE: ${{ secrets.BLOCKED_KEYWORDS_PRIVATE }}
@@ -61,13 +60,5 @@ jobs:
           if [ -z "$BLOCKED_KEYWORDS_PRIVATE" ]; then
               echo "::warning::The BLOCKED_KEYWORDS_PRIVATE secret is not set; only the public keyword list is checked."
           fi
-          uv run --no-project python scripts/promote_dev.py --dry-run > "$RUNNER_TEMP/body.txt"
-          scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/body.txt"
-
-      - name: Open or refresh
-        env:
-          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
-          # gh fills in {owner}/{repo} from this.
-          GH_REPO: ${{ github.repository }}
-        # The script needs only the standard library.
-        run: uv run --no-project python scripts/promote_dev.py
+          # The script needs only the standard library.
+          uv run --no-project python scripts/promote_dev.py

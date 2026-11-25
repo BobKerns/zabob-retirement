@@ -30,10 +30,12 @@ import argparse
 from dataclasses import dataclass
 from functools import cache
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 REPO = Path(__file__).resolve().parent.parent
 TITLE = "Promote dev to main"
@@ -216,6 +218,22 @@ def _api(path: str, method: str = "GET", fields: dict | None = None) -> object:
     return json.loads(out) if out.strip() else None
 
 
+def _keywords_clear(text: str) -> bool:
+    """Whether text passes scripts/check-blocked-keywords.sh (which never
+    prints a private keyword). Checked here, on the exact text about to be
+    written: Gates checks a pull request's body only when its own edit
+    starts a run, and an edit made with a workflow's GITHUB_TOKEN doesn't.
+    A merged pull request's title, which the body repeats, can be edited
+    at any time."""
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+        f.write(text)
+    try:
+        return subprocess.run([str(REPO / "scripts" / "check-blocked-keywords.sh"), "--text", f.name],
+                              cwd=REPO).returncode == 0
+    finally:
+        os.unlink(f.name)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dry-run", action="store_true", help="print the body instead of opening the pull request")
@@ -265,6 +283,10 @@ def _promote(dry_run: bool) -> int:
         # timeline (and, made with a user's token, rerun its checks).
         print(f"{existing['html_url']} is up to date")
         return 0
+    if not _keywords_clear(TITLE + "\n\n" + body):
+        print("The promotion's body has a blocked keyword (a pull request's title?); "
+              "it was not written.", file=sys.stderr)
+        return 3
     if existing:
         pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})
     else:
