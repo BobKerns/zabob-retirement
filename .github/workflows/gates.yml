@@ -181,11 +181,13 @@ jobs:
           echo "Lint and types needed: $needed"
           echo "needed=$needed" >> "$GITHUB_OUTPUT"
 
-      # The selector needs only the standard library.
-      - uses: actions/setup-python@v6
+      # The selector needs only the standard library, but of Python 3.14:
+      # uv installs that from .python-version (setup-python has no 3.14 build
+      # for the runner's Ubuntu).
+      - uses: astral-sh/setup-uv@v7
         if: ${{ steps.depth.outputs.depth == 'quick' }}
         with:
-          python-version-file: .python-version
+          version: "0.12.23"
 
       - name: Tests to run
         id: tests
@@ -200,7 +202,7 @@ jobs:
               # the dev it merged into, so this is the change as merged. Not
               # base.sha: a label or ready event can come after dev moved on,
               # and base.sha would add dev's newer changes to the selection.
-              selection=$(python scripts/affected_tests.py --list --base HEAD^1)
+              selection=$(uv run --no-project python scripts/affected_tests.py --list --base HEAD^1)
               if [ -z "$selection" ]; then
                   echo "No test reads what this change touched."
                   run=false groups='[1]' paths=''
@@ -320,8 +322,9 @@ jobs:
           if [ "$NEEDED" = true ] && [ "$LINT" != success ]; then exit 1; fi
           if [ "$RUN_TESTS" = true ] && [ "$TESTS" != success ]; then exit 1; fi
 
-  # Work merges into dev; only a promotion (head dev) or a hotfix (labeled
-  # hotfix) goes straight to main. Not a required check: it makes a pull
+  # Work merges into dev; only a promotion (head dev) or a hotfix goes
+  # straight to main. A hotfix needs both its branch name (hotfix/...) and the
+  # hotfix label, so each confirms the other was meant. Not a required check: it makes a pull
   # request opened against the wrong base loud, and retargeting it to dev
   # clears it.
   base:
@@ -341,10 +344,18 @@ jobs:
               echo "There is no dev branch yet."
               exit 0
           fi
-          if [ "$HEAD_REF" != dev ] && [ "$HOTFIX" != true ]; then
-              echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (label hotfix) goes to main. Edit the pull request's base to dev."
-              exit 1
+          [ "$HEAD_REF" = dev ] && exit 0
+          case "$HEAD_REF" in hotfix/*) named=true ;; *) named=false ;; esac
+          if [ "$named" = true ] && [ "$HOTFIX" = true ]; then
+              exit 0
+          elif [ "$named" = true ]; then
+              echo "::error::A hotfix into main needs the hotfix label too. Add it, or retarget the pull request to dev."
+          elif [ "$HOTFIX" = true ]; then
+              echo "::error::A hotfix comes from a branch named hotfix/<number>-<description>, made from origin/main. Push the fix there and open the pull request from it."
+          else
+              echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (branch hotfix/..., label hotfix) goes to main. Edit the pull request's base to dev."
           fi
+          exit 1
 
   docs:
     name: Spelling and markdown
