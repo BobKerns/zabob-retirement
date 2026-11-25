@@ -56,8 +56,9 @@ each index (TestPyPI done; PyPI still to do) goes:
    `packages/zabob-retire/pyproject.toml` both its `version` and its
    `dependencies` pin. Run `uv lock` (only the version line of
    `zabob-retirement` changes). Merge that into `dev` and promote `dev` to
-   `main` (`scripts/promote_dev.py`), or, for a point release, merge it into
-   the `release/x.y` branch.
+   `main` (`/promote`, or `scripts/promote_dev.py`; see
+   [Promoting dev](../CONTRIBUTING.md#promoting-dev)), or, for a point
+   release, merge it into the `release/x.y` branch.
 2. Try it on TestPyPI: run **Publish** from the Actions tab on `main`, or
    push a pre-release tag, `git tag v1.0.0b1 && git push origin v1.0.0b1`.
 3. Test the install in a clean Ubuntu container, as a new user would make
