@@ -171,12 +171,15 @@ years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
 ## The dev branch
 
 Work merges into `dev`, not `main`: branch from `origin/dev`, and open pull
-requests against `dev`. Bob promotes `dev` to `main` when he wants it (or
-asks for `/promote`, the skill in `.claude/skills/promote/`), with
-one pull request that `scripts/promote_dev.py` opens or refreshes, as a
-draft so it doesn't rerun the full gates on every push to `dev`; he marks it
-ready to promote and merges it with a merge commit, never a squash. Nothing
-else goes to `main` except a hotfix, which branches from `origin/main` (not
+requests against `dev`. Whenever `dev` has anything `main` lacks, a
+promotion of `dev` to `main` is open: the Promotion workflow
+(`.github/workflows/promotion.yml`) runs `scripts/promote_dev.py` on every
+push to `dev`, which opens it as a draft (so it doesn't rerun the full
+gates on every push to `dev`) or refreshes its body. `/promote`, the skill
+in `.claude/skills/promote/`, is the manual fallback when that run fails,
+and checks the promotion before merge. Bob marks it ready when he wants to
+promote and merges it. Nothing else
+goes to `main` except a hotfix, which branches from `origin/main` (not
 `dev`, whose unpromoted merges it would carry) as `hotfix/<number>-<desc>`,
 is labeled `hotfix`, and goes to `dev` as soon as it lands, from an
 `issue/<number>-<desc>` branch at the same commits.
@@ -233,6 +236,13 @@ request into `dev`, or revert that merge (`git revert -m 1 <merge>`).
   inline `shutil.copytree`/`tmp_path` setup. Check there before writing setup;
   a new reusable need becomes a new fixture. Its module docstring explains the
   session (shared, read-only) vs. function (private, mutation-safe) families.
+- **Actions are pinned to commits.** Every `uses:` in a workflow names a
+  full commit SHA with its release as a comment
+  (`actions/checkout@<sha>  # v7.0.1`), never a tag or branch: the
+  repository rejects anything else. Find the SHA with
+  `git ls-remote --tags https://github.com/<owner>/<repo>` (the `^{}` line
+  for an annotated tag). Dependabot proposes updates weekly, into `dev`;
+  `tests/test_workflows.py` checks the pins.
 - **Tabs are forbidden** in all text files (code, markdown, docs) — spaces only.
 - Spell checking (cspell) runs over markdown, Python, CSV, and TOML (see
   `cspell.json`). Add project-specific words to `.cspell/project-words.txt`,

@@ -1,0 +1,73 @@
+# Keep the dev-to-main promotion open (#731). Every push to dev (a merge, a
+# revert, main merged back in) runs scripts/promote_dev.py, which opens the
+# draft promotion when none is open and otherwise refreshes its body: the
+# pull requests it carries and the issues it closes. Right after a promotion
+# merges, dev has nothing main lacks, and the script does nothing.
+#
+# `/promote` and running the script by hand are the fallback when a run here
+# fails; "Run workflow" reruns it.
+#
+# It acts with the PROMOTION_TOKEN secret, a fine-grained personal access
+# token for this repository (Pull requests: read and write, Contents: read),
+# so the promotion is the maintainer's own and its events run Gates as
+# usual. Without the secret it falls back to the workflow's GITHUB_TOKEN:
+# then the promotion is authored by github-actions[bot], opening one needs
+# the repository setting "Allow GitHub Actions to create and approve pull
+# requests", and GitHub holds the Gates runs that bot's events start until
+# someone approves them. A GITHUB_TOKEN refresh of a ready promotion's body
+# starts no Gates run either; the push to dev that caused it does
+# (synchronize), and the blocked-keyword step below checks the body itself.
+name: Promotion
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# The script rebuilds the body from dev's whole history since main, so only
+# the newest run matters: a burst of merges ends in one refresh.
+concurrency:
+  group: promotion
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    name: Open or refresh the promotion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # origin/main..origin/dev, and every commit message in it.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+
+      # Gates checks a pull request's title and body, but GITHUB_TOKEN's
+      # edits start no Gates run, so with that fallback a refresh of a ready
+      # promotion would go unchecked (a merged pull request's title can be
+      # edited later). Check the body before it is written; the title is the
+      # script's own.
+      - name: Check the body for blocked keywords
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          # The private keyword list (docs/SETUP.md). The check never prints it.
+          BLOCKED_KEYWORDS_PRIVATE: ${{ secrets.BLOCKED_KEYWORDS_PRIVATE }}
+        run: |
+          if [ -z "$BLOCKED_KEYWORDS_PRIVATE" ]; then
+              echo "::warning::The BLOCKED_KEYWORDS_PRIVATE secret is not set; only the public keyword list is checked."
+          fi
+          uv run --no-project python scripts/promote_dev.py --dry-run > "$RUNNER_TEMP/body.txt"
+          scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/body.txt"
+
+      - name: Open or refresh
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
+          # gh fills in {owner}/{repo} from this.
+          GH_REPO: ${{ github.repository }}
+        # The script needs only the standard library.
+        run: uv run --no-project python scripts/promote_dev.py

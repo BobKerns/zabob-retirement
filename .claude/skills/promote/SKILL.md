@@ -9,6 +9,12 @@ disable-model-invocation: true
 The user decides when dev is promoted; this skill runs only when they ask
 (`/promote`). It never merges: the user merges the promotion.
 
+The Promotion workflow (`.github/workflows/promotion.yml`) already opens or
+refreshes the promotion on every push to dev, so it is usually open with a
+current body. This skill is the fallback when that run failed or was
+missed (check its latest run on dev's head), and the check-and-watch step
+before the user merges.
+
 ## 0. Acknowledge at once
 
 Before running anything, tell the user in one line that you're starting
@@ -53,7 +59,8 @@ git log --first-parent --oneline origin/main..origin/dev
 ```
 
 It prints the pull request's URL: a new draft, or the open promotion with
-its body refreshed (keeping any "Fixes" line added by hand). It uses only
+its body refreshed (keeping any "Fixes" line added by hand), or says the
+body is already up to date and leaves it alone. It uses only
 GitHub's REST API, so it works from a cloud session too.
 
 ## 3. Watch it
@@ -74,7 +81,9 @@ runs the full Gates and Copilot's review, once.
 
 Tell the user when the promotion is clean to merge: Gates green on dev's
 current head, both the push run on dev and the promotion's own latest run
-(a body refresh is an `edited` event, which reruns the promotion's checks
-and cancels the run before it), every finding fixed on dev or answered, nothing open into dev
-that was meant to go with it. Remind them to merge with a merge commit,
-never a squash.
+(a body refresh made with a user's token, as this skill's is and the
+Promotion workflow's is with `PROMOTION_TOKEN`, is an `edited` event, which
+reruns the promotion's checks and cancels the run before it, so wait for
+the replacement run; only a refresh made with the workflow's fallback
+`GITHUB_TOKEN` reruns nothing), every finding fixed on dev or answered,
+nothing open into dev that was meant to go with it.

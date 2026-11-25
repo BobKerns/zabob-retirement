@@ -11,10 +11,10 @@
 # a test starts reading a path an area owns, add the test to that area.
 
 # Paths no test reads: editor settings, the spelling word lists, agent
-# instructions and the workflows (which Gates itself exercises). Check with
+# instructions and the rest of .github/. Check with
 # `grep -rl <name> tests/` before adding one.
 ignore = [
-    ".cspell/**", ".vscode/**", ".cursor/**", ".serena/**", ".github/**",
+    ".cspell/**", ".vscode/**", ".cursor/**", ".serena/**", ".github/*",
     "cspell.json", ".markdownlint.json", ".markdownlintignore",
     "*.code-workspace", ".gitignore", ".gitattributes",
     "AGENTS.md", "CLAUDE.md", "CONVENTIONS.md", "TODO.md", "PRIVACY.md",
@@ -88,3 +88,10 @@ tests = ["tests/test_affected_tests.py"]
 name = "dev branch"
 paths = ["scripts/promote_dev.py", "scripts/bisect_dev.py"]
 tests = ["tests/test_dev_scripts.py"]
+
+# Gates exercises the workflows themselves; the test checks their actions are
+# pinned to commits (#733).
+[[area]]
+name = "workflows"
+paths = [".github/workflows/**"]
+tests = ["tests/test_workflows.py"]

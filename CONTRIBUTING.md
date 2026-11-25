@@ -35,7 +35,7 @@ gitGraph
   `issue/<number>-<short-description>`, and open the pull request against
   `dev`.
 - **`main`** moves only when `dev` is promoted: one pull request, merged
-  with a merge commit (never a squash), after the whole test suite has
+  after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.
 - **A hotfix**, a fix `main` can't wait for, branches from `origin/main`
   rather than `dev`, on a branch named `hotfix/<number>-<short-description>`,
@@ -52,14 +52,28 @@ promoted, and the promotion's pull request lists every issue it closes.
 
 ## Promoting dev
 
-The maintainer decides when `dev` is promoted. With Claude Code, `/promote`
-(the skill in [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md))
-does it the same way each time: it checks the promotion's body against
-`dev`'s merges, opens or refreshes the promotion as a draft, then watches
-it, fixing review findings and Gates failures in pull requests into `dev`,
-and says when it is clean to merge. It never merges.
+The maintainer decides when `dev` is promoted. Until then, a promotion is
+always open: the **Promotion** workflow
+([`.github/workflows/promotion.yml`](.github/workflows/promotion.yml)) runs
+`scripts/promote_dev.py` on every push to `dev`, which opens the promotion
+as a draft when none is open and otherwise refreshes its body, so what is
+waiting for `main` is listed in one place. It acts with the
+`PROMOTION_TOKEN` secret, a fine-grained personal access token for this
+repository (Pull requests: read and write, Contents: read); renew it when
+it expires. Without it, the promotion is opened by `github-actions[bot]`,
+which needs the repository setting "Allow GitHub Actions to create and
+approve pull requests" (Settings, Actions, General), and its Gates runs
+wait for approval.
 
-Without Claude, run the script it uses, signed in to `gh`:
+With Claude Code, `/promote` (the skill in
+[`.claude/skills/promote/`](.claude/skills/promote/SKILL.md)) is the
+fallback when that workflow's run failed, and the step before merging: it
+checks the promotion's body against `dev`'s merges, refreshes it if needed,
+then watches it, fixing review findings and Gates failures in pull requests
+into `dev`, and says when it is clean to merge. It never merges.
+
+Without Claude, run the script by hand, signed in to `gh`, or rerun the
+workflow ("Run workflow" on the Promotion workflow):
 
 ```sh
 .venv/bin/python scripts/promote_dev.py --dry-run   # the body it would write
@@ -75,7 +89,7 @@ into `dev` and run the script again to refresh the body.
 If the body says main has changes `dev` lacks (a hotfix merged straight to
 main), merge `origin/main` into `dev` through a pull request first, so
 `dev`'s Gates test what main will get.
-Merge only when that fix is on `dev`, with a merge commit, never a squash.
+Merge only when that fix is on `dev`.
 
 ## A pull request
 

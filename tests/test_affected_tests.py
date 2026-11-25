@@ -45,7 +45,7 @@ def test_a_path_two_areas_own_selects_both_areas_tests(affected: ModuleType) -> 
 
 
 def test_an_ignored_path_selects_nothing(affected: ModuleType) -> None:
-    assert _select(affected, ".cspell/project-words.txt", ".github/workflows/gates.yml") == ([], [])
+    assert _select(affected, ".cspell/project-words.txt", ".github/copilot-instructions.md") == ([], [])
 
 
 def test_a_changed_test_file_selects_itself(affected: ModuleType) -> None:
