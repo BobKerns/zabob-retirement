@@ -1,0 +1,70 @@
+# Retarget a pull request opened against main to dev (#743). GitHub offers
+# the default branch, main, as a new pull request's base, but work goes to
+# dev; only dev's promotion and a hotfix go to main. Gates' "Base branch"
+# check still fails anything else into main, as the backstop.
+#
+# pull_request_target, so a fork's pull request gets a token that can edit
+# it. That event runs this file as it is on main with the repository's
+# secrets, so it must never check out or run the pull request's code: it
+# reads only the event's fields, passed in through env (never interpolated
+# into the script, since a branch name is the author's text), and calls the
+# REST API. It needs no checkout at all.
+#
+# It acts with PROMOTION_TOKEN (Pull requests: read and write), so the base
+# change is an ordinary edited event and Gates reruns on the pull request
+# against dev. With the GITHUB_TOKEN fallback the edit starts no run; the
+# next push does.
+name: Retarget to dev
+
+on:
+  pull_request_target:
+    # edited: someone changed the base back to main.
+    types: [opened, reopened, edited]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: retarget-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  retarget:
+    name: Retarget to dev
+    if: ${{ github.event.action != 'edited' || github.event.changes.base }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retarget unless a promotion or a hotfix
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          # Until dev exists, main is still where pull requests go.
+          if ! gh api "repos/$REPO/branches/dev" --silent 2>/dev/null; then
+              echo "There is no dev branch yet."
+              exit 0
+          fi
+          # dev's promotion: this repository's dev, not a fork's.
+          if [ "$HEAD_REF" = dev ] && [ "$HEAD_REPO" = "$REPO" ]; then
+              echo "dev's promotion stays on main."
+              exit 0
+          fi
+          # A hotfix stays; the Base branch check makes sure it is labeled.
+          case "$HEAD_REF" in hotfix/*)
+              echo "A hotfix stays on main."
+              exit 0 ;;
+          esac
+          gh api -X PATCH "repos/$REPO/pulls/$NUMBER" -f base=dev --silent
+          gh api -X POST "repos/$REPO/issues/$NUMBER/comments" --silent -f body="$(cat <<'EOF'
+          Retargeted to `dev`: pull requests merge into `dev`, which is promoted to `main` in batches. Only `dev`'s promotion and a hotfix (a `hotfix/...` branch with the `hotfix` label) go to `main`. See [CONTRIBUTING.md](https://github.com/BobKerns/zabob-retirement/blob/dev/CONTRIBUTING.md#branches).
+
+          If this branch was made from `main` rather than `origin/dev`, merge `origin/dev` into it so the diff shows only your change.
+          EOF
+          )"
+          echo "Retargeted #$NUMBER to dev."
