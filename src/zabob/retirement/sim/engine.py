@@ -739,7 +739,8 @@ class RothLot(NamedTuple):
     never rolled into the beneficiary's own Roth IRA."""
     empty_by: date | None = None
     """When an inherited lot must be empty (Dec 31 of the tenth year after
-    the death, its ``acquired`` date); None when it has no date."""
+    the death, its ``acquired`` date); None when it has no date, or the
+    death came before 2020 (``SECURE_ACT_YEAR``)."""
 
 
 def _earlier_clock(*clocks: date | None) -> date | None:
@@ -866,8 +867,9 @@ def _roth_lots(
             clock_start=date(clock_year, 1, 1) if clock_year else None,
             birthdate=None,
             inherited=True,
+            # A death before the SECURE Act keeps the life-expectancy stretch.
             empty_by=(date(int(acquired[:4]) + registries.INHERITED_ROTH_YEARS, 12, 31)
-                      if acquired else None),
+                      if acquired and int(acquired[:4]) >= registries.SECURE_ACT_YEAR else None),
         )
     return lots
 
@@ -1527,8 +1529,6 @@ def _post_transfer(
     if remainder is None:
         remainder = requested - amount
     track = refill_ctx if net_effects else None
-    if track is not None and amount > 0:
-        _check_inherited_roth(track, account_kinds, from_id, to_id, month_s)
     if track is not None and amount > 0 and refill_mark is None:
         refill_mark = _ensure_min_balance(
             con, balances, account_kinds, step_id, month_s, track,
@@ -1581,7 +1581,8 @@ def _check_inherited_roth(
     retirement account of their own (#257): flag a transfer that does. Only
     money from the household's own assets is a contribution: its growth, the
     inheritance arriving from an income account during the run, a death's
-    sweep, and a move between two inherited lots are fine."""
+    sweep (a successor beneficiary's, either way), and a move between two
+    inherited lots are fine."""
     to_roth, from_roth = ctx.roth.get(to_id), ctx.roth.get(from_id)
     if (to_roth is not None and to_roth.inherited
             and account_kinds.get(from_id) == "asset"
@@ -1590,7 +1591,7 @@ def _check_inherited_roth(
         _inherited_roth_warning(
             ctx, to_id, "contribution", month_s,
             "money moved in; a beneficiary can't contribute to an inherited IRA")
-    elif (from_roth is not None and from_roth.inherited
+    elif (from_roth is not None and from_roth.inherited and ctx.inheritance is None
             and ctx.account_subkind.get(to_id) == registries.RETIREMENT_SUBKIND
             and not (to_roth is not None and to_roth.inherited)):
         _inherited_roth_warning(
@@ -1601,15 +1602,16 @@ def _check_inherited_roth(
 def _check_inherited_roth_deadline(
     ctx: RefillContext, balances: Mapping[int, int], month: date,
 ) -> None:
-    """At a month's end, flag each inherited Roth lot still holding money on
-    the day it had to be empty (#257). The real penalty is an excise tax on
-    what's left, which isn't modeled."""
+    """At a December's end, flag each inherited Roth lot still holding money
+    on or after the day it had to be empty (#257), once: a deadline before
+    the run's start is flagged at its first year's end. The real penalty is
+    an excise tax on what's left, which isn't modeled."""
     for lot, roth in ctx.roth.items():
-        if roth.empty_by == month and balances.get(lot, 0) > 0:
+        if roth.empty_by is not None and month >= roth.empty_by and balances.get(lot, 0) > 0:
             _inherited_roth_warning(
                 ctx, lot, "deadline", month.isoformat(),
                 f"{balances[lot] / 100:.2f} left after the ten-year deadline "
-                f"({month.isoformat()}); it must be emptied by then")
+                f"({roth.empty_by.isoformat()}); it must be emptied by then")
 
 
 def _record_hsa_gain(
@@ -1645,6 +1647,9 @@ def _track_lots(
     (#497); moved into another HSA lot it carries that basis. Otherwise the
     rest, the withdrawal's gain over its basis (a loss negative), is
     returned, for a state that taxes an HSA; None when there is none."""
+    if amount > 0:
+        # Here, not in _post_transfer: a sale's legs post without net effects.
+        _check_inherited_roth(ctx, account_kinds, from_id, to_id, on.isoformat())
     if amount <= 0 or to_id in ctx.growth_sources:
         # A month of negative growth posts back to its counterparty: the lot
         # lost value, which sells no shares and spends no basis.

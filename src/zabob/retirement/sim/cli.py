@@ -1473,6 +1473,7 @@ def _run_one_member(
         # A member's negative balances are recorded in its run file
         # (negative_balance_warnings); printed, eighty members' warnings
         # would bury the batch (#369), so the batch counts them instead.
+        # Its inherited Roth IRA warnings (#257) are recorded too, and not shown.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             run_scenario(
@@ -1484,6 +1485,8 @@ def _run_one_member(
         for warning in caught:
             if issubclass(warning.category, RuntimeWarning) and "went negative" in str(warning.message):
                 short = True
+            elif issubclass(warning.category, RuntimeWarning) and "inherited Roth IRA" in str(warning.message):
+                pass
             else:
                 warnings.showwarning(warning.message, warning.category, warning.filename,
                                      warning.lineno, warning.file, warning.line)

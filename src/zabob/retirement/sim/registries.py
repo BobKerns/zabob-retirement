@@ -317,6 +317,9 @@ INHERITED_ROTH_SUBKIND = "inherited_roth_ira"
 # #257: a non-spouse beneficiary must empty an inherited Roth IRA by Dec 31
 # of the tenth year after the death (SECURE Act, IRC §401(a)(9)(H)).
 INHERITED_ROTH_YEARS = 10
+# The rule covers deaths from this year on; a beneficiary of an earlier one
+# keeps the life-expectancy stretch, with no deadline.
+SECURE_ACT_YEAR = 2020
 # #257: the first tax year a Roth IRA could take money (Taxpayer Relief Act
 # of 1997); a roth_clock_start before it is a typo.
 FIRST_ROTH_YEAR = 1998

@@ -3030,6 +3030,12 @@ def _validate_lot_money(
                     "in persons.csv")
             else:
                 _validate_roth_clock(row, f"{where} ({name} / {lot})", issues)
+                clock, died = row[registries.ROTH_CLOCK_COLUMN][:4], row.get("acquired", "")[:4]
+                if clock.isdigit() and died.isdigit() and clock > died:
+                    # The decedent's clock can't start after their death (acquired).
+                    issues.append(
+                        f"{where} ({name} / {lot}): {registries.ROTH_CLOCK_COLUMN} {clock} is "
+                        f"after the death (acquired {row['acquired']})")
         ob = row.get("opening_balance", "")
         if ob == "":
             issues.append(

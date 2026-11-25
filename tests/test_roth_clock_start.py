@@ -21,6 +21,7 @@ from zabob.retirement.sim.engine import RothLot, run_scenario
 from zabob.retirement.sim.loader import LoadError, LoadResult, roth_clock_year
 
 ROTH_ALICE, ROTH_BILL = "Asset_Roth_Alice", "Asset_Roth_Bill"  # both opened 2015-01-31
+BROKERAGE, BROKERAGE_LOT = "Asset_Brokerage_Joint", "default"  # $300,000, $200,000 of it basis
 BIRTHDATES = {"alice": date(1965, 3, 15), "bill": date(1967, 8, 20)}
 
 
@@ -157,6 +158,26 @@ def test_an_inherited_roth_left_past_ten_years_is_flagged(
     assert "inherited Roth IRA warnings (1):" in explained.output
 
 
+def test_an_inherited_roth_whose_deadline_passed_before_the_run_is_flagged_its_first_year(
+    add_inherited_roth: Callable[..., str], retire_alice_csv: Callable[[str], Path],
+    load_test_copy: Callable[[], LoadResult], runs_dir: Path,
+) -> None:
+    add_inherited_roth(acquired="2020-03-01")  # had to be empty by 2030-12-31
+    path = retire_alice_csv("scenario.csv")
+    path.write_text(path.read_text().replace(",2026-05-31,", ",2031-01-31,"))
+    with pytest.warns(RuntimeWarning, match="after the ten-year deadline"):
+        run = _run(load_test_copy, runs_dir)
+    assert [(w["kind"], w["month"]) for w in _warnings(run)] == [("deadline", "2031-12-31")]
+
+
+def test_an_inherited_roth_from_a_death_before_2020_has_no_deadline(
+    add_inherited_roth: Callable[..., str], load_test_copy: Callable[[], LoadResult],
+) -> None:
+    # The SECURE Act's ten years cover deaths from 2020; earlier ones keep the stretch.
+    name = add_inherited_roth(acquired="2019-06-01")
+    assert _clocks(load_test_copy)[name].empty_by is None
+
+
 def test_an_inherited_roth_emptied_in_time_is_not_flagged(
     add_inherited_roth: Callable[..., str], append_calendar_row: Callable[..., None],
     load_test_copy: Callable[[], LoadResult], runs_dir: Path,
@@ -179,6 +200,19 @@ def test_money_moved_into_an_inherited_roth_is_flagged(
     assert [w["kind"] for w in _warnings(run)] == ["contribution"]
 
 
+def test_money_sold_out_of_a_brokerage_lot_into_an_inherited_roth_is_flagged(
+    add_inherited_roth: Callable[..., str], append_calendar_row: Callable[..., None],
+    load_test_copy: Callable[[], LoadResult], runs_dir: Path,
+) -> None:
+    # A sale posts its basis and gain legs without net effects; still one warning.
+    name = add_inherited_roth()
+    append_calendar_row(date="2027-03-31", kind="one_off_transfer", account_1=BROKERAGE, lot_1=BROKERAGE_LOT,
+                        account_2=name, lot_2="default", amount="1000.00")
+    with pytest.warns(RuntimeWarning, match="can't contribute to an inherited IRA"):
+        run = _run(load_test_copy, runs_dir)
+    assert [w["kind"] for w in _warnings(run)] == ["contribution"]
+
+
 def test_an_inherited_roth_rolled_into_the_owners_own_is_flagged(
     add_inherited_roth: Callable[..., str], append_calendar_row: Callable[..., None],
     load_test_copy: Callable[[], LoadResult], runs_dir: Path,
@@ -189,6 +223,14 @@ def test_an_inherited_roth_rolled_into_the_owners_own_is_flagged(
     with pytest.warns(RuntimeWarning, match="can't roll it over"):
         run = _run(load_test_copy, runs_dir)
     assert [w["kind"] for w in _warnings(run)] == ["rollover"]
+
+
+def test_an_inherited_roths_clock_cant_start_after_the_death(
+    add_inherited_roth: Callable[..., str], load_test_copy: Callable[[], LoadResult],
+) -> None:
+    add_inherited_roth(acquired="2025-06-01", roth_clock_start="2026")
+    with pytest.raises(LoadError, match="roth_clock_start 2026 is after the death"):
+        load_test_copy()
 
 
 def test_an_inherited_roth_needs_an_account_of_its_own(
