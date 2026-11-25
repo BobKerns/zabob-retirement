@@ -58,6 +58,7 @@ def remove_link(path: Path) -> None:
 def _kernel32():  # noqa: ANN202 - a ctypes.WinDLL, which exists only on Windows
     """kernel32, with the types of the calls used here declared: ctypes
     would otherwise pass a pointer-sized HANDLE as a 32-bit int."""
+    assert sys.platform == "win32"  # and so the checker knows it
     import ctypes
     from ctypes import wintypes
 
@@ -99,6 +100,7 @@ def start_tree(command: Sequence[str], **kwargs: Any) -> subprocess.Popen:
 
 
 def _job_for(pid: int) -> int:
+    assert sys.platform == "win32"
     import ctypes
     from ctypes import wintypes
 
