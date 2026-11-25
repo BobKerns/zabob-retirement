@@ -968,3 +968,23 @@ def test_python_m_analysis_videos_runs_locally(monkeypatch: pytest.MonkeyPatch,
         videos_main.main(["build", "01-intro", "--docker"])
     assert done.value.code == 1
     assert video_runs["docker"] == [] and len(video_runs["local"]) == 1
+
+
+def test_the_demo_finds_each_build_of_the_wheel_in_a_folder_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uv caches a find-links wheel by its folder and file name, both the
+    same from build to build, so a fixed folder reinstalled the first wheel
+    it saw (#687: old code read aux/ after the rename)."""
+    built = tmp_path / "built"
+    (built / "wheels").mkdir(parents=True)
+    wheel = built / "wheels" / "zabob_retirement-1.0.0b1-py3-none-any.whl"
+    monkeypatch.setattr(render, "_program_wheel", lambda: (built, "uv"))
+    folders = []
+    for code in (b"old code", b"new code", b"old code"):
+        wheel.write_bytes(code)
+        render._wheel_digest.cache_clear()
+        folders.append(render._wheels_dir(tmp_path / "demo"))
+    render._wheel_digest.cache_clear()
+    assert folders[0] != folders[1] and folders[0] == folders[2]
+    assert all(folder.parent == tmp_path / "demo" for folder in folders)
