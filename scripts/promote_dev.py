@@ -16,7 +16,8 @@ The pull request opens as a draft, so Gates leaves it alone while dev
 keeps moving; mark it ready when it's time to promote, which runs the full
 gates on it once. Merge it with a merge commit, never a squash: dev's merges then
 stay on main's history, where scripts/bisect_dev.py and
-`git log --first-parent` find them. Needs `gh`, signed in.
+`git log --first-parent` find them. Needs `gh`, signed in; it uses only
+GitHub's REST API.
 """
 
 from __future__ import annotations
@@ -151,6 +152,17 @@ def _run(*args: str, input: str | None = None) -> str:
     return subprocess.run(args, cwd=REPO, check=True, capture_output=True, text=True, input=input).stdout
 
 
+def _api(path: str, method: str = "GET", fields: dict | None = None) -> object:
+    """A GitHub REST call through `gh api` ({owner}/{repo} is this checkout's
+    repository). REST rather than `gh pr`, whose GraphQL some environments
+    (cloud agent sessions) can't reach."""
+    args = ["gh", "api", "-X", method, path]
+    if fields is not None:
+        args += ["--input", "-"]
+    out = _run(*args, input=None if fields is None else json.dumps(fields))
+    return json.loads(out) if out.strip() else None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dry-run", action="store_true", help="print the body instead of opening the pull request")
@@ -174,7 +186,8 @@ def _promote(dry_run: bool) -> int:
         return 0
     pulls, reverted = [], []
     for merge in merges:
-        data = json.loads(_run("gh", "pr", "view", str(merge.number), "--json", "title,body"))
+        data = _api(f"repos/{{owner}}/{{repo}}/pulls/{merge.number}")
+        assert isinstance(data, dict)
         # GitHub reads closing keywords in a pull request's body, not its title.
         closes = closed_issues(data["body"] or "") + merge.commit_closes
         pull = Pull(merge.number, data["title"], tuple(dict.fromkeys(closes)), merge.commit_closes)
@@ -183,16 +196,18 @@ def _promote(dry_run: bool) -> int:
     if dry_run:
         print(body, end="")
         return 0
-    existing = _run("gh", "pr", "list", "--base", "main", "--head", "dev", "--state", "open",
-                    "--json", "number", "--jq", ".[0].number // empty").strip()
+    open_pulls = _api("repos/{owner}/{repo}/pulls?base=main&state=open&per_page=100")
+    assert isinstance(open_pulls, list)
+    existing = next((p for p in open_pulls if p["head"]["ref"] == "dev"), None)
     if existing:
-        _run("gh", "pr", "edit", existing, "--body-file", "-", input=body)
-        print(_run("gh", "pr", "view", existing, "--json", "url", "--jq", ".url").strip())
+        pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})
     else:
         # A draft, which Gates skips: an open promotion would run the full
         # suite again on every push to dev. Mark it ready to promote.
-        print(_run("gh", "pr", "create", "--draft", "--base", "main", "--head", "dev", "--title", TITLE,
-                   "--body-file", "-", input=body).strip())
+        pull = _api("repos/{owner}/{repo}/pulls", "POST",
+                    {"title": TITLE, "head": "dev", "base": "main", "body": body, "draft": True})
+    assert isinstance(pull, dict)
+    print(pull["html_url"])
     return 0
 
 
