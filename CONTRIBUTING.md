@@ -35,7 +35,7 @@ gitGraph
   `issue/<number>-<short-description>`, and open the pull request against
   `dev`.
 - **`main`** moves only when `dev` is promoted: one pull request, merged
-  with a merge commit (never a squash), after the whole test suite has
+  after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.
 - **A hotfix**, a fix `main` can't wait for, branches from `origin/main`
   rather than `dev`, on a branch named `hotfix/<number>-<short-description>`,
@@ -57,9 +57,13 @@ always open: the **Promotion** workflow
 ([`.github/workflows/promotion.yml`](.github/workflows/promotion.yml)) runs
 `scripts/promote_dev.py` on every push to `dev`, which opens the promotion
 as a draft when none is open and otherwise refreshes its body, so what is
-waiting for `main` is listed in one place. It is opened by
-`github-actions[bot]`, which needs the repository setting "Allow GitHub
-Actions to create and approve pull requests" (Settings, Actions, General).
+waiting for `main` is listed in one place. It acts with the
+`PROMOTION_TOKEN` secret, a fine-grained personal access token for this
+repository (Pull requests: read and write, Contents: read); renew it when
+it expires. Without it, the promotion is opened by `github-actions[bot]`,
+which needs the repository setting "Allow GitHub Actions to create and
+approve pull requests" (Settings, Actions, General), and its Gates runs
+wait for approval.
 
 With Claude Code, `/promote` (the skill in
 [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md)) is the
@@ -85,7 +89,7 @@ into `dev` and run the script again to refresh the body.
 If the body says main has changes `dev` lacks (a hotfix merged straight to
 main), merge `origin/main` into `dev` through a pull request first, so
 `dev`'s Gates test what main will get.
-Merge only when that fix is on `dev`, with a merge commit, never a squash.
+Merge only when that fix is on `dev`.
 
 ## A pull request
 
