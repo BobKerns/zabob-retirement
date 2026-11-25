@@ -124,7 +124,9 @@ def main_only(root: Path = REPO, base: str = "origin/main", tip: str = "origin/d
     if merged.returncode == 0 and merged.stdout.split()[0] == _git(root, "rev-parse", f"{tip}^{{tree}}").strip():
         return []
     lines = _git(root, "log", "--format=%h %s", f"{tip}..{base}").splitlines()
-    return [line for line in lines if not re.search(r"^\S+ Merge pull request #\d+ from \S+/dev$", line)]
+    # A promotion merge can still carry changes of its own (a conflict
+    # resolved on main), so when it is all there is, list it.
+    return [line for line in lines if not re.search(r"^\S+ Merge pull request #\d+ from \S+/dev$", line)] or lines
 
 
 def _brought_in(root: Path, sha: str) -> list[str]:
@@ -164,20 +166,36 @@ def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = 
         lines += ["", "main has changes dev lacks. Merge main into dev in a pull request before this "
                   "merges:", "", *(f"- {_defused(c)}" for c in unsynced)]
     if fixes:
-        lines += ["", *(f"Fixes #{n}" for n in fixes)]
+        # The comment records which closing lines this script wrote, so a
+        # refresh can tell them from lines added by hand (keep_added_fixes).
+        lines += ["", *(f"Fixes #{n}" for n in fixes),
+                  f"<!-- {_GENERATED} {' '.join(map(str, fixes))} -->"]
     return "\n".join(lines) + "\n"
+
+
+_GENERATED = "promote_dev.py wrote closing lines for:"
 
 
 def keep_added_fixes(old_body: str, body: str) -> str:
     """body, plus the "Fixes #N" lines someone added to the promotion by hand
     (old_body) that body doesn't already close. A refresh rewrites the whole
-    body, and would otherwise drop them."""
+    body, and would otherwise drop them. A line this script wrote itself
+    (named in old_body's comment) is not kept: its pull request may since
+    have been reverted, and keeping it would close the issue anyway."""
     have = set(closed_issues(body))
+    m = re.search(rf"<!-- {re.escape(_GENERATED)}([\d ]*)-->", old_body)
+    generated = {int(n) for n in m.group(1).split()} if m else set()
     added = [line.strip() for line in old_body.splitlines()
-             if re.fullmatch(r"Fixes #\d+", line.strip()) and int(line.strip()[7:]) not in have]
+             if re.fullmatch(r"Fixes #\d+", line.strip())
+             and int(line.strip()[7:]) not in have | generated]
     if not added:
         return body
-    return body.rstrip("\n") + ("\n" if "\nFixes #" in body else "\n\n") + "\n".join(dict.fromkeys(added)) + "\n"
+    extra = "\n".join(dict.fromkeys(added)) + "\n"
+    if "\nFixes #" not in body:
+        return body.rstrip("\n") + "\n\n" + extra
+    # With the generated closing lines, above the comment that names them.
+    at = body.index("<!-- " + _GENERATED)
+    return body[:at] + extra + body[at:]
 
 
 def _run(*args: str, input: str | None = None) -> str:
@@ -229,9 +247,6 @@ def _promote(dry_run: bool) -> int:
         print("main has changes dev lacks; merge main into dev first:\n  " + "\n  ".join(unsynced),
               file=sys.stderr)
     body = promotion_body(pulls, reverted, unsynced)
-    if dry_run:
-        print(body, end="")
-        return 0
     open_pulls = _api("repos/{owner}/{repo}/pulls?base=main&state=open&per_page=100")
     assert isinstance(open_pulls, list)
     # dev of this repository: a fork's pull request from its own dev isn't it.
@@ -239,6 +254,10 @@ def _promote(dry_run: bool) -> int:
                      and p["head"]["repo"]["full_name"] == p["base"]["repo"]["full_name"]), None)
     if existing:
         body = keep_added_fixes(existing["body"] or "", body)
+    if dry_run:
+        print(body, end="")
+        return 0
+    if existing:
         pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})
     else:
         # A draft, which Gates skips: an open promotion would run the full

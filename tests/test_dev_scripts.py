@@ -114,6 +114,17 @@ def test_main_only_ignores_a_promotions_own_merge(promote: ModuleType, repo: _Re
     assert promote.main_only(repo.root, "main", "dev") == []
 
 
+def test_main_only_lists_a_promotion_merge_that_changed_something(promote: ModuleType, repo: _Repo) -> None:
+    repo.merge_pull(1, lambda: repo.commit("a", "Change"))
+    repo.git("checkout", "-q", "main")
+    repo.git("merge", "-q", "--no-ff", "--no-commit", "dev")
+    (repo.root / "resolved.txt").write_text("conflict resolved on main")
+    repo.git("add", "resolved.txt")
+    repo.git("commit", "-q", "-m", "Merge pull request #2 from x/dev")
+    [line] = promote.main_only(repo.root, "main", "dev")
+    assert line.endswith(" Merge pull request #2 from x/dev")
+
+
 def test_main_only_lists_a_hotfix_dev_lacks_until_dev_has_it(promote: ModuleType, repo: _Repo) -> None:
     repo.git("checkout", "-q", "main")
     (repo.root / "hotfix.txt").write_text("fix")
@@ -151,7 +162,7 @@ def test_promotion_body_closes_every_issue_once(promote: ModuleType) -> None:
     body = promote.promotion_body(pulls)
     assert "3 pull requests" in body
     assert "- #714 Test areas (for #706)\n- #716 Typo\n- #717 Dev branch (for #707, #706)" in body
-    assert body.endswith("\nFixes #706\nFixes #707\n")
+    assert body.endswith("\nFixes #706\nFixes #707\n<!-- promote_dev.py wrote closing lines for: 706 707 -->\n")
 
 
 def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(promote: ModuleType) -> None:
@@ -166,10 +177,18 @@ def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(pro
 def test_a_refresh_keeps_fixes_lines_added_by_hand(promote: ModuleType) -> None:
     body = promote.promotion_body([promote.Pull(716, "Typo", (706,))])
     old = body + "Fixes #12\nFixes #706\n"
-    assert promote.keep_added_fixes(old, body) == body + "Fixes #12\n"
+    kept = promote.keep_added_fixes(old, body)
+    assert kept.endswith("Fixes #706\nFixes #12\n<!-- promote_dev.py wrote closing lines for: 706 -->\n")
+    assert promote.closed_issues(kept) == (706, 12)
     assert promote.keep_added_fixes(body, body) == body
     bare = promote.promotion_body([promote.Pull(716, "Typo", ())])
     assert promote.keep_added_fixes("Fixes #12", bare) == bare + "\nFixes #12\n"
+
+
+def test_a_refresh_after_a_revert_drops_the_line_it_wrote(promote: ModuleType) -> None:
+    before = promote.promotion_body([promote.Pull(714, "Test areas", (706,))]) + "Fixes #12\n"
+    after = promote.promotion_body([], [promote.Pull(714, "Test areas", (706,))])
+    assert promote.closed_issues(promote.keep_added_fixes(before, after)) == (12,)
 
 
 def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
@@ -181,7 +200,7 @@ def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
 def test_an_issue_a_promoted_pull_fixes_is_not_listed_against_a_reverted_one(promote: ModuleType) -> None:
     body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], [promote.Pull(714, "Areas", (706,))])
     assert "- #714 Areas\n" in body
-    assert body.endswith("Fixes #706\n")
+    assert promote.closed_issues(body) == (706,)
 
 
 @pytest.mark.parametrize(("node", "found"), [
