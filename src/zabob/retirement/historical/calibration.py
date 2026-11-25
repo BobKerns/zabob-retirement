@@ -168,7 +168,8 @@ class Fetcher:
         # contact address, while FRED's bot filter silently drops unfamiliar
         # agents and accepts urllib's default one.
         headers = {}
-        if (urllib.parse.urlparse(url).hostname or "").endswith("bls.gov"):
+        host = urllib.parse.urlparse(url).hostname or ""
+        if host == "bls.gov" or host.endswith(".bls.gov"):
             if not self.contact:
                 raise DataError(
                     "no contact email for the User-Agent (BLS refuses requests without one): "
