@@ -49,6 +49,15 @@ def test_plot_stacked_bar_stacks_negatives_below_zero() -> None:
     assert [(bar.get_y(), bar.get_height()) for bar in _bars(ax)] == [(0, -1), (0, 2), (-1, -3)]
 
 
+
+def test_plot_stacked_bar_draws_every_column_with_a_short_palette() -> None:
+    df = pd.DataFrame({"a": [1.0], "b": [2.0], "c": [3.0]}, index=pd.Index([2026]))
+
+    ax = plot_stacked_bar(df, ["a", "b", "c"], ["#111111"], title="t")
+
+    assert [bar.get_y() + bar.get_height() for bar in _bars(ax)] == [1, 3, 6]
+    assert len({bar.get_facecolor() for bar in _bars(ax)}) == 1
+
 def test_plot_income_expense_net_returns_axes() -> None:
     net = pd.DataFrame(
         {"income": [100.0], "expenses": [40.0], "net": [60.0]},

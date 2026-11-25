@@ -161,7 +161,11 @@ def plot_stacked_bar(
     x = range(len(data))
     above = [0.0] * len(data)
     below = [0.0] * len(data)
-    for column, color in zip(columns, colors, strict=False):
+    # Every column is drawn; a short palette repeats, as pandas' does, and
+    # an empty one falls back to the axes' own color cycle.
+    palette: list[str | None] = list(colors) or [None]
+    for i, column in enumerate(columns):
+        color = palette[i % len(palette)]
         values = data[column].tolist()
         bottom = [a if v >= 0 else b for v, a, b in zip(values, above, below, strict=True)]
         ax.bar(x, values, width=0.5, bottom=bottom, color=color, label=str(column))
