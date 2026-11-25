@@ -380,6 +380,7 @@ rescan
 respellings
 restic
 retarget
+retargeted
 reweighted
 rint
 ripwire

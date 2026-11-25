@@ -33,7 +33,9 @@ gitGraph
 
 - **`dev`** is where work lands. Branch from `origin/dev`, name the branch
   `issue/<number>-<short-description>`, and open the pull request against
-  `dev`.
+  `dev`. GitHub offers `main` as the base; a pull request opened against
+  it is retargeted to `dev` for you, with a comment saying so
+  ([`.github/workflows/retarget.yml`](.github/workflows/retarget.yml)).
 - **`main`** moves only when `dev` is promoted: one pull request, merged
   after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.
