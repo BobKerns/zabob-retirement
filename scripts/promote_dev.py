@@ -113,6 +113,20 @@ def dev_merges(root: Path = REPO, base: str = "origin/main", tip: str = "origin/
     return merges
 
 
+def main_only(root: Path = REPO, base: str = "origin/main", tip: str = "origin/dev") -> list[str]:
+    """The commits ("<sha> <subject>") that bring base changes tip lacks: a
+    hotfix not yet merged into dev, or a pull request merged into main by
+    mistake. Empty when merging base into tip would change nothing, which
+    is the usual case: a promotion's own merge commit, which main always has
+    and dev never does, changes no file."""
+    merged = subprocess.run(["git", "-C", str(root), "merge-tree", "--write-tree", tip, base],
+                            capture_output=True, text=True)
+    if merged.returncode == 0 and merged.stdout.split()[0] == _git(root, "rev-parse", f"{tip}^{{tree}}").strip():
+        return []
+    lines = _git(root, "log", "--format=%h %s", f"{tip}..{base}").splitlines()
+    return [line for line in lines if not re.search(r"^\S+ Merge pull request #\d+ from \S+/dev$", line)]
+
+
 def _brought_in(root: Path, sha: str) -> list[str]:
     """The commits a merge brought in (none for a plain commit)."""
     parents = _git(root, "rev-list", "--parents", "-n", "1", sha).split()[1:]
@@ -121,7 +135,8 @@ def _brought_in(root: Path, sha: str) -> list[str]:
     return _git(root, "rev-list", f"{parents[0]}..{parents[1]}").split()
 
 
-def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = ()) -> str:
+def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = (),
+                   unsynced: list[str] | tuple[str, ...] = ()) -> str:
     def issues(numbers: tuple[int, ...] | list[int]) -> str:
         return ", ".join(f"#{n}" for n in numbers)
 
@@ -143,6 +158,11 @@ def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = 
         if reopen:
             lines += ["", f"Their commits' messages name {issues(list(dict.fromkeys(reopen)))} with a closing "
                       "keyword, so GitHub closes those when this merges: reopen them afterwards."]
+    if unsynced:
+        # They belong on dev too, or dev goes on without them and every
+        # later promotion has to reconcile the two again.
+        lines += ["", "main has changes dev lacks. Merge main into dev in a pull request before this "
+                  "merges:", "", *(f"- {_defused(c)}" for c in unsynced)]
     if fixes:
         lines += ["", *(f"Fixes #{n}" for n in fixes)]
     return "\n".join(lines) + "\n"
@@ -204,7 +224,11 @@ def _promote(dry_run: bool) -> int:
         closes = closed_issues(data["body"] or "") + merge.commit_closes
         pull = Pull(merge.number, data["title"], tuple(dict.fromkeys(closes)), merge.commit_closes)
         (pulls if merge.present else reverted).append(pull)
-    body = promotion_body(pulls, reverted)
+    unsynced = main_only()
+    if unsynced:
+        print("main has changes dev lacks; merge main into dev first:\n  " + "\n  ".join(unsynced),
+              file=sys.stderr)
+    body = promotion_body(pulls, reverted, unsynced)
     if dry_run:
         print(body, end="")
         return 0

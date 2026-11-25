@@ -107,6 +107,31 @@ def test_a_chain_of_reverts_and_reapplies_on_dev(promote: ModuleType, repo: _Rep
     assert repo.presence(promote) == {714: False}
 
 
+def test_main_only_ignores_a_promotions_own_merge(promote: ModuleType, repo: _Repo) -> None:
+    repo.merge_pull(1, lambda: repo.commit("a", "Change"))
+    repo.git("checkout", "-q", "main")
+    repo.git("merge", "-q", "--no-ff", "-m", "Merge pull request #2 from x/dev", "dev")
+    assert promote.main_only(repo.root, "main", "dev") == []
+
+
+def test_main_only_lists_a_hotfix_dev_lacks_until_dev_has_it(promote: ModuleType, repo: _Repo) -> None:
+    repo.git("checkout", "-q", "main")
+    (repo.root / "hotfix.txt").write_text("fix")
+    repo.git("add", "hotfix.txt")
+    repo.git("commit", "-q", "-m", "Hotfix: Fixes #9")
+    [line] = promote.main_only(repo.root, "main", "dev")
+    assert line.endswith(" Hotfix: Fixes #9")
+    repo.git("checkout", "-q", "dev")
+    repo.git("merge", "-q", "--no-ff", "-m", "Merge pull request #3 from x/issue/9-hotfix", "main")
+    assert promote.main_only(repo.root, "main", "dev") == []
+
+
+def test_promotion_body_names_what_main_has_that_dev_lacks(promote: ModuleType) -> None:
+    body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], unsynced=["abc1234 Hotfix: Fixes #9"])
+    assert "Merge main into dev in a pull request before this merges:\n\n- abc1234 Hotfix: Fixes issue 9" in body
+    assert promote.closed_issues(body) == (706,)
+
+
 def test_closed_issues_follow_github_keywords(promote: ModuleType) -> None:
     text = ("Fixes #704. Closes: #12, resolved #9; see #3 and fix #704 again. "
             "Closes BobKerns/zabob-retirement#13, fixes https://github.com/BobKerns/zabob-retirement/issues/14, "

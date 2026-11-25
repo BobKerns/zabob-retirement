@@ -29,6 +29,13 @@ git log --first-parent --oneline origin/main..origin/dev
     keyword are listed to reopen.
 - If an open pull request into dev is meant to go out with this promotion,
   say so: promoting first leaves it for the next one.
+- If the script reports that main has changes dev lacks (a hotfix merged
+  straight to main), open a pull request into dev that merges `origin/main`:
+  branch `issue/<number>-sync-main` from `origin/dev`, named for the hotfix's
+  issue, then `git merge --no-ff origin/main`. Ask the user to merge it
+  before the promotion, so dev's Gates test what main will get. The
+  promotion's own merge commits on main are not changes; the script ignores
+  them.
 
 ## 2. Open or refresh it
 
