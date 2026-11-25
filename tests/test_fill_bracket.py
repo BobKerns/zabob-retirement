@@ -21,7 +21,7 @@ from zabob.retirement.sim.registries import SCHEDULED_CSV_HEADER
 
 def _top_22(run: Path, year: int, status: str = "MFJ") -> int:
     """The top of the 22% bracket for ``status`` in tax ``year``, as the run
-    indexed the prototype's aux/federal_brackets.csv (#467): the floor of
+    indexed the prototype's tables/federal_brackets.csv (#467): the floor of
     the 24% bracket above it."""
     with closing(sqlite3.connect(run)) as con:
         aux = engine._load_aux(con)
@@ -45,11 +45,11 @@ def fill_run(
     conversion from Alice's traditional IRA to her Roth, from 2029)."""
     fund_asset_savings("1000000.00")  # the conversions' tax comes from savings
     path = retire_alice_csv("scheduled.csv")
-    original = path.read_text()
+    original = path.read_text(encoding="utf-8")
     runs: list[Path] = []
 
     def _run(*rows: dict[str, str], tax: bool = True) -> Path:
-        path.write_text(original)
+        path.write_text(original, encoding="utf-8")
         scheduled = pd.read_csv(path, dtype=str, keep_default_na=False)
         scheduled = scheduled.reindex(columns=SCHEDULED_CSV_HEADER, fill_value="")
         blank = dict.fromkeys(SCHEDULED_CSV_HEADER, "")
@@ -177,7 +177,7 @@ def test_a_death_moves_the_target_to_the_single_bracket(
 ) -> None:
     """Bill dies in 2032; from 2033 Alice files Single, whose 22% bracket
     tops out at half the joint one."""
-    retire_alice_csv("lifespan.csv").write_text("person,age_at_death\nbill,65\n")
+    retire_alice_csv("lifespan.csv").write_text("person,age_at_death\nbill,65\n", encoding="utf-8")
     run = fill_run({"start": "2033-01-31"})
     conversions = _conversions(run)
     assert conversions.iloc[0]["fill"]["target"] == _top_22(run, 2033, "Single")

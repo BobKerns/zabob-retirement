@@ -73,7 +73,8 @@ def test_a_dated_allocation_applies_from_its_month(
     """USSTK becomes half bonds from 2030: the stretch of months on each side
     of the as_of gets its own weights."""
     path = strategy_scenarios / "allocations.csv"
-    path.write_text(path.read_text() + "USSTK,2030-01,stock_us,50%\nUSSTK,2030-01,bond,50%\n")
+    path.write_text(path.read_text(encoding="utf-8") + "USSTK,2030-01,stock_us,50%\nUSSTK,2030-01,bond,50%\n",
+                    encoding="utf-8")
     con = _con(run_strategy_scenario("alice_rebalance"))
     try:
         frame = drift.class_dollars(con, portfolios=[PORTFOLIO])[PORTFOLIO]

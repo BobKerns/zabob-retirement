@@ -70,7 +70,8 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
     """The whole first session of a `uv tool install` user, on the example data."""
     home = tmp_path / "home"
     home.mkdir()
-    (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n",
+                                        encoding="utf-8")
     env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ANALYSIS_NO_BUILDER": "1",
            "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
            **{f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER")
@@ -79,7 +80,7 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
                           capture_output=True, text=True)
     assert init.returncode == 0, init.stdout + init.stderr
     root = home / "zabob-retirement"
-    assert (root / "sim" / ".analysis").read_text() == f"installed:{installed_wheel}\n"
+    assert (root / "sim" / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_wheel}\n"
     assert (root / "notebooks" / "net_worth.ipynb").is_file()
     done = subprocess.run(
         ["bash", "-c", f"source {root / 'sim' / 'activate-analysis'} && sim switch && sim check base"],

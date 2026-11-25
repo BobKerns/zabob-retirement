@@ -214,7 +214,7 @@ def test_add_with_no_options_asks_everything_then_writes(test_data_dir: Path, ra
 def test_add_refuses_a_taken_name_and_a_threshold_its_basis_cant_take(
     test_data_dir: Path, rails_csv: Path,
 ) -> None:
-    before = rails_csv.read_text()
+    before = rails_csv.read_text(encoding="utf-8")
     taken = _sim(test_data_dir, "retire_alice", "add", "budget", "--measure", "spending")
     assert taken.exit_code != 0
     assert "guard rail 'budget' already exists" in taken.output
@@ -224,18 +224,18 @@ def test_add_refuses_a_taken_name_and_a_threshold_its_basis_cant_take(
     assert dollars.exit_code != 0
     assert "threshold '4%' is a percent: only basis portfolio or initial_portfolio takes one" \
         in dollars.output
-    assert rails_csv.read_text() == before
+    assert rails_csv.read_text(encoding="utf-8") == before
 
 
 def test_add_refuses_a_tag_nothing_carries(test_data_dir: Path, rails_csv: Path) -> None:
-    before = rails_csv.read_text()
+    before = rails_csv.read_text(encoding="utf-8")
     result = _sim(test_data_dir, "retire_alice", "add", "core", "--measure", "withdrawals",
                   "--side", "above", "--basis", "portfolio", "--threshold", "4%",
                   "--portfolio", "-exclude:emergency")
 
     assert result.exit_code != 0
     assert "exclude:emergency" in result.output
-    assert rails_csv.read_text() == before
+    assert rails_csv.read_text(encoding="utf-8") == before
 
 
 def test_a_portfolio_may_leave_out_tagged_accounts(

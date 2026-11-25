@@ -215,7 +215,7 @@ look = "files"
 heading = "A tax plugin is a file in the data repo"
 title = "sim"
 address = "~/zabob-retirement/sim"
-lines = ["taxes", "scenarios", "aux", "allocations.csv", "persons.csv"]
+lines = ["taxes", "scenarios", "tables", "allocations.csv", "persons.csv"]
 note = "taxes/property_credit.py, for every scenario: not a scenario's own taxes/ folder"
 speaker = "bill"
 ```

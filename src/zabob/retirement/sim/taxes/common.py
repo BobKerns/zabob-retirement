@@ -150,7 +150,7 @@ def self_employment(ty: TaxYear, kind: str = registries.SELF_EMPLOYMENT_TAX) -> 
     status = ty.filing_status
     rows = [r for r in ty.indexed(kind) if r.get("filing_status") == status]
     if not rows:
-        raise TaxError(f"{where(ty)}: a business profit needs aux/{kind}.csv, "
+        raise TaxError(f"{where(ty)}: a business profit needs tables/{kind}.csv, "
                        f"with a row for filing_status={status!r}")
     row = rows[0]
     paid = wages(ty, people)
@@ -896,7 +896,7 @@ def loss_limit(ty: TaxYear) -> Callable[[int], int]:
             raise TaxError(
                 f"{where(ty)}: {year} has a net capital loss, but no "
                 f"capital_loss_limit row for filing_status={status!r} effective on "
-                f"or before {year}-12-31 (aux/capital_loss_limit.csv)"
+                f"or before {year}-12-31 (tables/capital_loss_limit.csv)"
             )
         return int(row["amount"])
     return limit
@@ -1124,7 +1124,7 @@ def itemized_limits(ty: TaxYear, kind: str, series: str | None = None) -> Mappin
     if not rows:
         name = f"{kind}__{series}" if series else kind
         raise TaxError(
-            f"{where(ty)}: aux/{name}.csv has no row for filing_status={ty.filing_status!r} "
+            f"{where(ty)}: tables/{name}.csv has no row for filing_status={ty.filing_status!r} "
             f"in force in {ty.year}")
     return rows[0]
 

@@ -587,8 +587,8 @@ repo folder with a template's name replaces the template whole.
 
 ### Long-run rates (`_series`)
 
-CPI-U itself stays in the shared `aux/inflation__cpi.csv`, so a scenario
-replaces it with its own `aux/inflation__cpi.csv`, not a `series/` file.
+CPI-U itself stays in the shared `tables/inflation__cpi.csv`, so a scenario
+replaces it with its own `tables/inflation__cpi.csv`, not a `series/` file.
 
 The rates in `t_inflation_series` and `t_market_series` are 10-year
 compound medians from the tables above, leaning toward the recent period
@@ -596,7 +596,7 @@ where it differs, rounded to half a point or so:
 
 | Series | Rate % | Basis |
 | --- | --: | --- |
-| `inflation__cpi` | 2.5 | CPI-U, 10-year median since 1984 (in shared `aux/`) |
+| `inflation__cpi` | 2.5 | CPI-U, 10-year median since 1984 (in shared `tables/`) |
 | `inflation__cpi_w` | 2.5 | CPI-W, 0.06 below CPI-U since 1983: Social Security COLAs |
 | `inflation__cpi_e` | 2.7 | R-CPI-E, 0.16 above CPI-U since 1983: a retiree's basket |
 | `inflation__chained_cpi` | 2.2 | C-CPI-U, 0.27 below CPI-U since 2000: tax brackets |
@@ -784,7 +784,7 @@ none, and entered the index only in 2005. The template takes 0.6.
 
 `t_inflation_current` and `t_market_current` start the persistent series at
 their latest 12-month rates, from the committed data (to August 2026), as
-`series/` files (CPI-U as `aux/inflation__cpi.csv`). They re-date the
+`series/` files (CPI-U as `tables/inflation__cpi.csv`). They re-date the
 `_ensemble` rows to a `normalization_start` date marker with
 `vary_process_start` `current`, so each rate holds until then and returns
 to its level at its own persistence after ([Today's rate, returning to the

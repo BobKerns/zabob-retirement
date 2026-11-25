@@ -45,6 +45,12 @@ def _retirement(ctx: GuideContext, answers: Answers) -> bool:
     return ctx.subkinds.get(answers.get("account", "")) == registries.RETIREMENT_SUBKIND
 
 
+def _inherited_roth(ctx: GuideContext, answers: Answers) -> bool:  # noqa: ARG001
+    """A lot inherited from outside the household, which keeps the
+    decedent's five-year clock (#257)."""
+    return answers.get("subkind") == registries.INHERITED_ROTH_SUBKIND
+
+
 def _rmd_lot(ctx: GuideContext, answers: Answers) -> bool:
     """A lot that may need a prior Dec 31 balance, for a first-year RMD."""
     return _retirement(ctx, answers) and answers.get("subkind") in registries.RMD_LOT_SUBKINDS
@@ -125,7 +131,14 @@ LOT = KindSpec(
         ),
         Field(
             "acquired", "acquired (YYYY-MM-DD)", type="day", option="--acquired",
-            required=False, help="Starts the holding period; blank means long-term.",
+            required=False,
+            help="Starts the holding period; blank means long-term. For an inherited Roth "
+                 "IRA, the death, which starts its ten years.",
+        ),
+        Field(
+            registries.ROTH_CLOCK_COLUMN, "decedent's Roth clock start (year)",
+            option="--roth-clock-start", required=False, applies=_inherited_roth,
+            help="The year the decedent's five-year clock started; blank means it has run.",
         ),
         Field(
             "quantity", "quantity (shares)", type="number", option="--quantity",

@@ -27,7 +27,7 @@ INTO = "savings_first"  # a destination chain, from the ``into_chain`` fixture
 def into_chain(retire_alice_csv: Callable[[str], Path]) -> str:
     """A destination chain paying into Asset_Savings, for a transfer's to side."""
     (retire_alice_csv("chains/destination") / f"{INTO}.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     return INTO
 
 

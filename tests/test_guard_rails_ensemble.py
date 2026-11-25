@@ -249,7 +249,7 @@ def test_the_ensemble_guard_rails_table_widget_compares_recipes_by_year(
     # A recipe without rails: said so, and its store is never opened.
     from zabob.retirement.sim.registries import GUARD_RAILS_CSV_HEADER
     (test_data_dir / "scenarios" / "same" / "guard_rails.csv").write_text(
-        ",".join(GUARD_RAILS_CSV_HEADER) + "\n")
+        ",".join(GUARD_RAILS_CSV_HEADER) + "\n", encoding="utf-8")
     opened: list[str] = []
     real_open = ensemble_widgets._open_recipe
     monkeypatch.setattr(ensemble_widgets, "_open_recipe",

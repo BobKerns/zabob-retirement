@@ -22,7 +22,7 @@ PROTOTYPE = REPO_ROOT / "prototype_data"
 # Net cents into Asset_Checking per month from fixed_amount rules, before CPI
 # growth (salary_alice + salary_bill) - (living + housing + healthcare). All
 # five rows share base_date = scenario start and series = cpi
-# (prototype_data/aux/inflation__cpi.csv: flat 2.5% APR), so each grows by the
+# (prototype_data/tables/inflation__cpi.csv: flat 2.5% APR), so each grows by the
 # same monthly-compounded factor. The mortgage payment isn't inflated.
 SALARY_ALICE_MONTHLY = 800000
 SALARY_BILL_MONTHLY = 750000
@@ -1411,8 +1411,8 @@ def test_itemized_deduction_is_used_when_greater_than_standard(
     write_tax: Callable[..., Path], write_aux: Callable[[str, str], Path],
 ) -> None:
     repo = test_data_dir
-    # 2026 MFJ standard deduction is $31,500 (prototype_data/aux/standard_deduction.csv).
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    # 2026 MFJ standard deduction is $31,500 (prototype_data/tables/standard_deduction.csv).
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,40000.00\n", encoding="utf-8",
     )
     con = _run_federal_tax(tmp_path, repo, fund_asset_savings, write_tax, write_aux)
@@ -1430,7 +1430,7 @@ def test_an_itemized_deduction_counts_only_in_its_own_year(
 ) -> None:
     """A big medical year is that year's deduction, not every later year's (#370)."""
     repo = test_data_dir
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,40000.00\n", encoding="utf-8",
     )
     con = _run_federal_tax(tmp_path, repo, fund_asset_savings, write_tax, write_aux)
@@ -1447,7 +1447,7 @@ def test_a_year_takes_one_itemized_row(
     write_tax: Callable[..., Path], write_aux: Callable[[str, str], Path],
 ) -> None:
     repo = test_data_dir
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,40000.00\n2026-06-30,5000.00\n", encoding="utf-8",
     )
     with pytest.raises(LoadError, match="2026 has 2 rows .* a tax year takes one itemized total"):
@@ -1461,7 +1461,7 @@ def test_each_deduction_table_takes_its_own_row_for_a_year(
     # A series is another table (for a swap_aux_table), with its own years.
     repo = test_data_dir
     for name, amount in (("federal_deductions", "40000.00"), ("federal_deductions__sunset", "5000.00")):
-        (repo / "aux" / f"{name}.csv").write_text(
+        (repo / "tables" / f"{name}.csv").write_text(
             f"effective_date,amount\n2026-01-31,{amount}\n", encoding="utf-8")
     con = _run_federal_tax(tmp_path, repo, fund_asset_savings, write_tax, write_aux)
     try:
@@ -1475,7 +1475,7 @@ def test_standard_deduction_is_used_when_greater_than_itemized(
     write_tax: Callable[..., Path], write_aux: Callable[[str, str], Path],
 ) -> None:
     repo = test_data_dir
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,10000.00\n", encoding="utf-8",
     )
     con = _run_federal_tax(tmp_path, repo, fund_asset_savings, write_tax, write_aux)
@@ -1508,7 +1508,7 @@ def test_itemized_deduction_amount_can_reference_an_itemization(
     (repo / "itemizations" / "medical_2026.csv").write_text(
         "Item,Value\nsurgery,32000.00\nprescriptions,3000.00\n", encoding="utf-8",
     )
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,@medical_2026\n", encoding="utf-8",
     )
     con = _run_federal_tax(tmp_path, repo, fund_asset_savings, write_tax, write_aux)
@@ -1544,7 +1544,7 @@ def test_state_itemized_deduction_falls_back_to_federal_when_absent(
     figure for the state scope too, so a state-specific file isn't needed just
     to reuse the same itemized total."""
     repo = test_data_dir
-    (repo / "aux" / "federal_deductions.csv").write_text(
+    (repo / "tables" / "federal_deductions.csv").write_text(
         "effective_date,amount\n2026-01-31,40000.00\n", encoding="utf-8",
     )
     con, _ = _run_state_tax(repo, tmp_path, add_state_tax)
@@ -1569,7 +1569,7 @@ def test_state_tax_reads_its_own_standard_deduction(
         con.close()
     assert not any("standard deduction" in w for w in warnings)
 
-    (repo / "aux" / "state_standard_deduction__CA.csv").unlink()
+    (repo / "tables" / "state_standard_deduction__CA.csv").unlink()
     load = load_scenario(repo, "retire_alice", intent_dir=tmp_path / "intent2",
                          loaded_by="test", allow_dirty_data=True)
     assert any("state tax uses the federal standard deduction" in w
@@ -1592,7 +1592,7 @@ def test_person_lifespan_stops_associated_transfers(
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")  # only 2026-2027 events are asserted on
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     intent_path = load_scenario(
         repo, "retire_alice",
@@ -1650,11 +1650,12 @@ def test_a_dead_owners_account_keeps_its_rules_without_a_person(
     (#256): with no person, Alice's salary account keeps paying."""
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")
-    (repo / "scenarios" / "retire_alice" / "lifespan.csv").write_text("person,age_at_death\nalice,61.8333\n")
+    (repo / "scenarios" / "retire_alice" / "lifespan.csv").write_text("person,age_at_death\nalice,61.8333\n",
+                                                                      encoding="utf-8")
     scheduled = repo / "scenarios" / "retire_alice" / "scheduled.csv"
-    text = scheduled.read_text()
+    text = scheduled.read_text(encoding="utf-8")
     assert "salary_alice,Income_Salary_Alice,,Asset_Checking,,monthly,,fixed_amount,,alice," in text
-    scheduled.write_text(text.replace("fixed_amount,,alice,", "fixed_amount,,,", 1))
+    scheduled.write_text(text.replace("fixed_amount,,alice,", "fixed_amount,,,", 1), encoding="utf-8")
     intent_path = load_scenario(
         repo, "retire_alice", intent_dir=tmp_path / "intent", loaded_by="test", allow_dirty_data=True,
     ).intent_path
@@ -1688,7 +1689,7 @@ def test_person_lifespan_does_not_stop_solely_owned_asset_growth(
     df.to_csv(accounts_csv, index=False)
 
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     intent_path = load_scenario(
         repo, "retire_alice",
@@ -1725,7 +1726,7 @@ def test_on_death_sweeps_full_balance_once(
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")  # only 2027-02 events are asserted on
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     scheduled_csv = repo / "scenarios" / "retire_alice" / "scheduled.csv"
     _append_scheduled(
@@ -1979,7 +1980,7 @@ def test_year_to_date_csv_posts_balance_neutral_catchup(test_data_dir: Path, tmp
     ytd_csv.write_text(
         "name,from_account,to_account,to_lot,amount,tax_character,description\n"
         "prior_brokerage_growth,Income_CapitalGain,Asset_Brokerage_Joint,default,"
-        "1500.00,ltcg,pre-simulation appreciation\n"
+        "1500.00,ltcg,pre-simulation appreciation\n", encoding="utf-8"
     )
     intent_path = load_scenario(
         repo, "retire_alice",

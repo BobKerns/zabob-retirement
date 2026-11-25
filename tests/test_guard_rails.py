@@ -180,7 +180,7 @@ def test_a_rail_named_twice_in_one_file_fails_the_load(
 def test_an_unknown_column_fails_the_load(
     retire_alice_csv: Callable[[str], Path], load_test_copy: Callable[[], LoadResult],
 ) -> None:
-    retire_alice_csv("guard_rails.csv").write_text("name,measure,colour\nr,spending,red\n")
+    retire_alice_csv("guard_rails.csv").write_text("name,measure,colour\nr,spending,red\n", encoding="utf-8")
     with pytest.raises(LoadError, match="unknown column"):
         load_test_copy()
 

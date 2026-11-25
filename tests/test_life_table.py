@@ -23,7 +23,7 @@ from zabob.retirement.sim.sensitivity import parameters
 
 # Alice (f) was born 1965-03-15 and Bill (m) 1967-08-20 (prototype persons.csv);
 # retire_alice starts 2026-05, when Alice is 61 years 2 months old. The
-# prototype's aux/life_table.csv is SSA's 2023 period table.
+# prototype's tables/life_table.csv is SSA's 2023 period table.
 _ALICE_START = months_since_birth("1965-03-15", "2026-05-31")
 
 
@@ -150,8 +150,8 @@ def test_a_bad_life_table_lifespan_fails_the_load(
     if persons_edit is not None:
         person, old, new = persons_edit
         persons = test_data_dir / "persons.csv"
-        persons.write_text(persons.read_text().replace(
-            f"{person},Alice (fake),1965-03-15,{old},", f"{person},Alice (fake),1965-03-15,{new},"))
+        persons.write_text(persons.read_text(encoding="utf-8").replace(
+            f"{person},Alice (fake),1965-03-15,{old},", f"{person},Alice (fake),1965-03-15,{new},"), encoding="utf-8")
     write_lifespans(row)
 
     with pytest.raises(LoadError, match=message):
@@ -163,7 +163,7 @@ def test_a_life_table_lifespan_needs_the_aux_table(
     write_lifespans: Callable[..., None], load_test_copy: Callable[[], LoadResult],
     test_data_dir: Path,
 ) -> None:
-    (test_data_dir / "aux" / "life_table.csv").unlink()
+    (test_data_dir / "tables" / "life_table.csv").unlink()
     write_lifespans("alice,80,life_table,,,,,")
 
     with pytest.raises(LoadError, match="no aux life_table.csv"):
@@ -173,11 +173,11 @@ def test_a_life_table_lifespan_needs_the_aux_table(
 def test_a_life_table_with_a_gap_fails_the_load(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    path = test_data_dir / "aux" / "life_table.csv"
+    path = test_data_dir / "tables" / "life_table.csv"
     path.write_text("".join(
-        line for line in path.read_text().splitlines(keepends=True)
+        line for line in path.read_text(encoding="utf-8").splitlines(keepends=True)
         if not line.startswith("2023-12-31,50,")
-    ))
+    ), encoding="utf-8")
 
     with pytest.raises(LoadError, match="ages must be whole numbers 0, 1, 2"):
         load_test_copy()
@@ -187,12 +187,12 @@ def test_a_persons_csv_without_a_sex_column_still_loads(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
     persons = test_data_dir / "persons.csv"
-    lines = persons.read_text().splitlines()
+    lines = persons.read_text(encoding="utf-8").splitlines()
     persons.write_text("".join(
         ",".join(cell for i, cell in enumerate(line.split(",", 5)) if i != 3) + "\n"
         for line in lines
-    ))
-    assert "sex" not in persons.read_text().splitlines()[0]
+    ), encoding="utf-8")
+    assert "sex" not in persons.read_text(encoding="utf-8").splitlines()[0]
 
     load_test_copy()
 
@@ -225,7 +225,7 @@ def test_a_named_life_table_must_be_in_the_lineage(
 ) -> None:
     write_lifespans("bill,84,,,,,,,xx")  # a fixed age too: `sim person show` reads the table
 
-    with pytest.raises(LoadError, match=r"life_table 'xx' needs aux/life_table__xx\.csv"):
+    with pytest.raises(LoadError, match=r"life_table 'xx' needs tables/life_table__xx\.csv"):
         load_test_copy()
 
 
@@ -241,11 +241,11 @@ def test_a_life_table_name_must_be_a_plain_name(
 def test_a_named_life_table_with_a_gap_names_its_file(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    path = test_data_dir / "aux" / "life_table__jp.csv"
+    path = test_data_dir / "tables" / "life_table__jp.csv"
     path.write_text("".join(
-        line for line in path.read_text().splitlines(keepends=True)
+        line for line in path.read_text(encoding="utf-8").splitlines(keepends=True)
         if not line.startswith("2023-12-31,50,")
-    ))
+    ), encoding="utf-8")
 
     with pytest.raises(LoadError, match=r"aux life_table__jp\.csv \(2023-12\): ages must be"):
         load_test_copy()
@@ -363,7 +363,7 @@ def test_lifespan_set_life_table_refuses_bounds(test_data_dir: Path) -> None:
 def test_person_edit_sets_the_sex(test_data_dir: Path) -> None:
     result = _sim(test_data_dir, "person", "edit", "joint", "--sex", "M")
     assert result.exit_code == 0, result.output
-    assert "joint,Joint household (fake),1970-01-01,m," in (test_data_dir / "persons.csv").read_text()
+    assert "joint,Joint household (fake),1970-01-01,m," in (test_data_dir / "persons.csv").read_text(encoding="utf-8")
 
     refused = _sim(test_data_dir, "person", "edit", "joint", "--sex", "x")
     assert refused.exit_code != 0
@@ -377,12 +377,12 @@ def test_lifespan_set_takes_a_life_table_per_scenario(
                   "--vary", "life_table", "--life-table", "jp", "--scenario", "retire_alice")
     assert result.exit_code == 0, result.output
     assert "age 90 (life_table, jp table)" in result.output
-    assert "alice,90,life_table,,,,,,jp" in retire_alice_csv("lifespan.csv").read_text()
+    assert "alice,90,life_table,,,,,,jp" in retire_alice_csv("lifespan.csv").read_text(encoding="utf-8")
 
     cleared = _sim(test_data_dir, "person", "lifespan", "set", "alice", "--life-table", "",
                    "--scenario", "retire_alice")
     assert cleared.exit_code == 0, cleared.output
-    assert "alice,90,life_table,,,,,," in retire_alice_csv("lifespan.csv").read_text()
+    assert "alice,90,life_table,,,,,," in retire_alice_csv("lifespan.csv").read_text(encoding="utf-8")
 
 
 def test_lifespan_set_asks_for_the_life_table_when_guided(
@@ -394,7 +394,7 @@ def test_lifespan_set_asks_for_the_life_table_when_guided(
 
     assert result.exit_code == 0, result.output
     assert "life table (jp; blank for the default)" in result.output
-    assert "alice,90,life_table,,,,,,jp" in retire_alice_csv("lifespan.csv").read_text()
+    assert "alice,90,life_table,,,,,,jp" in retire_alice_csv("lifespan.csv").read_text(encoding="utf-8")
 
 
 # ---------- the extractors ----------

@@ -6,7 +6,7 @@ SHA, computed via a sidecar index (the user's index is never touched), over
 the data repo paths a scenario's load can read: ``scenarios/<name>/`` plus the
 folder of every scenario it inherits from via ``parent_scenario`` (mix-ins
 included), ``persons.csv``, ``securities.csv``, ``allocations.csv``, and the
-whole shared ``aux/``, ``prices/``, and ``itemizations/`` folders (each also
+whole shared ``tables/``, ``prices/``, and ``itemizations/`` folders (each also
 resolved per scenario under ``scenarios/<name>/``, ADR-003 §4.1d; covered
 automatically since that whole folder is already in scope). ``series/`` has no
 shared root tier at all -- only the per-scenario ``scenarios/<name>/series/``
@@ -215,7 +215,7 @@ def _has_trigger(data_dir: Path, lineage: Sequence[str]) -> bool:
     for folder in lineage:
         for path in sorted((data_dir / "scenarios" / folder / "strategies").glob("*.csv")):
             try:
-                with path.open(newline="") as f:
+                with path.open(newline="", encoding="utf-8") as f:
                     if any((row.get("trigger") or "").strip() for row in csv.DictReader(f)):
                         return True
             except (OSError, UnicodeDecodeError, csv.Error):
@@ -231,7 +231,7 @@ def _scoped_paths(data_dir: Path, scenario_name: str) -> list[str]:
         "allocations.csv",
         "strategies",  # strategy code (#326): an edit can change any run that uses it
         "taxes",  # tax calculator code (#510), likewise
-        "aux",
+        "tables",
         "prices",
         "itemizations",
     ]
@@ -314,7 +314,9 @@ def _compute_tree_id(repo: Repo, scoped_abs: list[str], price_cutoff: str | None
     with tempfile.TemporaryDirectory() as td:
         index_path = str(Path(td) / "index")
         with repo.git.custom_environment(GIT_INDEX_FILE=index_path):
-            repo.git.add("--", *scoped_abs)
+            # Not core.safecrlf: a file with mixed line endings is hashed as
+            # git would store it, not refused (#687).
+            repo.git(c="core.safecrlf=false").add("--", *scoped_abs)
             if price_cutoff:
                 _filter_prices(repo, price_cutoff)
             return repo.git.write_tree()

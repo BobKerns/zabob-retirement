@@ -86,7 +86,7 @@ def test_unindented_lines_after_an_event_are_always_shown(
     started = _at(1)
     writer.event("started (pid 1)", started)
     # The event's own file: near midnight, now's file is the next day's.
-    with open(blog.file_for(builder_dir / "logs", started), "a") as f:
+    with open(blog.file_for(builder_dir / "logs", started), "a", encoding="utf-8") as f:
         f.write("Traceback (most recent call last):\n  File x\nValueError: boom\n")
     assert _log(data_dir=test_data_dir)[1:] == ["Traceback (most recent call last):",
                                                "ValueError: boom"]
@@ -116,7 +116,7 @@ def test_logs_rules_prune_old_files_and_keep_the_newest(builder_dir: Path) -> No
     for days_ago in range(10):
         day = datetime.now() - timedelta(days=days_ago)
         path = blog.file_for(log_dir, day)
-        path.write_text("x\n")
+        path.write_text("x\n", encoding="utf-8")
         os.utime(path, (now - days_ago * 86400, now - days_ago * 86400))
     rules = parse_retention("logs:\n  - keep: 3\n", base=builder_dir).logs
     doomed = blog.plan_log_prune(builder_dir, rules)
@@ -132,13 +132,13 @@ def test_prune_logs_follows_the_data_repos_rules(builder_dir: Path, test_data_di
     log_dir = builder_dir / "logs"
     log_dir.mkdir(parents=True)
     old = blog.file_for(log_dir, datetime.now() - timedelta(days=60))
-    old.write_text("x\n")
+    old.write_text("x\n", encoding="utf-8")
     then = time.time() - 60 * 86400
     os.utime(old, (then, then))
-    blog.file_for(log_dir, datetime.now()).write_text("x\n")
+    blog.file_for(log_dir, datetime.now()).write_text("x\n", encoding="utf-8")
     assert parse_retention(DEFAULT_RETENTION, base=test_data_dir).logs is not None
     assert blog.prune_logs(test_data_dir, builder_dir) == []  # no .retention.yaml: keep all
-    (test_data_dir / RETENTION_FILENAME).write_text("logs:\n  - since: 30 days\n")
+    (test_data_dir / RETENTION_FILENAME).write_text("logs:\n  - since: 30 days\n", encoding="utf-8")
     assert blog.prune_logs(test_data_dir, builder_dir) == [old]
     assert not old.exists()
 
@@ -183,7 +183,7 @@ def test_retention_ranks_log_files_by_the_date_in_their_names(builder_dir: Path)
     yesterday = blog.file_for(log_dir, datetime.now() - timedelta(days=1))
     older = blog.file_for(log_dir, datetime.now() - timedelta(days=2))
     for path in (today, yesterday, older):
-        path.write_text("x\n")
+        path.write_text("x\n", encoding="utf-8")
     # A late write to an older file (a build begun before midnight) doesn't
     # move it up: it ranks by its name.
     then = time.time() - 86400 * 5
@@ -198,7 +198,7 @@ def test_lines_before_a_files_first_event_are_dated_by_its_last_write(
 ) -> None:
     path = blog.file_for(builder_dir / "logs", datetime.now())
     path.parent.mkdir(parents=True)
-    path.write_text("Traceback (most recent call last):\nImportError: boom\n")
+    path.write_text("Traceback (most recent call last):\nImportError: boom\n", encoding="utf-8")
     assert _log(data_dir=test_data_dir) == ["Traceback (most recent call last):",
                                             "ImportError: boom"]
 
@@ -261,9 +261,9 @@ def test_builder_status_as_json(builder_dir: Path, test_data_dir: Path, repo_roo
     assert status()["installed"] is False
     paths = builder.BuilderPaths.for_data(test_data_dir)
     paths.dir.mkdir(parents=True, exist_ok=True)
-    paths.config.write_text(json.dumps({"data_dir": str(test_data_dir), "code_dir": str(repo_root)}))
+    paths.config.write_text(json.dumps({"data_dir": str(test_data_dir), "code_dir": str(repo_root)}), encoding="utf-8")
     paths.status.write_text(json.dumps({
-        "waiting": {"base": "dirty data"}, "failed": {"retire_alice": {"message": "boom"}}}))
+        "waiting": {"base": "dirty data"}, "failed": {"retire_alice": {"message": "boom"}}}), encoding="utf-8")
     found = status()
     assert found["installed"] is True and found["running"] is False
     assert found["tables"]["jobs"]["rows"] == [

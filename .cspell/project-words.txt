@@ -98,6 +98,7 @@ CORRECTFITID
 counterclock
 cpus
 CREAT
+creationflags
 CREDITCARD
 CREDITCARDMSGSRSV
 creds
@@ -249,10 +250,12 @@ linecap
 linespacing
 linestyle
 linthresh
+LOGNAME
 lognormal
 lookback
 lookthrough
 lotb
+lseek
 lstsq
 ltcg
 Macrotrends
@@ -267,6 +270,7 @@ MHLW
 microcap
 midnightblue
 misaki
+mklink
 mktree
 MKTVAL
 MMKX
@@ -275,6 +279,7 @@ modifyitems
 mojimoji
 MONEYMRKT
 movflags
+MPLBACKEND
 msecs
 mtimes
 mult
@@ -302,7 +307,9 @@ nonqualified
 NOPASSWD
 NOSYSTEM
 noto
+ntdll
 ntos
+NTSTATUS
 nunique
 OBBBA
 OFXHEADER
@@ -312,6 +319,8 @@ OLDFILEUID
 oneline
 oneoff
 OpenStax
+oscompat
+osfhandle
 overfit
 packagetype
 pacman
@@ -395,6 +404,7 @@ RRGGBB
 rsms
 rtol
 runfile
+safecrlf
 sandboxed
 scen
 sdir
@@ -455,11 +465,13 @@ suptitle
 SWVXX
 symlog
 sysconf
+SYSTEMROOT
 tablink
 tailnet
 tailweight
 TARGETARCH
 targetdate
+taskkill
 taxchar
 tbill
 tbond

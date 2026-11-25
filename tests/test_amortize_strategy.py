@@ -30,10 +30,10 @@ FLEX = "strategies/flex.csv"
 
 def _amortize(strategy_csv: Callable[[str, str], Path], **params: object) -> None:
     path = strategy_csv(SCENARIO, FLEX)
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(kind="amortize", params_json=json.dumps({"portfolio": "portfolio:invest", **params}))
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -138,7 +138,7 @@ def test_a_down_year_cuts_the_owned_spending_by_the_payments_drop(
     header = ("date,kind,scheduled_name,account_1,lot_1,account_2,lot_2,series,amount,param_date,"
               "tax_character,params_json,description,tags,name")
     strategy_csv(SCENARIO, "calendar.csv").write_text(
-        f"{header}\n2030-01-31,set_rate,,,,,,stock_us,-40%,,,,a crash,,crash\n")
+        f"{header}\n2030-01-31,set_rate,,,,,,stock_us,-40%,,,,a crash,,crash\n", encoding="utf-8")
     _amortize(strategy_csv)
     run = run_strategy_scenario(SCENARIO)
     by_year = {m[:4]: d for m, _n, d in _year_starts(run)}
@@ -198,7 +198,7 @@ def test_a_death_moves_the_horizon_to_the_survivor(
     run = run_strategy_scenario(SCENARIO)
     plain = {m[:4]: d["years"] for m, _n, d in _year_starts(run)}
     run.unlink()
-    strategy_csv(SCENARIO, "lifespan.csv").write_text("person,age_at_death\nbill,62\n")
+    strategy_csv(SCENARIO, "lifespan.csv").write_text("person,age_at_death\nbill,62\n", encoding="utf-8")
     widowed = {m[:4]: d["years"] for m, _n, d in _year_starts(run_strategy_scenario(SCENARIO))}
     # Bill dies in August 2029; until then his age sets the horizon.
     assert all(widowed[y] == plain[y] for y in ("2026", "2027", "2028", "2029"))
@@ -213,7 +213,8 @@ def test_the_horizon_never_reads_a_drawn_lifespan(
     _amortize(strategy_csv, horizon="survival:10%")
     found = []
     for age in ("90", "99"):
-        strategy_csv(SCENARIO, "lifespan.csv").write_text(f"person,age_at_death\nbill,{age}\nalice,{age}\n")
+        strategy_csv(SCENARIO, "lifespan.csv").write_text(f"person,age_at_death\nbill,{age}\nalice,{age}\n",
+                                                          encoding="utf-8")
         run = run_strategy_scenario(SCENARIO)
         found.append([(m, d["years"], d["spend"]) for m, _n, d in _year_starts(run)])
         run.unlink()
@@ -265,7 +266,7 @@ def test_a_survival_horizon_needs_each_persons_sex(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path], intent_dir: Path,
 ) -> None:
     persons = strategy_scenarios / "persons.csv"
-    persons.write_text(persons.read_text().replace(",1967-08-20,m,", ",1967-08-20,,"))
+    persons.write_text(persons.read_text(encoding="utf-8").replace(",1967-08-20,m,", ",1967-08-20,,"), encoding="utf-8")
     _amortize(strategy_csv, horizon="survival:10%")
     assert "the survival horizon needs a sex in persons.csv for bill" in _load_errors(
         strategy_scenarios, intent_dir)
@@ -275,7 +276,8 @@ def test_a_class_with_no_return_needs_real_return(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path], intent_dir: Path,
 ) -> None:
     allocations = strategy_scenarios / "allocations.csv"
-    allocations.write_text(allocations.read_text().replace("BONDX,,bond,100%", "BONDX,,real_estate,100%"))
+    text = allocations.read_text(encoding="utf-8").replace("BONDX,,bond,100%", "BONDX,,real_estate,100%")
+    allocations.write_text(text, encoding="utf-8")
     _amortize(strategy_csv)
     assert "holds real_estate, which has no class return: give real_return" in _load_errors(
         strategy_scenarios, intent_dir)
@@ -291,7 +293,7 @@ def test_an_ensemble_varies_the_real_return(
     vary = strategy_csv(SCENARIO, "strategy_vary/flex.csv")
     vary.parent.mkdir(exist_ok=True)
     vary.write_text("param,vary_distribution,vary_low,vary_high,vary_mode,vary_correlate_with,"
-                    "vary_correlation\nreal_return,uniform,1%,5%,,,\n")
+                    "vary_correlation\nreal_return,uniform,1%,5%,,,\n", encoding="utf-8")
     recipe = load_scenario(strategy_scenarios, SCENARIO, intent_dir=intent_dir / "recipe",
                            allow_dirty_data=True, compute_stamps=False).intent_path
     drawn = []
@@ -317,11 +319,11 @@ def test_a_survival_horizon_needs_the_life_tables_people_use(
     """Each person's own table is checked: the one their lifespan row names."""
     _amortize(strategy_csv, horizon="survival:10%")
     lifespan = strategy_csv(SCENARIO, "lifespan.csv")
-    lifespan.write_text("person,age_at_death,life_table\nalice,90,jp\nbill,90,nowhere\n")
+    lifespan.write_text("person,age_at_death,life_table\nalice,90,jp\nbill,90,nowhere\n", encoding="utf-8")
     errors = _load_errors(strategy_scenarios, intent_dir)
     assert "the survival horizon needs aux life_table__nowhere.csv" in errors
     assert "life_table__jp" not in errors
-    lifespan.write_text("person,age_at_death,life_table\nalice,90,jp\nbill,90,jp\n")
+    lifespan.write_text("person,age_at_death,life_table\nalice,90,jp\nbill,90,jp\n", encoding="utf-8")
     load_scenario(strategy_scenarios, SCENARIO, intent_dir=intent_dir, allow_dirty_data=True,
                   compute_stamps=False)
 

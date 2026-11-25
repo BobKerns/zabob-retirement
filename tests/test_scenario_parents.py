@@ -134,7 +134,7 @@ def test_create_no_parent_makes_a_mix_in_only_scenario(test_data_dir: Path, test
     row = _row(folder)
     assert (row["parent_scenario"], row["start"], row["end"], row["seed"]) == ("", "", "", "")
     assert row["description"] == MIXIN_ONLY_DESCRIPTION
-    assert "Builds on no other scenario." in (folder / "README.md").read_text()
+    assert "Builds on no other scenario." in (folder / "README.md").read_text(encoding="utf-8")
     assert is_mixin_only(test_scenarios_dir, "extra")
     # Checked by itself on the empty template; mixed in, it adds only itself.
     assert load_order(test_scenarios_dir, "extra") == [MIXIN_BASE, "extra"]
@@ -322,5 +322,13 @@ def test_a_missing_parent_is_not_a_mix_in(test_data_dir: Path, test_scenarios_di
     _mixin_on_mixin(test_data_dir)
     assert _sim(test_data_dir, "scenario", "create", "kid", "extra").exit_code == 0
     csv_path = test_scenarios_dir / "kid" / "scenario.csv"
-    csv_path.write_text(csv_path.read_text().replace("extra", "missing"), encoding="utf-8")
+    csv_path.write_text(csv_path.read_text(encoding="utf-8").replace("extra", "missing"), encoding="utf-8")
     assert not is_mixin_only(test_scenarios_dir, "kid")
+
+
+def test_an_edit_checks_only_the_scenario_and_those_built_on_it(test_data_dir: Path) -> None:
+    from zabob.retirement.sim.cli import _self_and_users
+    _mixin_on_mixin(test_data_dir)
+    assert _sim(test_data_dir, "scenario", "create", "kid", "retire_alice", "more").exit_code == 0
+    assert _self_and_users(test_data_dir, "extra") == ["extra", "kid", "more"]
+    assert _self_and_users(test_data_dir, "kid") == ["kid"]

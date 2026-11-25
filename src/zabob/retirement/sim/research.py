@@ -26,7 +26,6 @@ import math
 import os
 import re
 import shutil
-import signal
 import subprocess
 import tempfile
 import threading
@@ -37,6 +36,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.oscompat import kill_tree, start_tree
 from zabob.retirement.sim import registries, units
 from zabob.retirement.sim.dates import month_end_iso
 
@@ -688,20 +688,16 @@ def run_skill(
     # stderr goes to a file: a pipe nobody reads until the end could fill and
     # stall the run.
     errors = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")
-    # Its own process group, so stopping it stops whatever it started too: a
-    # child still holding stdout would keep the read loop below waiting.
-    proc = subprocess.Popen(
+    # Its own tree, so stopping it stops whatever it started too: a child
+    # still holding stdout would keep the read loop below waiting.
+    proc = start_tree(
         command, cwd=work_dir, stdout=subprocess.PIPE, stderr=errors,
         stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
-        start_new_session=True,
     )
     timed_out = threading.Event()
 
     def kill() -> None:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        kill_tree(proc)
 
     def stop() -> None:
         timed_out.set()

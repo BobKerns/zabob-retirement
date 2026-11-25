@@ -60,7 +60,7 @@ def _yaml_uses(node: object) -> Iterator[str]:
 def _uses(repo_root: Path) -> list[tuple[str, str, str]]:
     found = []
     for path in _files(repo_root):
-        for number, ref, rest in _line_uses(path.read_text()):
+        for number, ref, rest in _line_uses(path.read_text(encoding="utf-8")):
             found.append((f"{path.relative_to(repo_root)}:{number}", ref, rest))
     return found
 
@@ -112,7 +112,7 @@ def test_every_uses_is_one_block_style_line(repo_root: Path) -> None:
     # another way (flow style, a quoted key, a folded value) would slip past
     # it, so the lines must account for every `uses` YAML itself finds.
     for path in _files(repo_root):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         lines = sorted(ref for _, ref, _ in _line_uses(text))
         assert lines == sorted(_yaml_uses(yaml.safe_load(text))), path.relative_to(repo_root)
 

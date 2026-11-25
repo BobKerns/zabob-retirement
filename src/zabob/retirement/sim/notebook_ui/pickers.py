@@ -49,6 +49,7 @@ from zabob.retirement.sim.types import (
     AccountName, ScenarioName, AttributionAxis, DeltaScale, HeatmapValue,
 )
 from zabob.retirement.sim.notebook_ui.styled import StyledMarkdown, styled_html
+from zabob.retirement.user_config import default_data_dir
 
 
 def to_month(year: int, month: int) -> datetime.date:
@@ -502,8 +503,8 @@ def find_data_dir(data_dir: Path | str | None = None) -> Path:
     ----------
     data_dir : Path | str | None, optional
         The base directory for the data repository. If None, defaults to
-        the current repo's data/private/sim or the value of the
-        $ANALYSIS_DATA_DIR environment variable.
+        the value of the $ANALYSIS_DATA_DIR environment variable, the
+        current repo's data/private/sim, or the user's default data repo.
 
     Returns
     -------
@@ -511,8 +512,14 @@ def find_data_dir(data_dir: Path | str | None = None) -> Path:
         The resolved data directory.
     """
     if data_dir is None:
-        env = os.environ.get("ANALYSIS_DATA_DIR")
-        return Path(env) if env is not None else _checkout_data_dir()
+        if env := os.environ.get("ANALYSIS_DATA_DIR"):
+            return Path(env)
+        # The notebook's own data repo, then the user's default (#687): a
+        # notebook opened from an editor has no activated shell behind it.
+        found = _checkout_data_dir()
+        if not (found / "persons.csv").exists() and (default := default_data_dir()) is not None:
+            return default
+        return found
     return Path(data_dir)
 
 

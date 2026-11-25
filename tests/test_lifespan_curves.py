@@ -42,7 +42,7 @@ def test_only_persons_with_a_sex_are_drawn(lifespans: Callable[..., list[PersonL
 def test_a_person_with_a_sex_but_no_birthdate_gets_a_note(
     test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
-    with (test_data_dir / "persons.csv").open("a") as f:
+    with (test_data_dir / "persons.csv").open("a", encoding="utf-8") as f:
         f.write("pet,Pet (fake),,f,,{}\n")
     con = sqlite3.connect(load_test_copy().intent_path)
     try:

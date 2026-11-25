@@ -21,8 +21,8 @@ paths (listed in [scenarios/README.md](scenarios/README.md); see "Template scena
 Don't copy those folders: a `t_` name your data repo has no folder for is
 read from this code repository, so the templates stay current as the code
 changes. `link-data.sh --template` leaves them out of its copy. The same goes for
-`aux/`: the loader reads this repository's `templates/aux/` beneath your own,
-so keep only `aux/filing_status.csv` (give it your household's status) and
+`tables/`: the loader reads this repository's `templates/tables/` beneath your own,
+so keep only `tables/filing_status.csv` (give it your household's status) and
 any table you change; `link-data.sh --template` copies only that file. To change
 one, copy just that folder into your `scenarios/`; it then replaces the
 template whole.
@@ -36,7 +36,7 @@ template whole.
     persons.csv                   # household owners + operator identities ($ANALYSIS_USER)
     accounts.csv                  # chart of accounts
     itemizations/<name>.csv       # optional money rollups referenced as @<name>
-    aux/<kind>[__<series>].csv    # tax-law aux tables; one per kind ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4)
+    tables/<kind>[__<series>].csv    # tax-law aux tables; one per kind ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4)
     prices/security_price__<SYMBOL>.csv  # security price histories, shared ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4)
     scenarios/<name>/
         scenario.csv              # one-row scenario header
@@ -48,7 +48,7 @@ template whole.
         year_to_date.csv          # optional partial-first-year catch-up facts ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.10)
         chains/<role>/<name>.csv  # optional named chains: role is source or destination ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.7)
         series/<kind>__<series>.csv  # this scenario's growth-rate/inflation series (no shared default; §4.4)
-        aux/, prices/, itemizations/  # optional per-scenario overrides ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.1d)
+        tables/, prices/, itemizations/  # optional per-scenario overrides ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.1d)
 ```
 
 ## Conventions
@@ -64,11 +64,11 @@ template whole.
     The loader reads `itemizations/name.csv`, sums the `Value` column, and uses that total, searching
     a scenario's own `itemizations/` folder before the shared one at the data repo root (see below).
 
-## Per-scenario overrides for aux/, prices/, series/ and itemizations/
+## Per-scenario overrides for tables/, prices/, series/ and itemizations/
 
-`aux/`, `prices/` and `itemizations/` at the data repo root are the shared defaults every
-scenario uses unless it says otherwise (and beneath `aux/`, this code repository's own
-`templates/aux/`, so a data repo's `aux/` holds only what it changes plus its
+`tables/`, `prices/` and `itemizations/` at the data repo root are the shared defaults every
+scenario uses unless it says otherwise (and beneath `tables/`, this code repository's own
+`templates/tables/`, so a data repo's `tables/` holds only what it changes plus its
 `filing_status.csv`): tax law, security prices, and cost-basis itemizations
 are the same regardless of which what-if you're running. `series/` is different: growth-rate
 and inflation assumptions are properly per-scenario projections, so `series/` has **no**
@@ -76,9 +76,9 @@ shared root default — it only exists under `scenarios/<name>/series/`, and wha
 just the ordinary inheritance from a scenario's ancestors (its parent's `series/`, its
 parent's parent's, ...).
 
-A scenario can replace one `aux/`/`prices/`/`itemizations/` file for itself (and anything
+A scenario can replace one `tables/`/`prices/`/`itemizations/` file for itself (and anything
 derived from it) by adding a same-named file under its own folder:
-`scenarios/<name>/aux/<file>.csv`, `scenarios/<name>/prices/<file>.csv`, or
+`scenarios/<name>/tables/<file>.csv`, `scenarios/<name>/prices/<file>.csv`, or
 `scenarios/<name>/itemizations/<file>.csv`. The loader resolves each filename independently,
 most specific first — the scenario's own file, else its parent's (following `parent_scenario`
 all the way up), else the shared default — and a match replaces the whole file, not a
@@ -86,7 +86,7 @@ row-by-row merge. `series/<file>.csv` resolves the same way, just without that l
 step. This is how you model a different future tax policy or cost-basis itemization on one
 scenario without touching any other, and how every scenario gets its own rate/inflation
 assumptions by default (inherited from its parent) while still being able to override them.
-See [ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.1d, `aux/README.md` and `prices/README.md`.
+See [ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.1d, `tables/README.md` and `prices/README.md`.
 
 ## Budget planning
 
@@ -96,7 +96,7 @@ For annual items, set `month_of_year` (`1`-`12`) so payments land in the intende
 
 ## Aux/series/prices table filename pattern
 
-`<kind>__<series>.csv` for kinds that have multiple named series (`rate__Asset_Checking`, `security_price__VTI`); `<kind>.csv` for kinds that have only one (`federal_brackets`, `standard_deduction`, `rmd_factors`). The filename is parsed by the loader the same way in `aux/`, `series/` and `prices/`; see [ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4 for the column schema of each kind, and "Per-scenario overrides" above for how the three folders differ and how a scenario can replace one file.
+`<kind>__<series>.csv` for kinds that have multiple named series (`rate__Asset_Checking`, `security_price__VTI`); `<kind>.csv` for kinds that have only one (`federal_brackets`, `standard_deduction`, `rmd_factors`). The filename is parsed by the loader the same way in `tables/`, `series/` and `prices/`; see [ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4 for the column schema of each kind, and "Per-scenario overrides" above for how the three folders differ and how a scenario can replace one file.
 
 ## After editing
 
@@ -179,11 +179,11 @@ To split an account, give it several rows with different `lot` values, each with
 
 **Viewing holdings.** `sim account holdings <account>` lists an account's lots (symbol, acquired, quantity, implied price, balance, basis, unrealized gain, with totals), and `sim account holders <symbol>` lists every account holding a symbol. Both read the scenario's latest run at its last month; use `--month YYYY-MM` for another month, `--runfile` for a specific run, or `--opening` for the opening values (also what you get when there is no run yet). In a notebook, `account_holdings_widget(rc)` and `symbol_holders_widget(rc)` from `zabob.retirement.sim.notebook_ui.holdings_widgets` show the same tables with dropdowns; the account widget offers every asset and liability account, the symbol widget only the symbols held in investment accounts, and the commands accept any account or symbol.
 
-**Short-term and long-term.** A sale from a lot books its gain as long-term (`ltcg`) once the lot has been held more than a year, and short-term (`stcg`, taxed as ordinary income) before that, using the lot's `acquired` date; a lot with no `acquired` date is long-term. If `aux/ltcg_brackets.csv` exists, federal tax taxes long-term gains at its preferential rates; without it they are taxed as ordinary income. To draw long-term lots first, list them first in a chain.
+**Short-term and long-term.** A sale from a lot books its gain as long-term (`ltcg`) once the lot has been held more than a year, and short-term (`stcg`, taxed as ordinary income) before that, using the lot's `acquired` date; a lot with no `acquired` date is long-term. If `tables/ltcg_brackets.csv` exists, federal tax taxes long-term gains at its preferential rates; without it they are taxed as ordinary income. To draw long-term lots first, list them first in a chain.
 
 **Purchases and growth.** Money you move into a taxable lot (a purchase from checking, an inheritance) adds that amount to its basis, and to its shares if `quantity` is filled in. The lot's own growth does not: it is total return, so reinvested dividends are not split out. To buy a position later in the scenario, add a lot (`sim account lot add`) with `opening_balance` 0 and the purchase date in `acquired`, and schedule the purchase into it. Leave `quantity` blank for dollar-denominated funds such as money markets.
 
-**Cash accounts.** Bank accounts use the single subkind `cash`, and can have lots like any other account (for instance one lot per bank account under a single `Bank` account). By convention, give every cash lot the symbol `CASH`: then `sim account holders CASH` and the symbol widget list all your cash in one table. A lot grows at a rate series named for its symbol, so an `aux/rate__CASH.csv` would also become the default yield of every cash lot that has no series of its own.
+**Cash accounts.** Bank accounts use the single subkind `cash`, and can have lots like any other account (for instance one lot per bank account under a single `Bank` account). By convention, give every cash lot the symbol `CASH`: then `sim account holders CASH` and the symbol widget list all your cash in one table. A lot grows at a rate series named for its symbol, so an `tables/rate__CASH.csv` would also become the default yield of every cash lot that has no series of its own.
 
 **RMDs from an account with several lots.** The `rmd` rule's amount is based on the whole account (all its lots together), and it must draw from a chain that lists the lots to take from, in order. Set `from_account` to the chain and put `{"subject_account": "<the IRA>"}` in `params_json`; the chain may only contain that account's lots.
 

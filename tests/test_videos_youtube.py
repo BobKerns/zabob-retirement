@@ -260,7 +260,7 @@ def test_published_toml_round_trips(tmp_path: Path) -> None:
 
 def test_scene_lengths_file_is_json(tmp_path: Path) -> None:
     path = youtube.write_scene_lengths(tmp_path / "v.en.mp4", [("a", 1.23456)])
-    assert path.name == "v.en.scenes.json" and json.loads(path.read_text()) == [["a", 1.235]]
+    assert path.name == "v.en.scenes.json" and json.loads(path.read_text(encoding="utf-8")) == [["a", 1.235]]
 
 
 @pytest.mark.checkout
@@ -290,10 +290,10 @@ def test_build_writes_the_scene_lengths_and_the_description(videos_root: Path, r
         result = build(folder, out_dir=tmp_path / "out", engine="silent", repo=repo_root, log=lambda _: None)
     except Error as error:
         pytest.skip(f"no browser: {error.message.splitlines()[0]}")
-    lengths = json.loads(youtube.scene_lengths_path(result.video).read_text())
+    lengths = json.loads(youtube.scene_lengths_path(result.video).read_text(encoding="utf-8"))
     assert [sid for sid, _ in lengths] == ["title", "end"]
     assert result.description is not None
-    assert result.description.read_text().startswith("Zabob Retirement: 01—A video\n\nWhat it shows.")
+    assert result.description.read_text(encoding="utf-8").startswith("Zabob Retirement: 01—A video\n\nWhat it shows.")
     # And publish finds that build.
     assert youtube.built(scripts.load(folder), tmp_path / "out").lengths == [tuple(x) for x in lengths]
 

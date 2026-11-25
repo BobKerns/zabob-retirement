@@ -58,7 +58,7 @@ def test_household_render_adds_overlays(tmp_path):
     assert "(for a language, all of its tabs)" in skill
     assert not (plugin / "defaults").exists()
     assert not (plugin / "overlays").exists()
-    manifest = json.loads((tmp_path / ".claude-plugin" / "marketplace.json").read_text())
+    manifest = json.loads((tmp_path / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert manifest["name"] == rp.LOCAL_MARKETPLACE
     assert manifest["plugins"][0]["source"] == f"./{rp.PLUGIN_NAME}"
 
@@ -144,7 +144,7 @@ def test_eval_fixture_config_parses():
 
 def test_allocation_script_classes_match_registry():
     # The script keeps its own copy so it runs outside this repo's venv.
-    text = (rp.SOURCE_DIR / "skills" / "fund-tear-sheet" / "scripts" / "allocation.py").read_text()
+    text = (rp.SOURCE_DIR / "skills" / "fund-tear-sheet" / "scripts" / "allocation.py").read_text(encoding="utf-8")
     copy = re.search(r"^SIM_CLASSES = (\[.*\])$", text, re.M)
     assert copy is not None
     # One state's municipal bonds (muni_CA) are the notes' to name.
@@ -153,7 +153,7 @@ def test_allocation_script_classes_match_registry():
 
 def _fund_calc(tmp_path: Path, rows: list[tuple[str, str, str, str]]) -> str:
     data = tmp_path / "data.csv"
-    with data.open("w", newline="") as f:
+    with data.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["section", "metric", "period", "value", "unit", "source_url", "as_of"])
         for section, metric, period, value in rows:
@@ -184,7 +184,7 @@ def test_install_renders_then_installs_from_local_marketplace(tmp_path, monkeypa
     monkeypatch.setattr(rp.subprocess, "run", lambda args, check: calls.append(args))
     data = tmp_path / "data"
     data.mkdir()
-    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n")
+    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n", encoding="utf-8")
     out = tmp_path / "out"
     result = CliRunner().invoke(rp.research_plugin_command,
                                 ["install", "--data-dir", str(data), "--out", str(out)])
@@ -206,7 +206,7 @@ def test_install_without_claude_fails(monkeypatch):
 
 def test_render_reports_a_bad_config(tmp_path):
     bad = tmp_path / rp.CONFIG_FILENAME
-    bad.write_text("tax_state: XX\n")
+    bad.write_text("tax_state: XX\n", encoding="utf-8")
     result = CliRunner().invoke(rp.research_plugin_command,
                                 ["render", "--config", str(bad), "--out", str(tmp_path / "out")])
     assert result.exit_code != 0
@@ -216,10 +216,10 @@ def test_render_reports_a_bad_config(tmp_path):
 @pytest.mark.checkout
 def test_repo_marketplace_lists_the_neutral_plugin():
     assert CHECKOUT_DIR is not None
-    manifest = json.loads((CHECKOUT_DIR / ".claude-plugin" / "marketplace.json").read_text())
+    manifest = json.loads((CHECKOUT_DIR / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "analysis"
     assert manifest["plugins"][0]["source"] == f"./plugins/{rp.PLUGIN_NAME}"
-    settings = json.loads((CHECKOUT_DIR / ".claude" / "settings.json").read_text())
+    settings = json.loads((CHECKOUT_DIR / ".claude" / "settings.json").read_text(encoding="utf-8"))
     # Registered for discovery only: never switched on for everyone.
     assert "analysis" in settings["extraKnownMarketplaces"]
     assert "enabledPlugins" not in settings

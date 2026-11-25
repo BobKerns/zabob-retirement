@@ -90,7 +90,7 @@ def test_rows_merge_by_date_over_the_lineage(
     (("2028-01", "XX"), r"residence.csv line 3: state 'XX' is not a state's or territory's"),
     (("", "OR"), r"residence.csv line 3: effective_date is required"),
     (("2026-05", "OR"), r"residence.csv line 3: duplicate effective_date"),
-    (("2028-01", "NY"), r"residence.csv line 3: no aux/state_brackets__NY.csv for New York \(NY\)"),
+    (("2028-01", "NY"), r"residence.csv line 3: no tables/state_brackets__NY.csv for New York \(NY\)"),
 ])
 def test_the_loader_checks_each_row(
     row: tuple[str, str], message: str, add_state_tax: Callable[..., None],
@@ -346,19 +346,19 @@ def test_the_migration_moves_series_and_swaps_to_residence(
     assert not (base / "residence.csv").exists()  # a dry run writes nothing
     migration.apply(planned)
 
-    assert (base / "residence.csv").read_text().splitlines() == [
+    assert (base / "residence.csv").read_text(encoding="utf-8").splitlines() == [
         "effective_date,state,county,description",
         "2026-05,CA,CA-county,",
         "2030-07,OR,,Move to Oregon (OR)",
         "2033-01,FL,,Move to Florida (FL)",
     ]
     # The child's own state replaces its parent's first row, on its date.
-    assert (child / "residence.csv").read_text().splitlines()[1:] == ["2026-05,NC,,"]
-    text = calendar.read_text()
+    assert (child / "residence.csv").read_text(encoding="utf-8").splitlines()[1:] == ["2026-05,NC,,"]
+    text = calendar.read_text(encoding="utf-8")
     assert "law2027" in text and "state_brackets" not in text
     assert "state_standard_deduction" not in text
-    assert "bracket_series" not in (base / "taxes" / "state.csv").read_text()
-    assert "bracket_series" not in (base / "taxes" / "local.csv").read_text()
+    assert "bracket_series" not in (base / "taxes" / "state.csv").read_text(encoding="utf-8")
+    assert "bracket_series" not in (base / "taxes" / "local.csv").read_text(encoding="utf-8")
     assert migration.plan(test_data_dir).problems == [
         f"{test_data_dir}: no bracket_series or state table swaps; already migrated?"]
 
@@ -374,7 +374,7 @@ def test_a_rows_left_out_county_is_blank_not_its_parents(
     write_aux("state_local_tax__CA-county.csv", BRACKETS + "".join(
         f"2020-01-31,{status},0,0.00,1%\n" for status in ("Single", "MFJ", "MFS")))
     add_state_tax("CA", county="CA-county")
-    (test_child_scenario / "residence.csv").write_text("effective_date,state\n2026-05,NC\n")
+    (test_child_scenario / "residence.csv").write_text("effective_date,state\n2026-05,NC\n", encoding="utf-8")
     with closing(sqlite3.connect(load_test_scenario("child"))) as con:
         assert con.execute("SELECT state, county FROM residence").fetchall() == [("NC", None)]
 
@@ -395,7 +395,7 @@ def test_the_migration_reads_the_parents_move_of_the_same_month(
     planned = migration.plan(test_data_dir)
     assert planned.problems == []
     migration.apply(planned)
-    assert (child / "residence.csv").read_text().splitlines()[1:] == ["2030-07,NC,NC-county,"]
+    assert (child / "residence.csv").read_text(encoding="utf-8").splitlines()[1:] == ["2030-07,NC,NC-county,"]
 
 
 @pytest.mark.parametrize(("swap", "problem"), [

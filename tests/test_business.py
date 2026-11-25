@@ -143,7 +143,7 @@ def test_the_proprietors_nol_ends_after_the_year_they_die(
     }])
     (scenario / "lifespan.csv").write_text(
         "person,age_at_death,vary_distribution,vary_low,vary_high,vary_mode,"
-        "vary_correlate_with,vary_correlation\nalice,66,,,,,,\n")  # final month 2031-03
+        "vary_correlate_with,vary_correlation\nalice,66,,,,,,\n", encoding="utf-8")  # final month 2031-03
     run = run_file("alice_business")
     with closing(sqlite3.connect(run)) as con:
         lines = {(bucket.removeprefix("federal_"), year): amount for year, bucket, amount in con.execute(
@@ -235,7 +235,7 @@ def test_a_chain_step_takes_no_business_character(
 ) -> None:
     chain = business_scenarios / "alice_business" / "chains" / "destination" / "to_business.csv"
     chain.parent.mkdir(parents=True)
-    chain.write_text("account_name,tax_character\nAsset_Business_Alice,business_income\n")
+    chain.write_text("account_name,tax_character\nAsset_Business_Alice,business_income\n", encoding="utf-8")
     with pytest.raises(LoadError, match="isn't for a chain step"):
         load_test_scenario("alice_business")
 

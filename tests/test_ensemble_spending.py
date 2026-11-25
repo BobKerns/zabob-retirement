@@ -31,10 +31,10 @@ SCENARIO = "alice_spending"
 def _strategy(strategy_csv: Callable[[str, str], Path], kind: str, **params: object) -> None:
     """Make alice_spending's ``flex`` strategy ``kind`` with ``params``."""
     path = strategy_csv(SCENARIO, "strategies/flex.csv")
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(kind=kind, params_json=json.dumps({"portfolio": "portfolio:invest", **params}))
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -86,7 +86,7 @@ def test_the_store_keeps_spending_dated_before_the_run_in_its_own_year(
     strategy_csv(SCENARIO, "year_to_date.csv").write_text(
         "name,from_account,from_lot,to_account,to_lot,amount,tax_character,year,description\n"
         "last_year,Asset_Checking,,Expense_Travel,,9000.00,none,2025,\n"
-        "this_year,Asset_Checking,,Expense_Gifts,,700.00,none,,\n")
+        "this_year,Asset_Checking,,Expense_Gifts,,700.00,none,,\n", encoding="utf-8")
     batch = strategy_ensemble(SCENARIO)
     _assert_store_matches_members(batch)
     delivered, _budgeted = open_series(batch).spending(DollarMode.NOMINAL)
@@ -186,13 +186,13 @@ def test_compare_sets_spending_against_the_plan(
     child.mkdir()
     (child / "scenario.csv").write_text(
         "name,description,start,end,seed,parent_scenario,created_by,meta_json\n"
-        "alice_spending_skip,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n")
-    (child / "README.md").write_text("# alice_spending_skip\n\nBuilds on: alice_spending\n")
+        "alice_spending_skip,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n", encoding="utf-8")
+    (child / "README.md").write_text("# alice_spending_skip\n\nBuilds on: alice_spending\n", encoding="utf-8")
     (child / "strategies").mkdir()
     (child / "strategies" / "flex.csv").write_text(
         "kind,chain,rules,start,end,enabled,params_json,description\n"
         'threshold,,flex:optional,,,,"{""portfolio"":""portfolio:invest"",'
-        '""minimum"":""5000000.00""}",never enough\n')
+        '""minimum"":""5000000.00""}",never enough\n', encoding="utf-8")
     for name in (SCENARIO, "alice_spending_skip"):
         result = _cli(strategy_scenarios, "run", name, "--allow-dirty-data", "--allow-dirty-code")
         assert result.exit_code == 0, result.output

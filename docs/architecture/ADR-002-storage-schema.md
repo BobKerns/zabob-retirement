@@ -27,7 +27,7 @@ The schema must:
 ```text
 data_repo/
     persons.csv             # shared base: owners with birthdates (and operator role)
-    aux/
+    tables/
         federal_brackets.csv
         rmd_factors.csv
         inflation__cpi.csv
@@ -123,7 +123,7 @@ The snapshot in a run file is byte-comparable to the corresponding intent file's
 
 ### Intent layer DDL
 
-The DDL in this section and the next four is copied from `src/zabob/retirement/sim/schema.py` (`SCHEMA_VERSION` 70) and must be kept identical to it; the code is authoritative. These tables exist in both intent files and (as snapshot) run files. Not in the DDL: `tag`, `account_tag`, `scheduled_transaction_tag` and `calendar_event_tag` are a generic labelling facility (role/name pairs) that no loader writes yet.
+The DDL in this section and the next four is copied from `src/zabob/retirement/sim/schema.py` (`SCHEMA_VERSION` 71) and must be kept identical to it; the code is authoritative. These tables exist in both intent files and (as snapshot) run files. Not in the DDL: `tag`, `account_tag`, `scheduled_transaction_tag` and `calendar_event_tag` are a generic labelling facility (role/name pairs) that no loader writes yet.
 
 ```sql
 CREATE TABLE person (
@@ -135,7 +135,10 @@ CREATE TABLE person (
     meta_json   TEXT NOT NULL DEFAULT '{}',
     -- #274: set on someone with no role, outside the household (an heir, a
     -- trust, a charity), who gets an account of their own; NULL in it.
-    kind        TEXT CHECK (kind IN ('person','trust','charity'))
+    kind        TEXT CHECK (kind IN ('person','trust','charity')),
+    -- #257: the tax year of the person's first Roth IRA contribution or
+    -- conversion, when it predates their Roth IRA lots; NULL when not given.
+    roth_clock_start INTEGER
 );
 
 -- Names for the symbols lots hold (data repo securities.csv); shared reference
@@ -390,7 +393,8 @@ CREATE TABLE account_lot (
     account_id              INTEGER NOT NULL REFERENCES account(id),
     lot                     TEXT NOT NULL DEFAULT 'default',
     subkind                 TEXT CHECK (subkind IN
-                                ('traditional_ira','roth_ira','traditional_401k','roth_401k')),
+                                ('traditional_ira','roth_ira','traditional_401k','roth_401k',
+                                 'inherited_roth_ira')),
     tax_treatment           TEXT CHECK (tax_treatment IN
                                 ('taxable','tax_deferred','tax_free','none')),
     symbol                  TEXT,
@@ -409,6 +413,9 @@ CREATE TABLE account_lot (
     -- #274: where the lot goes at its owner's death (accounts.csv
     -- beneficiary, matched to this lot); NULL when the account names none.
     beneficiary_chain_id    INTEGER REFERENCES chain(id),
+    -- #257: an inherited_roth_ira lot's decedent's five-year clock, the tax
+    -- year it started; NULL when it has run.
+    roth_clock_start        INTEGER,
     UNIQUE (account_id, lot)
 );
 
@@ -743,7 +750,7 @@ CREATE TABLE intent_manifest (
 );
 ```
 
-`scenario_tree_id` is a **git tree object SHA** covering the data repo paths this scenario's load can read: the scenario folder (`data_repo/scenarios/<name>/**`), the folders of every scenario it inherits from via `parent_scenario` (mix-ins included, [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.5), and the shared base paths (`persons.csv`, `securities.csv`, `allocations.csv`, and the whole `aux/`, `prices/`, and `itemizations/` folders). The shared folders are scoped whole rather than per file read, so an edit to an unused file there also moves the id.
+`scenario_tree_id` is a **git tree object SHA** covering the data repo paths this scenario's load can read: the scenario folder (`data_repo/scenarios/<name>/**`), the folders of every scenario it inherits from via `parent_scenario` (mix-ins included, [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.5), and the shared base paths (`persons.csv`, `securities.csv`, `allocations.csv`, and the whole `tables/`, `prices/`, and `itemizations/` folders). The shared folders are scoped whole rather than per file read, so an edit to an unused file there also moves the id.
 
 - **Clean** (`data_dirty = 0`): computed by `git ls-tree` against `HEAD` for those paths and combined with `git mktree` into a single tree object, or equivalently by writing them to a temporary index and calling `git write-tree`. Either way the result is a normal git tree SHA, addressable forever.
 - **Dirty** (`data_dirty = 1`): the loader stages the working-tree contents of those paths into a **separate index file** (`GIT_INDEX_FILE=...` env var, never touching the user's index) and runs `git write-tree` against it. The output is a real tree SHA, identical to what a future commit of the same content would produce. Optionally the engine runs `git update-ref refs/analysis-dirty/<tree-id> <tree-id>` so the object is reachable from a ref and won't be garbage-collected before the run is forgotten.

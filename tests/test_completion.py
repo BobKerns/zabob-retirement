@@ -70,7 +70,7 @@ def test_series_names_by_kind(data_dir: Path) -> None:
     rates = names.series_names(data_dir, "retire_alice", "rate")
     inflation = names.series_names(data_dir, "retire_alice", "inflation")
     assert {"stock", "brokerage_growth"} <= set(rates)  # base's and retire_alice's own
-    assert "cpi" in inflation  # the shared aux/ folder's
+    assert "cpi" in inflation  # the shared tables/ folder's
     assert "cpi" not in rates
     assert set(rates) | set(inflation) <= set(names.series_names(data_dir, "retire_alice"))
 
@@ -144,7 +144,7 @@ def test_series_follows_the_aux_kind(data_dir: Path) -> None:
 def test_an_emptied_series_completes_only_for_revert(test_data_dir: Path) -> None:
     # #471: an empty file hides the inherited series; only revert can drop it.
     (test_data_dir / "scenarios" / "retire_alice" / "series" / "inflation__food.csv").write_text(
-        "effective_date,annual_rate\n")
+        "effective_date,annual_rate\n", encoding="utf-8")
     assert "food" not in _complete(test_data_dir, "series edit --scenario retire_alice ")
     assert _complete(test_data_dir, "series revert --scenario retire_alice ") == ["food"]
     assert _complete(test_data_dir, "series revert --scenario retire_alice --kind rate ") == []

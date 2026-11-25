@@ -57,4 +57,4 @@ def test_every_chart_draws_an_svg(tmp_path):
     paths = charts.write_charts(history, tmp_path / "out")
     assert sorted(p.name for p in paths) == sorted(charts.CHARTS)
     for path in paths:
-        assert path.read_text().lstrip().startswith("<?xml")
+        assert path.read_text(encoding="utf-8").lstrip().startswith("<?xml")

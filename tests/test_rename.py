@@ -67,9 +67,9 @@ def test_relink_markdown_follows_the_folder() -> None:
         "[c]: ../retire_early/chains/\n")
     # From inside the folder, a link to itself through its parent moves too;
     # the scenario's other links stay as they are.
-    inside = "[me](../retire_alice/scheduled.csv) [up](../../aux/README.md) [here](chains/README.md)"
+    inside = "[me](../retire_alice/scheduled.csv) [up](../../tables/README.md) [here](chains/README.md)"
     assert rename.relink_markdown(inside, old / "README.md", old, new) == (
-        "[me](../retire_early/scheduled.csv) [up](../../aux/README.md) [here](chains/README.md)")
+        "[me](../retire_early/scheduled.csv) [up](../../tables/README.md) [here](chains/README.md)")
     # A longer name that only starts with the old one is another scenario.
     assert rename.relink_markdown("`retire_alice_2` scenarios/retire_alice_2", scenarios / "x.md", old, new) == (
         "`retire_alice_2` scenarios/retire_alice_2")
@@ -80,8 +80,9 @@ def test_scenario_rename_moves_it_and_repoints_everything(
 ) -> None:
     derive_scenario("kid", "retire_alice", description="Derived from retire_alice")
     derive_scenario("mixed", "base:retire_alice", description="Hand-written, naming retire_alice")
-    (test_data_dir / ".current_scenario").write_text("retire_alice\n")
-    (test_data_dir / "README.md").write_text("Start with [Alice](scenarios/retire_alice/README.md).\n")
+    (test_data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
+    (test_data_dir / "README.md").write_text("Start with [Alice](scenarios/retire_alice/README.md).\n",
+                                             encoding="utf-8")
 
     result = _sim(test_data_dir, "scenario", "rename", "retire_alice", "retire_early", scenario=None)
 
@@ -95,11 +96,12 @@ def test_scenario_rename_moves_it_and_repoints_everything(
     assert _column(test_scenarios_dir / "kid" / "scenario.csv", "description") == ["Derived from retire_early"]
     assert _column(test_scenarios_dir / "mixed" / "scenario.csv", "description") == [
         "Hand-written, naming retire_alice"]
-    assert (test_data_dir / ".current_scenario").read_text() == "retire_early\n"
+    assert (test_data_dir / ".current_scenario").read_text(encoding="utf-8") == "retire_early\n"
     assert "Current scenario is now retire_early (was retire_alice)" in result.stderr
-    assert (test_data_dir / "README.md").read_text() == (
+    assert (test_data_dir / "README.md").read_text(encoding="utf-8") == (
         "Start with [Alice](scenarios/retire_early/README.md).\n")
-    assert "`retire_early` derives from this scenario" in (test_scenarios_dir / "base" / "README.md").read_text()
+    base_readme = (test_scenarios_dir / "base" / "README.md").read_text(encoding="utf-8")
+    assert "`retire_early` derives from this scenario" in base_readme
     for name in ("retire_early", "kid", "mixed"):
         loads(name)
 
@@ -188,9 +190,9 @@ def test_account_rename_leaves_an_authored_rule_with_a_growth_rule_name(
     # wider one; the calendar row names the authored rule, so it must not move.
     rule = growth_rule_name("Asset_Checking", "default")
     scheduled = retire_alice_csv("scheduled.csv")
-    scheduled.write_text(scheduled.read_text() + f"{rule},Income_Salary_Alice,,Asset_Checking,,"
+    scheduled.write_text(scheduled.read_text(encoding="utf-8") + f"{rule},Income_Salary_Alice,,Asset_Checking,,"
                          "monthly,,fixed_amount,,,cpi,,,10.00,2026-05-31,,ordinary,,2026-05-31,,"
-                         "200,,,authored,{},,\n")
+                         "200,,,authored,{},,\n", encoding="utf-8")
     append_calendar_row(date="2030-01-31", kind="retire_scheduled", scheduled_name=rule)
     result = _sim(test_data_dir, "account", "rename", "Asset_Checking", "Asset_Spending")
     assert result.exit_code == 0, result.output
@@ -204,9 +206,9 @@ def test_account_rename_follows_an_rmd_subject_account(
     loads: Callable[[str], None],
 ) -> None:
     scheduled = retire_alice_csv("scheduled.csv")
-    scheduled.write_text(scheduled.read_text().replace(
+    scheduled.write_text(scheduled.read_text(encoding="utf-8").replace(
         "Alice RMD from IRA,{},,",
-        'Alice RMD from IRA,{},"{""subject_account"": ""Asset_TraditionalIRA_Alice""}",'))
+        'Alice RMD from IRA,{},"{""subject_account"": ""Asset_TraditionalIRA_Alice""}",'), encoding="utf-8")
     result = _sim(test_data_dir, "account", "rename", "Asset_TraditionalIRA_Alice", "Asset_IRA_Alice")
     assert result.exit_code == 0, result.output
     params = _column(test_scenarios_dir / "retire_alice" / "scheduled.csv", "params_json")
@@ -280,7 +282,7 @@ def test_series_rename_leaves_a_same_named_account_alone(test_data_dir: Path, te
 
 
 @pytest.mark.parametrize(("old", "new", "message"), [
-    ("cpi", "prices", "shared aux/inflation__cpi.csv"),
+    ("cpi", "prices", "shared tables/inflation__cpi.csv"),
     ("stock", "equities", "is an asset class"),
     ("brokerage_growth", "Asset_Checking", "a series 'Asset_Checking' already applies in"),
     ("food", "two words", "one word, without spaces"),
@@ -296,7 +298,7 @@ def test_series_rename_refuses(test_data_dir: Path, old: str, new: str, message:
 ])
 def test_series_rename_refuses_a_series_read_by_name(test_data_dir: Path, write_series, name: str,
                                                       message: str) -> None:
-    (test_data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market fund\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market fund\n", encoding="utf-8")
     write_series(name, "2026-01-31,7%")
     for old, new in ((name, "renamed"), ("food", name)):
         result = _sim(test_data_dir, "series", "rename", old, new)
@@ -306,9 +308,9 @@ def test_series_rename_refuses_a_series_read_by_name(test_data_dir: Path, write_
 def test_series_rename_leaves_other_aux_kinds_alone(local_templates: Path) -> None:
     # A symbol's prices or a state's brackets end in __<name> too, but aren't a series.
     folder = local_templates / "t_inflation_series"
-    (folder / "aux").mkdir(exist_ok=True)
-    prices = folder / "aux" / "security_price__food.csv"
-    prices.write_text("date,price\n")
+    (folder / "tables").mkdir(exist_ok=True)
+    prices = folder / "tables" / "security_price__food.csv"
+    prices.write_text("date,price\n", encoding="utf-8")
     changed = rename.rename_series(folder, "food", "groceries")
     assert "series/inflation__food.csv -> series/inflation__groceries.csv" in changed
     assert prices.exists()
@@ -335,17 +337,18 @@ def test_lot_rename_of_an_unknown_lot(test_data_dir: Path) -> None:
 def test_series_rename_follows_a_scenarios_own_tax_table(
     test_data_dir: Path, test_scenarios_dir: Path, write_series, loads: Callable[[str], None],
 ) -> None:
-    """An indexed tax table in a scenario's aux/ names its growth series (#467)."""
+    """An indexed tax table in a scenario's tables/ names its growth series (#467)."""
     folder = test_scenarios_dir / "retire_alice"
-    (folder / "series" / "inflation__wages.csv").write_text("effective_date,annual_rate\n2026-01-31,3%\n")
-    (folder / "aux").mkdir(exist_ok=True)
-    table = folder / "aux" / "standard_deduction.csv"
+    (folder / "series" / "inflation__wages.csv").write_text("effective_date,annual_rate\n2026-01-31,3%\n",
+                                                            encoding="utf-8")
+    (folder / "tables").mkdir(exist_ok=True)
+    table = folder / "tables" / "standard_deduction.csv"
     table.write_text("effective_date,filing_status,amount,amount_series\n"
                      "2026-01-31,MFJ,31500.00,wages\n2026-01-31,Single,15750.00,\n"
-                     "2026-01-31,MFS,15750.00,\n")
+                     "2026-01-31,MFS,15750.00,\n", encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "wages", "pay")
     assert result.exit_code == 0, result.output
-    assert "aux/standard_deduction.csv" in result.output
+    assert "tables/standard_deduction.csv" in result.output
     assert _column(table, "amount_series") == ["pay", "", ""]
     loads("retire_alice")
 
@@ -363,7 +366,8 @@ def test_series_rename_takes_its_yield_along(test_data_dir: Path, test_scenarios
     by name: renaming the series renames its yield too, and a yield alone
     can't be renamed."""
     series = test_scenarios_dir / "retire_alice" / "series"
-    (series / "rate__brokerage_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n")
+    (series / "rate__brokerage_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n",
+                                                             encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth_yield", "payout")
     assert result.exit_code != 0 and "yield series" in result.output, result.output
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth", "broker_growth")
@@ -379,7 +383,8 @@ def test_series_rename_takes_its_gain_distribution_series_along(
     name like ``_yield``: they follow their series, and can't be renamed alone."""
     series = test_scenarios_dir / "retire_alice" / "series"
     for suffix in ("cg_yield", "stcg_yield"):
-        (series / f"rate__brokerage_growth_{suffix}.csv").write_text("effective_date,annual_rate\n2026-01-31,1%\n")
+        (series / f"rate__brokerage_growth_{suffix}.csv").write_text("effective_date,annual_rate\n2026-01-31,1%\n",
+                                                                     encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth_cg_yield", "payout")
     assert result.exit_code != 0 and "brokerage_growth's yield series" in result.output, result.output
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth", "broker_growth")
@@ -397,7 +402,7 @@ def test_series_rename_leaves_another_series_gain_distributions_alone(
     off as its own yield."""
     series = test_scenarios_dir / "retire_alice" / "series"
     for name in ("brokerage_growth_cg", "brokerage_growth_cg_yield"):
-        (series / f"rate__{name}.csv").write_text("effective_date,annual_rate\n2026-01-31,1%\n")
+        (series / f"rate__{name}.csv").write_text("effective_date,annual_rate\n2026-01-31,1%\n", encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth_cg", "other_growth")
     assert result.exit_code != 0, result.output
     assert "'brokerage_growth_cg_yield' is brokerage_growth's yield series too" in result.output, result.output
@@ -410,9 +415,10 @@ def test_series_rename_takes_a_yield_only_a_child_has(test_data_dir: Path, test_
     scenario adds follows too."""
     rates = "effective_date,annual_rate\n2026-01-31,6%\n"
     (test_scenarios_dir / "base" / "series").mkdir(exist_ok=True)
-    (test_scenarios_dir / "base" / "series" / "rate__brokerage_growth.csv").write_text(rates)
+    (test_scenarios_dir / "base" / "series" / "rate__brokerage_growth.csv").write_text(rates, encoding="utf-8")
     child = test_scenarios_dir / "retire_alice" / "series"
-    (child / "rate__brokerage_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n")
+    (child / "rate__brokerage_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n",
+                                                            encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth", "broker_growth", scenario="base")
     assert result.exit_code == 0, result.output
     assert (child / "rate__broker_growth_yield.csv").is_file()
@@ -426,7 +432,7 @@ def test_series_rename_refuses_a_yield_from_outside_its_reach(test_data_dir: Pat
     follow the rename without changing the parent's other children: refused."""
     (test_scenarios_dir / "base" / "series").mkdir(exist_ok=True)
     (test_scenarios_dir / "base" / "series" / "rate__brokerage_growth_yield.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,2%\n")
+        "effective_date,annual_rate\n2026-01-31,2%\n", encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth", "broker_growth")
     assert result.exit_code != 0 and "doesn't reach: retire_alice (from base)" in result.output, result.output
     assert (test_scenarios_dir / "retire_alice" / "series" / "rate__brokerage_growth.csv").is_file()
@@ -437,7 +443,8 @@ def test_series_rename_refuses_a_new_name_whose_yield_exists(test_data_dir: Path
     """Even with no yield of its own, a series renamed onto a name that has
     a yield would start paying it out: refused."""
     series = test_scenarios_dir / "retire_alice" / "series"
-    (series / "rate__broker_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n")
+    (series / "rate__broker_growth_yield.csv").write_text("effective_date,annual_rate\n2026-01-31,2%\n",
+                                                          encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth", "broker_growth")
     assert result.exit_code != 0 and "'broker_growth_yield' already applies" in result.output, result.output
 
@@ -448,7 +455,7 @@ def test_series_rename_refuses_a_yield_whose_series_only_a_child_has(test_data_d
     lots pay at, when only the child grows at its series: refused."""
     (test_scenarios_dir / "base" / "series").mkdir(exist_ok=True)
     yielded = test_scenarios_dir / "base" / "series" / "rate__brokerage_growth_yield.csv"
-    yielded.write_text("effective_date,annual_rate\n2026-01-31,2%\n")
+    yielded.write_text("effective_date,annual_rate\n2026-01-31,2%\n", encoding="utf-8")
     result = _sim(test_data_dir, "series", "rename", "brokerage_growth_yield", "payout", scenario="base")
     assert result.exit_code != 0 and "yield series" in result.output, result.output
     assert yielded.is_file()

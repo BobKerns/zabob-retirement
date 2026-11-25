@@ -38,7 +38,7 @@ def test_choose_gives_up_at_end_of_input(prototype_data: Path) -> None:
 
 def test_template_logs_in_as_its_own_primary_person(repo_root: Path) -> None:
     templates = repo_root / "templates"
-    user = (templates / ".analysis_user").read_text().strip()
+    user = (templates / ".analysis_user").read_text(encoding="utf-8").strip()
     assert primary_persons(templates) == [(user, "Test Tester")]
 
 
