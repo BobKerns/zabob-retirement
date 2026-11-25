@@ -16,6 +16,7 @@ classifiers = [
   "Framework :: Jupyter",
   "Intended Audience :: End Users/Desktop",
   "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3.14",
   "Topic :: Office/Business :: Financial",
