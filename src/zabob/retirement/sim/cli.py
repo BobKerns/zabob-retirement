@@ -5768,6 +5768,9 @@ def _create_data_repo(
     fields = _person_fields(
         {}, [], guided=display is None or birthdate is None,
         display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
+        # A first setup asks only what every household needs; `sim person
+        # edit` sets a Roth clock that predates the scenario's Roth lots.
+        roth_clock_start="",
     )
     if filing_status is None:
         filing_status = _prompt_choice("filing status", registries.FILING_STATUSES, default="MFJ")
