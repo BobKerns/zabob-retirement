@@ -21,6 +21,12 @@
 # merges costs one full run, on the last of them. A failure there is found
 # after merge: scripts/bisect_dev.py finds the merge that caused it.
 #
+# The promotion pull request (head dev) doesn't rerun the tests, lint and types:
+# its head is dev's tip, which the push to dev already ran at full depth. Its
+# Changed files job waits for that push run and passes or fails "Tests and
+# lint" with it, and runs them itself only when there is no push run to reuse
+# (one a later push cancelled, say). The cheap checks still run (#759).
+#
 # Every job skips on a draft pull request, where the gates run locally and
 # Copilot doesn't review: a draft can't merge. A skipped job still reports its
 # required check, and marking the pull request ready (ready_for_review) runs
@@ -126,7 +132,12 @@ jobs:
     name: Changed files
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # To find the push run on dev that a promotion reuses.
+      actions: read
     outputs:
+      reused: ${{ steps.reuse.outputs.result }}
       needed: ${{ steps.changes.outputs.needed }}
       run_tests: ${{ steps.tests.outputs.run }}
       groups: ${{ steps.tests.outputs.groups }}
@@ -136,6 +147,23 @@ jobs:
         with:
           # The base commit, to list the changed files.
           fetch-depth: 0
+
+      # A promotion's head is dev's tip: reuse the push run's result on it.
+      # From this repository only: a fork's branch named dev is no promotion.
+      - name: Push run on dev
+        id: reuse
+        if: >-
+          ${{ github.event_name == 'pull_request'
+              && github.event.pull_request.head.ref == 'dev'
+              && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          result=$(scripts/push-run-result.sh gates.yml "Tests and lint" "$SHA")
+          echo "Reusing the push run: $result"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
 
       - name: Depth
         id: depth
@@ -156,11 +184,14 @@ jobs:
         id: changes
         env:
           DEPTH: ${{ steps.depth.outputs.depth }}
+          REUSED: ${{ steps.reuse.outputs.result }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           needed=false
-          if [ "$DEPTH" = full ]; then
+          if [ "$REUSED" = passed ] || [ "$REUSED" = failed ]; then
+              needed=false
+          elif [ "$DEPTH" = full ]; then
               needed=true
           else
               changed=$(git diff --name-only "$BASE...$HEAD")
@@ -193,8 +224,12 @@ jobs:
         id: tests
         env:
           DEPTH: ${{ steps.depth.outputs.depth }}
+          REUSED: ${{ steps.reuse.outputs.result }}
         run: |
-          if [ "$DEPTH" = full ]; then
+          if [ "$REUSED" = passed ] || [ "$REUSED" = failed ]; then
+              echo "The push run on dev ran them: $REUSED."
+              run=false groups='[1]' paths=''
+          elif [ "$DEPTH" = full ]; then
               echo "Full gates: the whole suite."
               run=true groups='[1, 2, 3, 4]' paths=tests
           else
@@ -296,8 +331,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv run --no-sync ty check
 
-  # The required check. It passes when the shards and lint passed, or when
-  # the change needed none of them; the rulesets name only this job, so the
+  # The required check. It passes when the shards and lint passed, when the
+  # change needed none of them, or, on a promotion, when they passed in the
+  # push run on dev; the rulesets name only this job, so the
   # shard count can change without touching them.
   python:
     name: Tests and lint
@@ -310,6 +346,7 @@ jobs:
       - name: Results
         env:
           CHANGES: ${{ needs.changes.result }}
+          REUSED: ${{ needs.changes.outputs.reused }}
           NEEDED: ${{ needs.changes.outputs.needed }}
           RUN_TESTS: ${{ needs.changes.outputs.run_tests }}
           TESTS: ${{ needs.tests.result }}
@@ -319,6 +356,8 @@ jobs:
           echo "Tests: $TESTS"
           echo "Lint and types: $LINT"
           if [ "$CHANGES" != success ]; then exit 1; fi
+          if [ -n "$REUSED" ]; then echo "From the push run on dev: $REUSED"; fi
+          if [ "$REUSED" = failed ]; then exit 1; fi
           if [ "$NEEDED" = true ] && [ "$LINT" != success ]; then exit 1; fi
           if [ "$RUN_TESTS" = true ] && [ "$TESTS" != success ]; then exit 1; fi
 
