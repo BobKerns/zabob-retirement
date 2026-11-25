@@ -9,6 +9,14 @@ three places: this page, for a person starting out;
 fuller project guide, which the agents read too (architecture, invariants,
 conventions); and [`CLAUDE.md`](CLAUDE.md), for branches and worktrees.
 
+## Asking first
+
+Questions, and ideas that aren't settled yet, go in
+[Discussions](https://github.com/BobKerns/zabob-retirement/discussions):
+Q&A for support, Ideas for features. An idea becomes an issue once it's
+agreed, and work starts from an issue. Leave real balances, names and account
+details out of every post.
+
 ## Setting up
 
 Clone the repository and run `./scripts/setup.sh`; [docs/SETUP.md](docs/SETUP.md)
