@@ -66,6 +66,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.oscompat import is_link, link_dir
 from zabob.retirement.sim import price_schedule, registries
 from zabob.retirement.sim.lineage import is_pool, is_template_name, load_order, read_meta, scenario_dir, scenario_start
 from zabob.retirement.sim.loader import DISABLE_FILE
@@ -286,12 +287,12 @@ def _prepare(top: Path, worktree: Path, data_dir: Path, rel: str) -> Path:
 
     runs = find_state_dir(data_dir, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
     linked = find_state_dir(data, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
-    if not linked.is_symlink():
+    if not is_link(linked):
         if linked.is_dir():
             shutil.rmtree(linked)
         linked.parent.mkdir(parents=True, exist_ok=True)
         runs.mkdir(parents=True, exist_ok=True)
-        linked.symlink_to(runs, target_is_directory=True)
+        link_dir(linked, runs)
     return data
 
 

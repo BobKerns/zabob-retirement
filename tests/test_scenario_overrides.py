@@ -1,6 +1,6 @@
-"""Per-scenario overrides for aux/, series/, prices/ and itemizations/
+"""Per-scenario overrides for tables/, series/, prices/ and itemizations/
 (ADR-003 §4.1d): a scenario's own folder wins over its ancestors', resolved
-whole-file and via parent_scenario lineage. aux/, prices/ and itemizations/
+whole-file and via parent_scenario lineage. tables/, prices/ and itemizations/
 also have a shared data repo root default; series/ does not."""
 
 # cspell:ignore NEWFUND
@@ -68,7 +68,7 @@ def test_a_scenario_overrides_one_shared_aux_file(repo: Path, tmp_path: Path) ->
         load_scenario(repo, "retire_alice", intent_dir=tmp_path / "shared",
                      allow_dirty_data=True).intent_path
     )
-    _write_rmd_start_age(repo / "scenarios" / "retire_alice" / "aux" / "rmd_start_age.csv", 80)
+    _write_rmd_start_age(repo / "scenarios" / "retire_alice" / "tables" / "rmd_start_age.csv", 80)
     overridden = load_scenario(repo, "retire_alice", intent_dir=tmp_path / "override",
                               allow_dirty_data=True)
     assert _rmd_start_age(overridden.intent_path) == 80 != shared_age
@@ -98,7 +98,7 @@ def test_a_shared_series_dir_at_the_data_repo_root_is_not_read(
     repo: Path, tmp_path: Path,
 ) -> None:
     """series/ has no shared root tier: growth-rate and inflation series are
-    per-scenario projections, not tax-law facts (unlike aux/), so a stray
+    per-scenario projections, not tax-law facts (unlike tables/), so a stray
     top-level series/ file is simply never looked at."""
     series_dir = repo / "series"
     series_dir.mkdir(exist_ok=True)
@@ -140,13 +140,13 @@ def test_prices_are_shared_at_the_data_repo_root(repo: Path, tmp_path: Path) -> 
 def test_a_child_inherits_its_parents_aux_override_and_can_override_it_again(
     repo: Path, tmp_path: Path,
 ) -> None:
-    _write_rmd_start_age(repo / "scenarios" / "retire_alice" / "aux" / "rmd_start_age.csv", 80)
+    _write_rmd_start_age(repo / "scenarios" / "retire_alice" / "tables" / "rmd_start_age.csv", 80)
     _derive_empty_child(repo, "retire_alice", "child")
     inherited = load_scenario(repo, "child", intent_dir=tmp_path / "inherited",
                               allow_dirty_data=True)
     assert _rmd_start_age(inherited.intent_path) == 80  # picked up via the parent, not just the shared default
 
-    _write_rmd_start_age(repo / "scenarios" / "child" / "aux" / "rmd_start_age.csv", 85)
+    _write_rmd_start_age(repo / "scenarios" / "child" / "tables" / "rmd_start_age.csv", 85)
     overridden = load_scenario(repo, "child", intent_dir=tmp_path / "overridden",
                                allow_dirty_data=True)
     assert _rmd_start_age(overridden.intent_path) == 85  # the child's own wins over its parent's

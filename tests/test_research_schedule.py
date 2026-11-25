@@ -195,7 +195,7 @@ def test_research_waits_for_a_clean_main(
 ) -> None:
     data, _ = fund_repo
     research_schedule.research(data, _worktree(data), now=NOW, runner=_runner(research_bundles))
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     assert research_schedule.merge_pending(data, _worktree(data)) == []
     assert research_schedule.read_state(data)["waiting"] == "main has uncommitted changes"
 
@@ -229,7 +229,7 @@ def test_a_bundle_only_main_has_is_left_alone_when_written_again(
     lines = research_schedule.merge_pending(data, _worktree(data))
     assert lines[0] == "merged new research into main"
     assert "BBB" not in _message(repo, research_schedule.RESEARCH_BRANCH)
-    assert (data / "research" / "BBB" / "2026-11-16" / "BBB-tear-sheet.md").read_text() == "# BBB\n"
+    assert (data / "research" / "BBB" / "2026-11-16" / "BBB-tear-sheet.md").read_text(encoding="utf-8") == "# BBB\n"
 
 
 def test_research_older_than_the_latest_set_writes_nothing(
@@ -242,7 +242,7 @@ def test_research_older_than_the_latest_set_writes_nothing(
     assert not applied.wrote
     assert "ABCDX: the research is as of 2026-09, older than the set as of 2026-10; " \
         "allocations.csv unchanged" in applied.lines
-    assert (data / "allocations.csv").read_text() == later
+    assert (data / "allocations.csv").read_text(encoding="utf-8") == later
 
 
 def test_nothing_due_is_remembered_for_the_day(
@@ -317,7 +317,7 @@ def test_install_records_where_claude_is_for_the_timer(
     monkeypatch.setattr(research, "CLAUDE_PLACES", ())
     claude = tmp_path / "bin" / "claude"
     claude.parent.mkdir()
-    claude.write_text("#!/bin/sh\n")
+    claude.write_text("#!/bin/sh\n", encoding="utf-8")
     claude.chmod(0o755)
     bare = "/usr/bin:/bin:/usr/sbin:/sbin"  # launchd's, for git
     monkeypatch.setenv("PATH", f"{claude.parent}:{bare}")
@@ -345,7 +345,8 @@ def test_a_foreground_run_commits_the_bundle_and_weights_only(
     fund_repo: tuple[Path, git.Repo], research_bundles: Path,
 ) -> None:
     data, repo = fund_repo
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")  # someone's edit
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n",
+                                      encoding="utf-8")  # someone's edit
     repo.git.add("sim/persons.csv")  # staged, even
     result = _research(data, "ABCDX", "--from-bundle", str(research_bundles / "abcdx"), "--yes", "--no-open")
     assert result.exit_code == 0, result.output
@@ -361,7 +362,7 @@ def test_own_edits_to_allocations_stay_out_of_the_commit(
     fund_repo: tuple[Path, git.Repo], research_bundles: Path,
 ) -> None:
     data, repo = fund_repo
-    (data / "allocations.csv").write_text(FUND + "BBB,,bond,100%\n")
+    (data / "allocations.csv").write_text(FUND + "BBB,,bond,100%\n", encoding="utf-8")
     result = _research(data, "ABCDX", "--from-bundle", str(research_bundles / "abcdx"), "--yes", "--no-open")
     assert result.exit_code == 0, result.output
     assert "allocations.csv already had uncommitted changes" in result.output
@@ -390,7 +391,7 @@ def test_yes_writes_nothing_within_half_a_point(
     result = _research(data, "ABCDX", "--from-bundle", str(research_bundles / "abcdx"), "--yes", "--no-open")
     assert result.exit_code == 0, result.output
     assert "Within 0.5 points of the set as of 2026-08 on every class: no weights written." in result.output
-    assert (data / "allocations.csv").read_text() == near
+    assert (data / "allocations.csv").read_text(encoding="utf-8") == near
     assert symbols.security_name(data, "ABCDX") == "A Balanced Index Fund"  # named all the same
 
 

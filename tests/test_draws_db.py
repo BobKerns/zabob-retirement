@@ -251,7 +251,7 @@ def test_sim_ensemble_draws_lists_a_node_and_writes_csv(
     output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--csv-file", str(csv))
     assert "0 (base)" in output and "$20,000" in output
     assert "wrote 7 member(s)" in output
-    header = csv.read_text().splitlines()[0].split(",")
+    header = csv.read_text(encoding="utf-8").splitlines()[0].split(",")
     assert header[0] == "member_index" and "gift" in header
 
 
@@ -426,7 +426,7 @@ def test_sim_ensemble_draws_charts_a_node_and_a_pair(
     assert png.read_bytes()[:4] == b"\x89PNG" and output.strip() == f"wrote {png}"
     svg = tmp_path / "pair.svg"
     output = _draws_cli(runs_dir, intent_dir, "--pair", f"{a},{b}", "--chart-file", str(svg), "--table")
-    assert svg.read_text().lstrip().startswith("<?xml")
+    assert svg.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     assert output.startswith(f"wrote {svg}") and f"{a} ~ {b}" in output
 
 

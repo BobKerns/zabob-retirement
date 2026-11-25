@@ -356,7 +356,7 @@ def test_resolve_member_ramp_without_baseline_rate_raises(
     # after the ramp, so there's no rate yet to ramp from. The reader starts
     # with the ramp, which supplies its first rate in time (#475).
     retire_alice_csv("series/rate__never_before_seen_series.csv").write_text(
-        "effective_date,annual_rate\n2035-01-31,3%\n"
+        "effective_date,annual_rate\n2035-01-31,3%\n", encoding="utf-8"
     )
     append_scheduled_row(
         name="new_series_growth", from_account="Income_Inheritance",

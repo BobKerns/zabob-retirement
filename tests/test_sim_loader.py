@@ -107,7 +107,7 @@ def test_readme_overrides_scenario_csv_description(
     test_data_dir: Path, retire_alice_csv: Callable[[str], Path], intent_dir: Path,
 ) -> None:
     (retire_alice_csv("README.md")).write_text(
-        "# Retirement baseline\n\nAlice and Bill's main plan.\n"
+        "# Retirement baseline\n\nAlice and Bill's main plan.\n", encoding="utf-8"
     )
     result = load_scenario(test_data_dir, "retire_alice", intent_dir=intent_dir, allow_dirty_data=True)
     con = sqlite3.connect(result.intent_path)
@@ -291,7 +291,7 @@ def test_account_series_synthesizes_growth_rule_and_income_account(
     # case-insensitive filesystem would otherwise collide with it on a name
     # differing only in case.
     (repo / "scenarios" / "retire_alice" / "series" / "rate__IRA_Growth.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,6%\n"
+        "effective_date,annual_rate\n2026-01-31,6%\n", encoding="utf-8"
     )
 
     result = load_scenario(
@@ -371,7 +371,7 @@ def test_chain_name_with_a_space_rejected(
     test_data_dir: Path, retire_alice_csv: Callable[[str], Path], intent_dir: Path,
 ) -> None:
     (retire_alice_csv("chains/source") / "roth first.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Roth_Alice,,,,,\n"
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Roth_Alice,,,,,\n", encoding="utf-8"
     )
     with pytest.raises(LoadError) as ei:
         load_scenario(test_data_dir, "retire_alice", intent_dir=intent_dir, allow_dirty_data=True)
@@ -387,7 +387,7 @@ def test_a_chain_file_outside_a_role_folder_is_rejected(
     """Issue #143: a chain's role is the folder it is in, so a file left
     directly under chains/ (as before) says where it belongs."""
     (retire_alice_csv("chains") / "asset__old.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     with pytest.raises(LoadError) as ei:
         load_test_copy()
     assert any(
@@ -401,7 +401,7 @@ def test_one_chain_in_both_role_folders_is_rejected(
     retire_alice_csv: Callable[[str], Path], load_test_copy: Callable[[], LoadResult],
 ) -> None:
     (retire_alice_csv("chains/destination") / "asset_checking_liquidity.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     with pytest.raises(LoadError) as ei:
         load_test_copy()
     assert any("chain 'asset_checking_liquidity' is in both source/ and destination/" in issue
@@ -415,7 +415,7 @@ def test_a_chain_file_in_a_misspelled_role_folder_is_rejected(
     # cspell:ignore sorce
     (folder := retire_alice_csv("chains/sorce")).mkdir()
     (folder / "stray.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     with pytest.raises(LoadError) as ei:
         load_test_copy()
     assert any("chains/sorce: not a chain role" in issue for issue in ei.value.issues), ei.value.issues
@@ -645,7 +645,7 @@ def test_policy_chain_leading_back_to_its_own_lot_rejected(
 
     for filename, rows in chain_files.items():
         (retire_alice_csv("chains") / filename).write_text(
-            "account_name,lot,maximum,percent,series,cadence\n" + rows
+            "account_name,lot,maximum,percent,series,cadence\n" + rows, encoding="utf-8"
         )
     values_path = retire_alice_csv("account_lots.csv")
     df = pd.read_csv(values_path, dtype=str, keep_default_na=False)
@@ -672,7 +672,7 @@ def test_policy_loop_through_another_lot_loads(
     import pandas as pd
 
     (retire_alice_csv("chains/destination") / "spill.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n"
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8"
     )
     values_path = retire_alice_csv("account_lots.csv")
     df = pd.read_csv(values_path, dtype=str, keep_default_na=False)
@@ -721,7 +721,7 @@ def test_dirty_data_refused(tmp_path: Path) -> None:
     shutil.copytree(PROTOTYPE, repo)
     _git_init_commit(repo)
     persons = repo / "persons.csv"
-    persons.write_text(persons.read_text() + "# scratch\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "# scratch\n", encoding="utf-8")
 
     with pytest.raises(DataDirtyRefused) as ei:
         load_scenario(repo, "retire_alice", intent_dir=tmp_path / "out")
@@ -733,7 +733,7 @@ def test_dirty_data_allowed_records_dirty_flag(tmp_path: Path) -> None:
     shutil.copytree(PROTOTYPE, repo)
     _git_init_commit(repo)
     persons = repo / "persons.csv"
-    persons.write_text(persons.read_text() + "# scratch\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "# scratch\n", encoding="utf-8")
 
     result = load_scenario(
         repo, "retire_alice", intent_dir=tmp_path / "out",
@@ -861,7 +861,7 @@ def test_lifespan_csv_round_trip(tmp_path: Path) -> None:
 
     lifespan = repo / "scenarios" / "retire_alice" / "lifespan.csv"
     # Alice was born 1965-03: 68.25 years on is 2033-06.
-    lifespan.write_text("person,age_at_death\nalice,68.25\n")
+    lifespan.write_text("person,age_at_death\nalice,68.25\n", encoding="utf-8")
 
     result = load_scenario(
         repo, "retire_alice", intent_dir=tmp_path / "out",
@@ -886,7 +886,7 @@ def test_lifespan_unknown_person_rejected(tmp_path: Path) -> None:
     shutil.copytree(PROTOTYPE, repo)
 
     lifespan = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan.write_text("person,age_at_death\ncarol,70\n")
+    lifespan.write_text("person,age_at_death\ncarol,70\n", encoding="utf-8")
 
     with pytest.raises(LoadError, match="not in persons.csv"):
         load_scenario(
@@ -903,7 +903,7 @@ def test_year_to_date_csv_round_trip(tmp_path: Path) -> None:
     ytd.write_text(
         "name,from_account,to_account,to_lot,amount,tax_character,description\n"
         "prior_brokerage_growth,Income_CapitalGain,Asset_Brokerage_Joint,default,"
-        "1234.56,ltcg,pre-simulation brokerage appreciation\n"
+        "1234.56,ltcg,pre-simulation brokerage appreciation\n", encoding="utf-8"
     )
 
     result = load_scenario(
@@ -935,7 +935,7 @@ def test_year_to_date_unknown_account_rejected(tmp_path: Path) -> None:
     ytd = repo / "scenarios" / "retire_alice" / "year_to_date.csv"
     ytd.write_text(
         "name,from_account,to_account,amount,tax_character,description\n"
-        "bogus,Nonexistent_Account,Asset_Checking,100.00,none,\n"
+        "bogus,Nonexistent_Account,Asset_Checking,100.00,none,\n", encoding="utf-8"
     )
 
     with pytest.raises(LoadError, match="not a known account"):
@@ -1852,7 +1852,7 @@ def test_calendar_set_rate_series_with_no_file_rejected(
     test_data_dir: Path, append_calendar_row: Callable[..., None], intent_dir: Path,
 ) -> None:
     """set_rate adjusts an existing series; it doesn't create one. A pair
-    with no series/aux/prices file is an unresolved reference (#204): here a
+    with no series/tables/prices file is an unresolved reference (#204): here a
     typo, and the wrong aux_kind for a series that does exist."""
     append_calendar_row(
         date="2027-01-31", kind="set_rate", name="typo_series",
@@ -2213,7 +2213,7 @@ def test_an_account_defined_by_unrelated_scenarios_gets_a_hint(
     error then names each lot's scenario and says why both apply."""
     accounts = pd.read_csv(prototype_data / "scenarios" / "retire_alice" / "accounts.csv",
                            dtype=str, keep_default_na=False)
-    lots_header = (prototype_data / "scenarios" / "base" / "account_lots.csv").read_text()
+    lots_header = (prototype_data / "scenarios" / "base" / "account_lots.csv").read_text(encoding="utf-8")
     derive_scenario("side", "base", files={
         "accounts.csv": accounts[accounts["name"] == "Asset_Brokerage_Joint"].to_csv(index=False),
         "account_lots.csv": lots_header + "Asset_Brokerage_Joint,side_lot,,,,,,100.00,100.00,"

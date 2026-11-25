@@ -1337,7 +1337,7 @@ DISTRIBUTION_REQUIRED_PARAMS: dict[str, tuple[str, ...]] = {
 }
 
 
-# The IRS filing-status codes the aux tables are keyed by (templates/aux/
+# The IRS filing-status codes the aux tables are keyed by (templates/tables/
 # README.md): Head of Household isn't modeled. `sim init` offers these.
 FILING_STATUSES: tuple[str, ...] = ("MFJ", "Single", "MFS")
 

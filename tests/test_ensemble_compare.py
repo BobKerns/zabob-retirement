@@ -266,7 +266,7 @@ def test_sim_ensemble_summary_chart_file_writes_an_svg_before_the_tables(
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines()[0] == f"wrote {chart}"  # the chart comes first (#393)
     assert result.stdout.splitlines()[2].split()[0] == "year"
-    svg = chart.read_text()
+    svg = chart.read_text(encoding="utf-8")
     assert "<svg" in svg and "net worth fan chart (CPI-constant) (baseline)" in svg
 
 
@@ -318,7 +318,7 @@ def test_sim_ensemble_compare_graph_of_a_one_sided_account_is_its_fan_chart(
         "--account", "Asset_Renamed", "--chart-file", str(chart),
     ])
     assert result.exit_code == 0, result.output
-    assert "account Asset_Renamed fan chart (CPI-constant) (child)" in chart.read_text()
+    assert "account Asset_Renamed fan chart (CPI-constant) (child)" in chart.read_text(encoding="utf-8")
 
 
 def test_sim_ensemble_graph_shows_in_an_image_terminal(
@@ -448,7 +448,7 @@ def test_sim_ensemble_compare_graph_draws_a_column_for_each_variant(
         "--runs-dir", str(runs_dir), "--chart-file", str(chart),
     ])
     assert result.exit_code == 0, result.output
-    svg = chart.read_text()
+    svg = chart.read_text(encoding="utf-8")
     assert "child − baseline, future by future (3 paired members)" in svg
     assert "other − baseline: no paired futures" in svg
     assert "(the recipes have different seeds" in svg

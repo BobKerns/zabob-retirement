@@ -47,9 +47,9 @@ def test_init_makes_the_data_repo_in_the_home_folder_with_the_notebooks(installe
     result = _sim("init", "--no-builder", *_ALICE)
     assert result.exit_code == 0, result.output
     root = Path(os.environ["HOME"]) / "zabob-retirement"
-    assert (root / "sim" / ".analysis").read_text() == f"installed:{installed_program}\n"
+    assert (root / "sim" / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_program}\n"
     assert (root / "notebooks" / "net_worth.ipynb").is_file()
-    assert {"/state/", "/notebooks/", "/.mcp.json"} <= set((root / ".gitignore").read_text().split())
+    assert {"/state/", "/notebooks/", "/.mcp.json"} <= set((root / ".gitignore").read_text(encoding="utf-8").split())
     assert "source home/zabob-retirement/sim/activate-analysis" in result.output  # as from here
     assert not (installed_program.parent.parent / "data").exists()  # nothing to link, nowhere
     # The notebooks aren't committed: their outputs would carry the household's numbers.
@@ -62,10 +62,10 @@ def test_init_example_makes_alice_and_bill_s_household(installed_program: Path, 
     result = _sim("init", "--no-builder", "--example", str(tmp_path / "try"))
     assert result.exit_code == 0, result.output
     sim = tmp_path / "try" / "sim"
-    with (sim / "persons.csv").open(newline="") as fh:
+    with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         assert [row["id"] for row in csv.DictReader(fh)][:2] == ["alice", "bill"]
-    assert (sim / ".analysis_user").read_text() == "alice\n"
-    assert (sim / ".current_scenario").read_text().strip() == "base"
+    assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
+    assert (sim / ".current_scenario").read_text(encoding="utf-8").strip() == "base"
     assert (sim / "scenarios" / "retire_alice").is_dir()
     assert "checking base: ok" in result.output
     assert (tmp_path / "try" / "notebooks" / "README.md").is_file()
@@ -75,11 +75,11 @@ def test_notebooks_copy_keeps_changed_notebooks_unless_replacing(installed_progr
     assert _sim("init", "--no-builder", *_ALICE).exit_code == 0
     sim = Path(os.environ["HOME"]) / "zabob-retirement" / "sim"
     mine = sim.parent / "notebooks" / "net_worth.ipynb"
-    mine.write_text("mine")
+    mine.write_text("mine", encoding="utf-8")
     kept = _sim("notebooks", "copy", "--data-dir", str(sim))
-    assert kept.exit_code == 0 and "kept" in kept.output and mine.read_text() == "mine"
+    assert kept.exit_code == 0 and "kept" in kept.output and mine.read_text(encoding="utf-8") == "mine"
     replaced = _sim("notebooks", "copy", "--replace", "--data-dir", str(sim))
-    assert replaced.exit_code == 0 and mine.read_text() != "mine"
+    assert replaced.exit_code == 0 and mine.read_text(encoding="utf-8") != "mine"
     elsewhere = _sim("notebooks", "copy", str(tmp_path / "elsewhere"), "--data-dir", str(sim))
     assert elsewhere.exit_code == 0 and (tmp_path / "elsewhere" / "net_worth.ipynb").is_file()
 
@@ -100,10 +100,10 @@ def test_activate_leaves_out_of_gitignore_a_name_commented_out_or_negated(instal
     assert _sim("init", "--no-builder", *_ALICE).exit_code == 0
     sim = Path(os.environ["HOME"]) / "zabob-retirement" / "sim"
     lines = ["# .retention.yaml", "!.current_scenario", "/.analysis_user", "#.analysis.bak"]
-    (sim / ".gitignore").write_text("".join(f"{line}\n" for line in lines))
+    (sim / ".gitignore").write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     done = _activate(sim / "activate-analysis", installed_program, "/usr/bin:/bin")
     assert done.returncode == 0, done.stderr
-    assert (sim / ".gitignore").read_text().splitlines() == [*lines, ".analysis"]
+    assert (sim / ".gitignore").read_text(encoding="utf-8").splitlines() == [*lines, ".analysis"]
 
 
 def test_activate_finds_an_installed_program_through_the_sim_on_path(installed_program: Path) -> None:
@@ -117,7 +117,7 @@ def test_activate_finds_an_installed_program_through_the_sim_on_path(installed_p
     (local / "sim").symlink_to(installed_program / "sim")
     done = _activate(sim / "activate-analysis", installed_program, f"{local}:/usr/bin:/bin")
     assert done.stdout.startswith(f"installed:{installed_program}|alice|"), done.stderr
-    assert (sim / ".analysis").read_text() == f"installed:{installed_program}\n"
+    assert (sim / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_program}\n"
 
 
 def test_builder_pairs_with_the_installed_program_and_its_hooks_run_its_sim(installed_program: Path) -> None:
@@ -127,21 +127,22 @@ def test_builder_pairs_with_the_installed_program_and_its_hooks_run_its_sim(inst
     trees, reason = builder.main_check()
     assert reason is None and trees is not None and len(trees) == 1  # the installed version
     builder.install(sim, prices=False, roll=False, research=False)
-    config = json.loads(builder.BuilderPaths.for_data(sim).config.read_text())
+    config = json.loads(builder.BuilderPaths.for_data(sim).config.read_text(encoding="utf-8"))
     assert config["code_dir"] == f"installed:{installed_program}"
-    (sim / "persons.csv").write_text((sim / "persons.csv").read_text() + "bill,Bill,1962-01-01,m,primary,{}\n")
+    persons = sim / "persons.csv"
+    persons.write_text(persons.read_text(encoding="utf-8") + "bill,Bill,1962-01-01,m,primary,{}\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(sim.parent), "commit", "-qam", "Add Bill"], check=True)
     hooked = installed_program / "calls"
     for _ in range(50):  # the hook starts it in the background
         if hooked.exists():
             break
         subprocess.run(["sleep", "0.1"], check=True)
-    assert hooked.read_text().split()[:3] == ["builder", "notify", "--quiet"]
+    assert hooked.read_text(encoding="utf-8").split()[:3] == ["builder", "notify", "--quiet"]
 
 
 def test_builder_refuses_a_data_repo_naming_another_program(installed_program: Path, tmp_path: Path) -> None:
     assert _sim("init", "--no-builder", *_ALICE).exit_code == 0
     sim = Path(os.environ["HOME"]) / "zabob-retirement" / "sim"
-    (sim / ".analysis").write_text(f"{tmp_path / 'some-checkout'}\n")
+    (sim / ".analysis").write_text(f"{tmp_path / 'some-checkout'}\n", encoding="utf-8")
     assert builder.installed_pair_problems(sim) == [f"{sim / '.analysis'} doesn't name installed:{installed_program}"]
     assert data_repo.CODE_REPO_DIR is None

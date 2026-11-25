@@ -63,11 +63,11 @@ def ensure_jupyter_mcp_config(repo_root: Path) -> tuple[JupyterMcpSettings, bool
     config_path = repo_root / MCP_CONFIG_FILENAME
     if not config_path.exists():
         settings = JupyterMcpSettings(url=DEFAULT_JUPYTER_URL, token=secrets.token_hex(32))
-        config_path.write_text(json.dumps(_config_document(settings), indent=2) + "\n")
+        config_path.write_text(json.dumps(_config_document(settings), indent=2) + "\n", encoding="utf-8")
         return settings, True
 
     try:
-        data = json.loads(config_path.read_text())
+        data = json.loads(config_path.read_text(encoding="utf-8"))
         env = data["mcpServers"]["jupyter"]["env"]
         settings = JupyterMcpSettings(url=env["JUPYTER_URL"], token=env["JUPYTER_TOKEN"])
     except (json.JSONDecodeError, KeyError, TypeError) as exc:

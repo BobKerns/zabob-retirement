@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from zabob.retirement.jupyter.config import McpConfigError, ensure_jupyter_mcp_config, find_repo_root
+from zabob.retirement.user_config import data_dir_setting
 
 
 def _exec_jupyter_lab(jupyter_bin: str, argv: list[str]) -> None:
@@ -23,7 +24,7 @@ def _root() -> Path:
     notebooks."""
     from zabob.retirement.resources import CHECKOUT_DIR
 
-    if CHECKOUT_DIR is None and (data := os.environ.get("ANALYSIS_DATA_DIR")):
+    if CHECKOUT_DIR is None and (data := data_dir_setting()):
         return Path(data).parent
     return find_repo_root()
 

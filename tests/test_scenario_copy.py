@@ -43,7 +43,7 @@ def test_scenario_copy_makes_a_sibling(
     readme = old / "README.md"
     readme.write_text("# retire_alice\n\nSee [lots](../retire_alice/account_lots.csv) and "
                       "[base](../base/README.md).\n", encoding="utf-8")
-    (test_data_dir / ".current_scenario").write_text("base\n")
+    (test_data_dir / ".current_scenario").write_text("base\n", encoding="utf-8")
     before = {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()}
 
     result = _sim(test_data_dir, "scenario", "copy", "retire_alice", "retire_early")
@@ -63,7 +63,7 @@ def test_scenario_copy_makes_a_sibling(
         "# retire_early\n\nSee [lots](../retire_early/account_lots.csv) and [base](../base/README.md).\n")
     # The original is untouched, and the copy is current.
     assert {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()} == before
-    assert (test_data_dir / ".current_scenario").read_text().strip() == "retire_early"
+    assert (test_data_dir / ".current_scenario").read_text(encoding="utf-8").strip() == "retire_early"
     assert "Current scenario is now retire_early (was base)" in result.stderr
     loads("retire_early")
 

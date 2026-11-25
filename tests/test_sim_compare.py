@@ -104,7 +104,7 @@ def test_sim_compare_sections_account_and_graph_file(
     assert lines[1] == "higher_pay vs retire_alice, nominal dollars"
     assert lines[3] == "Asset_Checking at year end (nominal):"
     assert "Runs:" not in result.output and "Net worth" not in result.output
-    assert "Asset_Checking, nominal" in chart.read_text()
+    assert "Asset_Checking, nominal" in chart.read_text(encoding="utf-8")
 
 
 @pytest.mark.slow
@@ -214,7 +214,7 @@ def test_account_completion_offers_every_compared_scenarios_accounts(
 
     derive_scenario("extra", "retire_alice", {
         "accounts.csv": (test_data_dir / "scenarios" / "retire_alice" / "accounts.csv")
-        .read_text().splitlines()[0] + "\nAsset_Extra_Only,asset,cash,joint,taxable,,,,,{},\n"})
+        .read_text(encoding="utf-8").splitlines()[0] + "\nAsset_Extra_Only,asset,cash,joint,taxable,,,,,{},\n"})
     monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
     from zabob.retirement.sim.cli import compare_command as command
 
@@ -482,7 +482,7 @@ def test_sim_compare_social_security_by_year_and_over_the_run(
     result = compare_runs("retire_alice", "bigger_ss", "--section", "social-security",
                           "--dollars", "nominal", "--chart-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
-    assert "Gross Social Security, nominal" in chart.read_text()
+    assert "Gross Social Security, nominal" in chart.read_text(encoding="utf-8")
     yearly = _section(result.output, "Gross Social Security by year (nominal):")
     assert yearly[0].split() == ["year", "retire_alice", "bigger_ss", "Δ", "bigger_ss"]
     assert all(line.split()[-1].startswith("$") for line in yearly[1:])  # never less

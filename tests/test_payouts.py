@@ -143,9 +143,9 @@ def test_only_taxable_brokerage_lots_pay_out(
     lot growing at a series of no asset class pays that series' yield as
     ordinary income."""
     lots = retire_alice_csv("account_lots.csv")
-    lots.write_text(lots.read_text().replace(
+    lots.write_text(lots.read_text(encoding="utf-8").replace(
         "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,,",
-        "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,stock,"))
+        "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,stock,"), encoding="utf-8")
     write_series("brokerage_growth_yield", "2026-01-31,2%")
     rules = _rules(load_test_copy().intent_path)
     payouts = {n: rule for n, rule in rules.items() if n.startswith(("dividends_", "interest_"))}
@@ -166,8 +166,8 @@ def test_a_return_below_its_yield_is_an_unrealized_loss_that_sells_no_shares(
     set_brokerage_lots([{"lot": "fund", "symbol": "BND", "quantity": "1000", "series": "bond",
                          "opening_balance": "300000.00", "opening_cost_basis": "300000.00"}])
     calendar = test_data_dir / "scenarios" / "retire_alice" / "calendar.csv"
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"), encoding="utf-8")
     write_series("bond", "2026-01-31,0%")
     write_series("bond_yield", "2026-01-31,4%")
     run = run_scenario(load_test_copy().intent_path, runs_dir / "loss.sqlite3", run_by="TEST",
@@ -245,7 +245,7 @@ def test_a_negative_slice_leaves_a_funds_dividends_whole(
     in full, and the cash's fall stays an unrealized loss on the growth rule,
     so the fund's total return is unchanged."""
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nFND,,bond,50%\nFND,,cash,50%\n")
+        "symbol,as_of,asset_class,weight\nFND,,bond,50%\nFND,,cash,50%\n", encoding="utf-8")
     write_series("bond_yield", "2026-01-31,4%")
     write_series("cash", "2026-01-31,-1.2%")
     run = run_scenario(load_test_copy().intent_path, runs_dir / "slice.sqlite3", run_by="TEST",
@@ -336,9 +336,9 @@ def test_long_term_distributions_are_taxed_as_long_term_gains(report_run_file: P
 
 def _set_retirement_lot(retire_alice_csv: Callable[[str], Path], old: str, new: str) -> None:
     lots = retire_alice_csv("account_lots.csv")
-    text = lots.read_text()
+    text = lots.read_text(encoding="utf-8")
     assert old in text
-    lots.write_text(text.replace(old, new))
+    lots.write_text(text.replace(old, new), encoding="utf-8")
 
 
 def _quantity(run: Path, account: str, month: str) -> int:
@@ -416,12 +416,13 @@ def test_a_series_ending_in_cg_with_a_yield_is_refused(
     ``bond``'s gain distributions (#547): a lot growing at ``bond_cg`` with
     that file is refused."""
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nFND,,stock_us,100%\n")
+        "symbol,as_of,asset_class,weight\nFND,,stock_us,100%\n", encoding="utf-8")
     write_series("stock_us_cg", "2026-01-31,5%")
     write_series("stock_us_cg_yield", "2026-01-31,1%")
     accounts = test_data_dir / "scenarios" / "retire_alice" / "accounts.csv"
-    accounts.write_text(accounts.read_text().replace(",brokerage_growth,", ",stock_us_cg,"))
+    accounts.write_text(accounts.read_text(encoding="utf-8").replace(",brokerage_growth,", ",stock_us_cg,"),
+                        encoding="utf-8")
     lots = test_data_dir / "scenarios" / "retire_alice" / "account_lots.csv"
-    lots.write_text(lots.read_text().replace(",FND,", ",,"))
+    lots.write_text(lots.read_text(encoding="utf-8").replace(",FND,", ",,"), encoding="utf-8")
     with pytest.raises(LoadError, match=r"'stock_us_cg' ends in '_cg'"):
         load_test_copy()

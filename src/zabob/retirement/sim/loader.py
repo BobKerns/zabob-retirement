@@ -10,7 +10,6 @@ import csv
 import dataclasses
 import json
 import math
-import os
 import re
 import socket
 import sqlite3
@@ -70,6 +69,7 @@ from zabob.retirement.sim.readme import readme_description
 from zabob.retirement.sim.runs import insert_run_metadata
 from zabob.retirement.sim.schema import SCHEMA_VERSION, apply_run_schema, inserted_id, connect_sim_file
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS
+from zabob.retirement.user_config import current_user, data_dir_setting
 
 __all__ = [
     "BATCH_MANIFEST_FILENAME", "BATCH_MODE_DIRS",
@@ -127,7 +127,7 @@ class LoadError(ValueError):
 class _MoneyReferenceResolver:
     """Resolve ``@name`` monetary references from an ``itemizations/name.csv``.
 
-    Itemizations are scenario-scoped like ``aux/`` and ``series/`` (ADR-003
+    Itemizations are scenario-scoped like ``tables/`` and ``series/`` (ADR-003
     §4.1c): the file is looked for in the scenario's own ``itemizations/``
     folder, then each ancestor's via ``parent_scenario``, then the data repo's
     shared ``itemizations/`` as the fallback. The referenced CSV must include a
@@ -222,10 +222,11 @@ def find_state_dir(data_dir: Path | str | None, default: Path | str) -> Path:
     """Resolve a data repo's ``state/intent`` or ``state/runs`` dir (ADR-004 §4).
 
     State lives beside the data dir, not inside it. Falls back to
-    ``$ANALYSIS_DATA_DIR`` and then to ``default`` relative to the cwd.
+    ``user_config.data_dir_setting()`` (``$ANALYSIS_DATA_DIR``, the data repo the
+    cwd is in, the user's default) and then to ``default`` relative to the cwd.
     """
     if data_dir is None:
-        data_dir = os.environ.get("ANALYSIS_DATA_DIR")
+        data_dir = data_dir_setting()
         if not data_dir:
             return Path(default).resolve()
     return (Path(data_dir).resolve().parent / default).resolve()
@@ -359,7 +360,7 @@ def batch_mode(batch_dir: Path) -> str:
     (one synthesized by a test)."""
     path = Path(batch_dir) / BATCH_MANIFEST_FILENAME
     if path.is_file():
-        return json.loads(path.read_text()).get("mode", "monte_carlo")
+        return json.loads(path.read_text(encoding="utf-8")).get("mode", "monte_carlo")
     for member in sorted(Path(batch_dir).glob("member_*.sqlite3")):
         try:
             con = connect_sim_file(f"file:{member}?mode=ro", uri=True)
@@ -684,11 +685,11 @@ def resolve_scenario_name(
 
 
 def template_aux_copies(data_dir: Path) -> list[str]:
-    """The data repo's shared ``aux/`` files that match the code repository's
-    ``templates/aux/`` byte for byte (#317). The loader reads the template's
+    """The data repo's shared ``tables/`` files that match the code repository's
+    ``templates/tables/`` byte for byte (#317). The loader reads the template's
     anyway, so each can be deleted, and while it stays it hides the
     template's later updates."""
-    folder = data_dir / "aux"
+    folder = data_dir / "tables"
     if not folder.is_dir():
         return []
     return [
@@ -1334,8 +1335,9 @@ def load_scenario(
         tax_kinds.problems)
 
 
+    _refuse_old_aux_folders(data_dir, scenario_dirs, issues)
     aux_files = [
-        *_merged_override_files(data_dir, scenario_dirs, "aux"),
+        *_merged_override_files(data_dir, scenario_dirs, "tables"),
         *_merged_override_files(data_dir, scenario_dirs, "series", include_shared=False),
         *_merged_override_files(data_dir, scenario_dirs, "prices"),
     ]
@@ -1540,7 +1542,7 @@ def load_scenario(
             scenario_name=scenario_name,
             data_dir=data_dir,
             data_repo_name=data_repo_name or data_dir.name,
-            loaded_by=loaded_by or os.environ.get("ANALYSIS_USER", "unknown"),
+            loaded_by=loaded_by or current_user(data_dir) or "unknown",
             code=cs,
             data=ds,
         )
@@ -1888,7 +1890,7 @@ def _merged_override_files(
     replaces a less specific one of the same name wholesale, not merged row by
     row.
 
-    Under ``aux`` the code repository's ``templates/aux/`` comes first, below
+    Under ``tables`` the code repository's ``templates/tables/`` comes first, below
     the data repo's own (#317).
 
     ``series/`` is scenario-only (``include_shared=False``): growth rates and
@@ -1898,9 +1900,9 @@ def _merged_override_files(
     other per-scenario file (ADR-003 §4.1d).
     """
     merged: dict[str, Path] = {}
-    # The code repository's templates/aux/ is the lowest tier (#317): the
+    # The code repository's templates/tables/ is the lowest tier (#317): the
     # tax-law tables every data repo would otherwise keep a copy of.
-    template = (TEMPLATE_AUX_DIR,) if include_shared and subfolder == "aux" else ()
+    template = (TEMPLATE_AUX_DIR,) if include_shared and subfolder == "tables" else ()
     tiers = (*template, *((data_dir,) if include_shared else ()), *reversed(scenario_dirs))
     for d in tiers:
         folder = d if d == TEMPLATE_AUX_DIR else d / subfolder
@@ -3382,7 +3384,7 @@ def _validate_optional_state_tables(
     for kind, state, payload, effective in aux_rows:
         if kind not in registries.OPTIONAL_STATE_AUX_KINDS:
             continue
-        file = f"aux/{kind}__{state}.csv" if state is not None else f"aux/{kind}.csv"
+        file = f"tables/{kind}__{state}.csv" if state is not None else f"tables/{kind}.csv"
         if not state:
             if file not in nameless:
                 nameless.add(file)
@@ -3403,7 +3405,7 @@ def _validate_optional_state_tables(
             recapture_statuses.setdefault((file, effective), set()).add(
                 str(payload.get("filing_status")))
     _check_filing_statuses(
-        {(f"aux/{kind}__{state}.csv", effective): found
+        {(f"tables/{kind}__{state}.csv", effective): found
          for (kind, state, effective), found in band_statuses.items()},
         bracket_statuses, "the state brackets have",
         "a year filed that way would tax nothing here (add a 0% band for a status it doesn't tax)",
@@ -3447,14 +3449,14 @@ def _check_separate_return_tables(
                   (registries.STATE_RECAPTURE, state, yes),
                   ("standard_deduction", None, [] if own else yes)]
         for kind, series, when in tables:
-            file = f"aux/{kind}__{series}.csv" if series else f"aux/{kind}.csv"
+            file = f"tables/{kind}__{series}.csv" if series else f"tables/{kind}.csv"
             by_date = dated.get((kind, series), {})
             for start, end in _intervals(dict.fromkeys(by_date, True)):
                 if "MFS" in by_date[start] or not _overlaps(start, end, when):
                     continue
                 issues.append(
                     f"{file} ({start}): no MFS rows, which "
-                    f"aux/{registries.STATE_SEPARATE_RETURN}__{state}.csv (allowed yes) "
+                    f"tables/{registries.STATE_SEPARATE_RETURN}__{state}.csv (allowed yes) "
                     "needs for each spouse's separate return")
 
 
@@ -3526,7 +3528,7 @@ def _validate_filing_status(
         for effective, statuses in sorted(dated.items()):
             if len(statuses) > 1:
                 issues.append(
-                    f"aux/{kind}.csv: {effective} gives {len(statuses)} filing statuses "
+                    f"tables/{kind}.csv: {effective} gives {len(statuses)} filing statuses "
                     f"({', '.join(statuses)}); a date takes one, the household's")
     start = scenario_row.get("start", "")
     if len(start) < 4 or not start[:4].isdigit():
@@ -3535,7 +3537,7 @@ def _validate_filing_status(
     for kind, where in sorted(needs.items()):
         if not any(effective <= year_end for effective in by_kind.get(kind, {})):
             issues.append(
-                f"{where}: taxes by filing status, but aux/{kind}.csv has no row in force "
+                f"{where}: taxes by filing status, but tables/{kind}.csv has no row in force "
                 f"by {year_end}; add one with the household's status (MFJ, Single or MFS)")
 
 
@@ -3554,7 +3556,7 @@ def _validate_itemized_deductions(
         if len(dates) > 1:
             table = f"{kind}__{series}" if series else kind
             issues.append(
-                f"aux/{table}.csv: {year} has {len(dates)} rows ({', '.join(dates)}); "
+                f"tables/{table}.csv: {year} has {len(dates)} rows ({', '.join(dates)}); "
                 "a tax year takes one itemized total")
 
 
@@ -3610,7 +3612,7 @@ def _validate_irmaa(
              if kind == registries.IRMAA_TIERS]
     if not any(table is None for table, _, _ in tiers):
         issues.append(
-            f"scheduled.csv: an irmaa rule needs aux/{registries.IRMAA_TIERS}.csv, "
+            f"scheduled.csv: an irmaa rule needs tables/{registries.IRMAA_TIERS}.csv, "
             "the Medicare surcharge tiers")
     _validate_irmaa_tiers(tiers, issues)
 
@@ -3645,7 +3647,7 @@ def _validate_irmaa_tiers(
     the tier."""
     groups: dict[tuple[str | None, str, str], list[tuple[int, int]]] = {}
     for table, payload, effective in tiers:
-        file = f"aux/{registries.IRMAA_TIERS}{'__' + table if table else ''}.csv"
+        file = f"tables/{registries.IRMAA_TIERS}{'__' + table if table else ''}.csv"
         where = f"{file} ({effective}, {payload.get('filing_status')} tier {payload.get('tier')})"
         tier = payload.get("tier")
         if not isinstance(tier, int) or tier < 1:
@@ -3659,7 +3661,7 @@ def _validate_irmaa_tiers(
         groups.setdefault(
             (table, effective, str(payload.get("filing_status"))), []).append((tier, money[0]))
     for (table, effective, status), rows in groups.items():
-        file = f"aux/{registries.IRMAA_TIERS}{'__' + table if table else ''}.csv"
+        file = f"tables/{registries.IRMAA_TIERS}{'__' + table if table else ''}.csv"
         rows.sort()
         numbers = [tier for tier, _ in rows]
         if len(set(numbers)) != len(numbers):
@@ -4076,13 +4078,13 @@ def _validate_fill_bracket(
                 issues.append(f"{where}: irmaa_tier must be a whole number, 0 or more (got {tier!r})")
             if not irmaa_tiers:
                 issues.append(
-                    f"{where}: irmaa_tier needs aux/{registries.IRMAA_TIERS}.csv, the tiers to stay within")
+                    f"{where}: irmaa_tier needs tables/{registries.IRMAA_TIERS}.csv, the tiers to stay within")
             elif isinstance(tier, int) and not any(t > tier for t in irmaa_tiers):
                 # Staying within the top tier caps nothing; say so rather
                 # than run as if the cap were in force.
                 issues.append(
                     f"{where}: irmaa_tier {tier} is the top tier or above "
-                    f"(aux/{registries.IRMAA_TIERS}.csv tops out at {max(irmaa_tiers)}), "
+                    f"(tables/{registries.IRMAA_TIERS}.csv tops out at {max(irmaa_tiers)}), "
                     "so it caps nothing")
             if "federal" not in tax_rules:
                 issues.append(
@@ -4600,6 +4602,21 @@ def _validate_swap_aux_table_row(
             issues.append(f"{where}: swap_aux_table takes no {col}; leave it blank")
 
 
+AUX_FOLDER_RETIRED = (
+    "the lookup tables' folder is tables/ now (#687): Windows can't check out a folder "
+    "named aux. Rename it (`git mv aux tables` there), or run scripts/migrate_687.py "
+    "from a source checkout to rename them all"
+)
+
+
+def _refuse_old_aux_folders(data_dir: Path, scenario_dirs: list[Path], issues: list[str]) -> None:
+    """A data repo from before #687 keeps its tables in ``aux/``. Read
+    nothing from it rather than load a scenario without its tables."""
+    for folder in (data_dir, *scenario_dirs):
+        if (folder / "aux").is_dir():
+            issues.append(f"{folder / 'aux'}: {AUX_FOLDER_RETIRED}")
+
+
 RESIDENCE_RETIRED = (
     "where the household lives is residence.csv now (#509): set it with `sim tax state` "
     "and `sim tax move`, or convert a data repo with scripts/migrate_509.py"
@@ -4637,7 +4654,7 @@ def _validate_residence(
         elif known.status == states.FEDERAL_RULE and ("state_brackets", state) in supplied:
             issues.append(
                 f"{where}: the federal tax stands in for {states.label(state)}'s, which copies "
-                f"it, so aux/state_brackets__{state}.csv would tax the same income twice; "
+                f"it, so tables/state_brackets__{state}.csv would tax the same income twice; "
                 "remove it (#491)")
     has_state = any(row["name"] == "state" for row in tax_rows)
     for where, row in _located(tax_rows, registries.TAXES_DIR):
@@ -4657,12 +4674,12 @@ def _validate_residence(
         series = states.tax_series(state, has_tables=("state_brackets", state) in supplied)
         if ("state_brackets", series) not in supplied:
             issues.append(
-                f"{where}: no aux/state_brackets__{series}.csv for {states.label(state)}'s "
+                f"{where}: no tables/state_brackets__{series}.csv for {states.label(state)}'s "
                 "income tax; the simulator doesn't ship its tables yet, so add them")
         county = (row.get("county") or "").strip()
         if county and (registries.STATE_LOCAL_TAX, county) not in supplied:
             issues.append(
-                f"{where}: county {county!r} has no aux/{registries.STATE_LOCAL_TAX}__{county}.csv; "
+                f"{where}: county {county!r} has no tables/{registries.STATE_LOCAL_TAX}__{county}.csv; "
                 "add its local tax (one 0% band per filing status for a county without one), "
                 "or leave county blank")
 
@@ -4716,7 +4733,7 @@ def _warn_state_standard_deduction(
                 continue
             warnings.append(
                 f"{where}: state tax uses the federal standard deduction in "
-                f"{states.label(state)}; add aux/{registries.STATE_STANDARD_DEDUCTION}__{series}.csv "
+                f"{states.label(state)}; add tables/{registries.STATE_STANDARD_DEDUCTION}__{series}.csv "
                 "(effective_date, filing_status, amount) with the state's own"
             )
 
@@ -4808,7 +4825,7 @@ def _warn_hand_typed_deductions(
         if figured_always or active(year) or (federal and income_taxed):
             found.setdefault(kind, []).append(year)
     if found:
-        where = "; ".join(f"aux/{kind}.csv ({', '.join(sorted(set(years)))})"
+        where = "; ".join(f"tables/{kind}.csv ({', '.join(sorted(set(years)))})"
                           for kind, years in sorted(found.items()))
         warnings.append(
             f"{where}: the hand-typed total adds to the itemized lines figured from spending "
@@ -4829,9 +4846,9 @@ def _warn_hand_typed_deductions(
         and (figured_always or active(effective[:4]))})
     if falls_back:
         warnings.append(
-            f"aux/federal_deductions.csv ({', '.join(falls_back)}): the state lived in then "
+            f"tables/federal_deductions.csv ({', '.join(falls_back)}): the state lived in then "
             "figures no itemized lines and takes this total, which leaves out what the federal "
-            "lines figure from spending; add aux/state_deductions.csv rows with the state's "
+            "lines figure from spending; add tables/state_deductions.csv rows with the state's "
             "whole itemized total, or give taxes/state.csv itemized_limits_aux "
             "\"itemized_limits\" to figure the federal lines for it")
 
@@ -4888,7 +4905,7 @@ def _validate_state_social_security(
     for kind, state, payload, effective in aux_rows:
         if kind != registries.STATE_SOCIAL_SECURITY:
             continue
-        where = (f"aux/{kind}__{state}.csv" if state else f"aux/{kind}.csv") + (
+        where = (f"tables/{kind}__{state}.csv" if state else f"tables/{kind}.csv") + (
             f" ({effective}, {payload.get('filing_status')})")
         percent = payload.get("exclusion_micros")
         if percent is not None and not 0 <= percent <= 1_000_000:
@@ -4910,7 +4927,7 @@ def _validate_state_social_security(
             rated.add(tier)
     if aged and not any(p.get("birthdate") for p in persons):
         warnings.append(
-            f"aux/{registries.STATE_SOCIAL_SECURITY}__<state>.csv: rows by min_age need a "
+            f"tables/{registries.STATE_SOCIAL_SECURITY}__<state>.csv: rows by min_age need a "
             "person with a birthdate in persons.csv; without one only rows without "
             "min_age apply")
 
@@ -4925,7 +4942,7 @@ def _validate_state_standard_deduction(
     for kind, state, payload, effective in aux_rows:
         if kind != registries.STATE_STANDARD_DEDUCTION:
             continue
-        where = (f"aux/{kind}__{state}.csv" if state else f"aux/{kind}.csv") + (
+        where = (f"tables/{kind}__{state}.csv" if state else f"tables/{kind}.csv") + (
             f" ({effective}, {payload.get('filing_status')})")
         _check_not_negative(where, payload, ("amount",), issues)
         _check_phase_out(where, payload, issues, extra=("phaseout_agi",))
@@ -4996,9 +5013,9 @@ def _validate_state_retirement_exclusions(
     for row_kind, state, payload, effective in aux_rows:
         if row_kind != kind:
             continue
-        where = f"aux/{kind}__{state}.csv ({effective}, {payload.get('name')})"
+        where = f"tables/{kind}__{state}.csv ({effective}, {payload.get('name')})"
         if not state:  # no suffix, or an empty one (state_retirement_exclusion__.csv)
-            issues.append(f"aux/{kind}.csv: name the state, as {kind}__CA.csv")
+            issues.append(f"tables/{kind}.csv: name the state, as {kind}__CA.csv")
             return
         name = str(payload.get("name") or "").strip()
         if not name:
@@ -5060,7 +5077,7 @@ def _validate_state_recapture(
             continue
         if not state:
             continue  # _validate_optional_state_tables says to name the state
-        where = f"aux/{kind}__{state}.csv ({effective}, {payload.get('filing_status')})"
+        where = f"tables/{kind}__{state}.csv ({effective}, {payload.get('filing_status')})"
         _check_filing_status(where, payload, issues)
         _check_not_negative(where, payload, ("floor", "amount"), issues)
         width, step = payload.get("width"), payload.get("step")
@@ -5092,9 +5109,9 @@ def _validate_state_adjustments(
         if row_kind != kind:
             continue
         name = str(payload.get("name") or "").strip()
-        where = f"aux/{kind}__{state}.csv ({effective}, {name})"
+        where = f"tables/{kind}__{state}.csv ({effective}, {name})"
         if not state:
-            issues.append(f"aux/{kind}.csv: name the state, as {kind}__CA.csv")
+            issues.append(f"tables/{kind}.csv: name the state, as {kind}__CA.csv")
             return
         if not _LINE_NAME.match(name):
             issues.append(f"{where}: name must be lower case letters, digits and _, "
@@ -5197,7 +5214,7 @@ def _validate_swap_aux_tables(
                 file = f"{aux_kind}__{series}.csv" if series else f"{aux_kind}.csv"
                 issues.append(
                     f"{where}: swap_aux_table {label} names {file}, which no "
-                    "aux/ or series/ folder this scenario reads supplies"
+                    "tables/ or series/ folder this scenario reads supplies"
                 )
 
 
@@ -5745,7 +5762,7 @@ def _validate_series_references(
     never affects a run (this is what varying the wrong `series`/`aux_kind`
     pair under ADR-006 looks like -- every member ends up bit-identical).
     A set_rate row adjusts a series; it doesn't create one. So its
-    `(aux_kind, series)` must have a series/aux/prices file in the scenario's
+    `(aux_kind, series)` must have a series/tables/prices file in the scenario's
     lineage, or it's an unresolved reference -- a typo, or the wrong
     `aux_kind` -- and a load error (#204). One with a file that nothing
     reads is only a warning, which only `sim check` prints (#92, #204): a
@@ -5812,7 +5829,7 @@ def _validate_series_references(
             issues.append(
                 f"{where} ({name}): references series "
                 f"'{series}' under aux_kind '{aux_kind}', but nothing "
-                "supplies it -- no series/aux/prices file for that "
+                "supplies it -- no series/tables/prices file for that "
                 "(aux_kind, series) pair; this would fail at run time with "
                 "'no aux row' once reached"
             )
@@ -5835,7 +5852,7 @@ def _validate_series_references(
                 if ("inflation", str(series)) not in supplied:
                     file = f"{kind}__{table}.csv" if table else f"{kind}.csv"
                     issues.append(
-                        f"aux/{file} ({effective}, {payload.get('filing_status')} tier "
+                        f"tables/{file} ({effective}, {payload.get('filing_status')} tier "
                         f"{payload.get('tier')}): {column} '{series}' doesn't exist -- "
                         f"no series/inflation__{series}.csv in this scenario or a parent"
                     )
@@ -5858,7 +5875,7 @@ def _validate_series_references(
                 if ("inflation", str(series)) not in supplied:
                     file = f"{kind}__{table}.csv" if table else f"{kind}.csv"
                     issues.append(
-                        f"aux/{file} ({effective}, {payload.get('filing_status')}): "
+                        f"tables/{file} ({effective}, {payload.get('filing_status')}): "
                         f"{column} '{series}' doesn't exist -- no "
                         f"series/inflation__{series}.csv in this scenario or a parent"
                     )
@@ -5868,7 +5885,7 @@ def _validate_series_references(
                 if first_rate[str(series)] > growth_from and (file, effective) not in late:
                     late.add((file, effective))
                     issues.append(
-                        f"aux/{file} ({effective}): {column} '{series}' has no rate until "
+                        f"tables/{file} ({effective}): {column} '{series}' has no rate until "
                         f"{first_rate[str(series)][:7]}, but grows the table from "
                         f"{growth_from[:7]}; add an earlier rate to inflation__{series}.csv"
                     )
@@ -5886,7 +5903,7 @@ def _validate_series_references(
         if (aux_kind, series) not in supplied:
             issues.append(
                 f"{where}: set_rate series '{series}' under aux_kind "
-                f"'{aux_kind}' doesn't exist -- no series/aux/prices file for "
+                f"'{aux_kind}' doesn't exist -- no series/tables/prices file for "
                 "that (aux_kind, series) pair in this scenario or a parent "
                 f"(e.g. series/{aux_kind}__{series}.csv)"
             )
@@ -6455,7 +6472,7 @@ def _validate_local_tax(
     tables = sorted({series for kind, series, _p, _e in aux_rows
                      if kind == registries.STATE_LOCAL_TAX and series})
     if tables:
-        files = ", ".join(f"aux/{registries.STATE_LOCAL_TAX}__{t}.csv" for t in tables)
+        files = ", ".join(f"tables/{registries.STATE_LOCAL_TAX}__{t}.csv" for t in tables)
         issues.append(
             f"{files}: a local income tax is its own jurisdiction now, and the scenario has no "
             f"{registries.TAXES_DIR}/local.csv; add it with `sim tax add local` (it is paid into "
@@ -6989,7 +7006,7 @@ def _validate_lifespan(
         # Checked for a fixed age too: `sim person show` reads the table.
         if table is not None and life_tables is not None and table not in life_tables:
             issues.append(
-                f"{where}: life_table '{table}' needs aux/{life_table.table_file(table)}, "
+                f"{where}: life_table '{table}' needs tables/{life_table.table_file(table)}, "
                 "which isn't in this scenario's lineage")
             continue
         row["life_table"] = table or ""
@@ -7054,12 +7071,12 @@ def _validate_itemized_limits(
             if series not in keyed:
                 keyed.add(series)
                 issues.append(
-                    f"aux/{kind}__{series}.csv: the federal limits aren't keyed by state; a state's "
-                    f"are aux/{registries.STATE_ITEMIZED_LIMITS}__{series}.csv")
+                    f"tables/{kind}__{series}.csv: the federal limits aren't keyed by state; a state's "
+                    f"are tables/{registries.STATE_ITEMIZED_LIMITS}__{series}.csv")
             continue
         name = f"{kind}__{series}" if series else kind
         statuses.setdefault((name, series, effective), set()).add(str(payload.get("filing_status")))
-        where = f"aux/{name}.csv ({effective[:7]}, {payload.get('filing_status')})"
+        where = f"tables/{name}.csv ({effective[:7]}, {payload.get('filing_status')})"
         _check_not_negative(
             where, payload, ("salt_cap", "salt_floor", "salt_phaseout_start", "mortgage_limit"), issues)
         for column in ("salt_phaseout_rate", "charity_floor", "charity_limit", "medical_floor"):
@@ -7078,7 +7095,7 @@ def _validate_itemized_limits(
             # they'd be ignored without a word.
             issues.append(f"{where}: a salt_floor or SALT phase-down needs a salt_cap")
     _check_filing_statuses(
-        {(f"aux/{name}.csv", effective[:7]): found
+        {(f"tables/{name}.csv", effective[:7]): found
          for (name, _series, effective), found in statuses.items()},
         standard_statuses, "the standard deduction has", "a year filed that way couldn't be taxed",
         issues)
@@ -7099,13 +7116,13 @@ def _validate_state_gain_tables(
             if kind not in unnamed:
                 unnamed.add(kind)
                 issues.append(
-                    f"aux/{kind}.csv: name the state, as its brackets are "
-                    f"(aux/{kind}__CA.csv beside aux/state_brackets__CA.csv)"
+                    f"tables/{kind}.csv: name the state, as its brackets are "
+                    f"(tables/{kind}__CA.csv beside tables/state_brackets__CA.csv)"
                 )
             continue
         if kind != registries.STATE_LTCG_EXCLUSION:
             continue
-        where = f"aux/{kind}__{series}.csv ({effective[:7]})"
+        where = f"tables/{kind}__{series}.csv ({effective[:7]})"
         if not 0 <= payload["exclusion_micros"] <= 1_000_000:
             issues.append(f"{where}: exclusion must be 0% to 100%")
         low, high = payload.get("min_exclusion"), payload.get("max_exclusion")

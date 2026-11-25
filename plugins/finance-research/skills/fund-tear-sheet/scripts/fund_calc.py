@@ -62,7 +62,7 @@ def main():
     flows = {}
     mix, mat = {}, {}
     rets = defaultdict(dict)       # metric -> period -> (value, as_of)
-    with open(a.data, newline="") as f:
+    with open(a.data, encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             s, m, p, v = (r.get("section") or "").lower().strip(), (r.get("metric") or "").lower().strip(), (r.get("period") or "").strip(), num(r.get("value"))
             if v is None:
@@ -255,7 +255,7 @@ def main():
     if a.holdings and a.fund_of_funds:
         warns.append("fund of funds: concentration metrics skipped; describe the look-through holdings of the underlying funds instead")
     if a.holdings and not a.fund_of_funds:
-        with open(a.holdings, newline="") as f:
+        with open(a.holdings, encoding="utf-8", newline="") as f:
             hs = [(r.get("name"), num(r.get("weight_pct")), (r.get("sector") or "").strip(), r.get("as_of")) for r in csv.DictReader(f)]
         hs = [h for h in hs if h[1] is not None]
         hs.sort(key=lambda h: -h[1])
@@ -280,7 +280,7 @@ def main():
             if len(dates) > 1:
                 warns.append(f"holdings rows carry different as-of dates: {sorted(dates)}")
 
-    with open(out, "w", newline="") as f:
+    with open(out, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["metric", "value", "formula", "components"])
         w.writeheader()
         w.writerows(rows)

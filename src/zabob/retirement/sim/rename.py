@@ -324,7 +324,7 @@ SERIES_COLUMNS: dict[str, tuple[str, ...]] = {
 """The columns, per scenario file, that name a series. Chain files' steps
 have a ``series`` column too."""
 
-_SERIES_FOLDERS = ("series", "aux")
+_SERIES_FOLDERS = ("series", "tables")
 
 
 SERIES_KINDS = ("rate", "inflation")
@@ -342,13 +342,13 @@ def _series_files(folder: Path, name: str) -> list[Path]:
 
 
 def shared_series_files(data_dir: Path, name: str) -> list[Path]:
-    """Files for series ``name`` in the data repo's shared ``aux/``, which
+    """Files for series ``name`` in the data repo's shared ``tables/``, which
     every scenario reads, whatever its lineage."""
-    return _series_files(data_dir / "aux", name)
+    return _series_files(data_dir / "tables", name)
 
 
 def _aux_series_tables(aux_dir: Path) -> list[tuple[Path, tuple[str, ...]]]:
-    """The tables in an ``aux/`` folder with columns naming an inflation
+    """The tables in an ``tables/`` folder with columns naming an inflation
     series (an IRMAA tier's growth, an indexed tax table's, #467), with
     those columns."""
     if not aux_dir.is_dir():
@@ -358,17 +358,17 @@ def _aux_series_tables(aux_dir: Path) -> list[tuple[Path, tuple[str, ...]]]:
 
 
 def shared_series_references(data_dir: Path, name: str) -> list[str]:
-    """The shared aux tables (the data repo's ``aux/``, or a template's it
+    """The shared aux tables (the data repo's ``tables/``, or a template's it
     doesn't replace) naming series ``name`` in a growth column. Every
     scenario reads them, and a template isn't the data repo's to change."""
     shared = {path.name: path for path, _ in _aux_series_tables(TEMPLATE_AUX_DIR)}
-    shared.update({path.name: path for path, _ in _aux_series_tables(data_dir / "aux")})
+    shared.update({path.name: path for path, _ in _aux_series_tables(data_dir / "tables")})
     found = []
     for path in shared.values():
         columns = registries.AUX_SERIES_REFERENCE_COLUMNS[path.stem.split("__", 1)[0]]
         for column in columns:
             if name in _cells(path, (column,)):
-                where = "templates/aux" if path.parent == TEMPLATE_AUX_DIR else "aux"
+                where = "templates/tables" if path.parent == TEMPLATE_AUX_DIR else "tables"
                 found.append(f"{where}/{path.name} ({column})")
     return found
 
@@ -382,13 +382,13 @@ def series_mentioned(name: str) -> Defines:
                 or any(name in _cells(scenario_dir / f, cols) for f, cols in SERIES_COLUMNS.items())
                 or any(name in _cells(path, ("series",)) for path in chain_edit.chain_files(scenario_dir))
                 or any(name in _cells(path, columns)
-                       for path, columns in _aux_series_tables(scenario_dir / "aux")))
+                       for path, columns in _aux_series_tables(scenario_dir / "tables")))
     return mentioned
 
 
 def rename_series(scenario_dir: Path, old: str, new: str) -> list[str]:
     """Rename series ``old`` to ``new`` throughout one scenario folder: its
-    rate files in ``series/`` and ``aux/``, and every column naming it."""
+    rate files in ``series/`` and ``tables/``, and every column naming it."""
     changed: list[str] = []
     for folder in _SERIES_FOLDERS:
         for path in _series_files(scenario_dir / folder, old):
@@ -397,7 +397,7 @@ def rename_series(scenario_dir: Path, old: str, new: str) -> list[str]:
                 raise FileExistsError(f"{scenario_dir.name} already has {folder}/{target.name}")
             path.rename(target)
             changed.append(f"{folder}/{path.name} -> {folder}/{target.name}")
-    tables = [f"aux/{path.name}" for path, columns in _aux_series_tables(scenario_dir / "aux")
+    tables = [f"tables/{path.name}" for path, columns in _aux_series_tables(scenario_dir / "tables")
               if chain_edit.rename_cells(path, columns, old, new)]
     return [*changed, *_rename_in(scenario_dir, SERIES_COLUMNS, old, new),
             *_rename_in_chains(scenario_dir, ("series",), old, new), *tables]
@@ -481,7 +481,7 @@ def _repoint_parents(old: str, new: str) -> Callable[[dict[str, str]], None]:
 def _markdown_files(data_dir: Path) -> list[Path]:
     """The README and other markdown files a scenario rename may need to
     relink: everything under ``scenarios/``, and the data repo's own
-    top-level files. Other top-level folders (aux/, prices/...) describe
+    top-level files. Other top-level folders (tables/, prices/...) describe
     shared data, not scenarios, and a staged edit can't write them."""
     files = sorted((data_dir / "scenarios").rglob("*.md"))
     files += sorted(path for path in data_dir.glob("*.md") if path.is_file() and not path.is_symlink())

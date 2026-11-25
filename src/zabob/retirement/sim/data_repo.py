@@ -37,7 +37,7 @@ _IGNORED = (".analysis", ".current_scenario", ".analysis_user", RETENTION_FILENA
 # them (it describes the t_ scenarios and tables left behind), and the
 # template's sample user and ignore list, which are written fresh.
 _NOT_COPIED = frozenset({
-    "README.md", "aux/README.md", "scenarios/README.md",
+    "README.md", "tables/README.md", "scenarios/README.md",
     ".analysis_user", ".gitignore", RETENTION_FILENAME, "persons.csv",
 })
 
@@ -64,8 +64,8 @@ def _copied(relative: Path) -> bool:
     parts = relative.parts
     if parts[0] == "scenarios" and len(parts) > 1 and parts[1].startswith(TEMPLATE_PREFIX):
         return False
-    # Every aux table is read from templates/aux but the household's status.
-    return not (parts[0] == "aux" and relative.name != "filing_status.csv")
+    # Every aux table is read from templates/tables but the household's status.
+    return not (parts[0] == "tables" and relative.name != "filing_status.csv")
 
 
 def _copy_templates(sim: Path) -> None:
@@ -126,7 +126,7 @@ def create_data_repo(
     _write_csv(sim / "persons.csv", registries.PERSONS_CSV_HEADER,
                [{**person, "role": "primary", "meta_json": person.get("meta_json") or "{}"}])
     start = _start_scenario(sim, person["id"])
-    _write_csv(sim / "aux" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
+    _write_csv(sim / "tables" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
                [{"effective_date": start, "filing_status": filing_status}])
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
     write_current_scenario(sim, START_SCENARIO)
@@ -174,6 +174,11 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # state/ (beside sim/) holds runs, rebuilt from the data; the code repo's
     # cspell.json reads .cspell/data-words.txt for the household's words.
     _ignore(root / ".gitignore", "/state/")
+    # Git stores text with LF line endings whatever the machine or the
+    # user's core.autocrlf (#687): a CSV saved by Excel on Windows would
+    # otherwise commit CRLF, which changes the scenario's tree id and makes
+    # every line a change. Kept in the repository, so every clone has it.
+    _ignore(root / ".gitattributes", "* text=auto")
     (root / ".cspell").mkdir(exist_ok=True)
     (root / ".cspell" / "data-words.txt").touch()
     if notebooks:
@@ -210,7 +215,7 @@ def copy_notebooks(folder: Path, *, replace: bool = False) -> tuple[list[Path], 
 
 
 def _ignore(path: Path, pattern: str) -> None:
-    """Add ``pattern`` to the ignore file at ``path`` unless it's there:
+    """Add the line ``pattern`` to ``path`` (an ignore or attributes file) unless it's there:
     ``root`` may be an existing repository with its own."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if pattern in text.splitlines():
@@ -229,7 +234,7 @@ def _commit(root: Path, person: Mapping[str, str]) -> str | None:
         done = _git(root, "init", "-q")
         if done.returncode:
             return done.stderr.strip() or "git init failed"
-    paths = ("sim", ".gitignore", ".cspell")
+    paths = ("sim", ".gitignore", ".gitattributes", ".cspell")
     # A new user often has no git identity, and the commit would fail (#308).
     try:
         ensure_identity(root, person["id"], person.get("display") or "")

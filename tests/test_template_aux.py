@@ -1,4 +1,4 @@
-"""The code repository's templates/aux/ as the lowest aux tier, and the
+"""The code repository's templates/tables/ as the lowest aux tier, and the
 household's filing status checked at load (#317)."""
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _aux_kinds(intent: Path) -> set[str]:
 def test_a_data_repo_without_aux_tables_reads_the_templates(
     load_test_copy: Callable[[], LoadResult], test_data_dir: Path,
 ) -> None:
-    for path in (test_data_dir / "aux").glob("*.csv"):
+    for path in (test_data_dir / "tables").glob("*.csv"):
         if path.name != "filing_status.csv":
             path.unlink()
 
@@ -54,7 +54,7 @@ def test_a_data_repo_table_replaces_the_templates_whole(
 
 
 def test_the_templates_leave_the_filing_status_to_the_household() -> None:
-    assert (TEMPLATE_AUX_DIR / "filing_status.csv").read_text() == "effective_date,filing_status\n"
+    assert (TEMPLATE_AUX_DIR / "filing_status.csv").read_text(encoding="utf-8") == "effective_date,filing_status\n"
 
 
 def test_a_tax_without_a_filing_status_fails_the_load(
@@ -64,7 +64,7 @@ def test_a_tax_without_a_filing_status_fails_the_load(
     add_state_tax()
     write_aux("filing_status.csv", "effective_date,filing_status\n")
 
-    with pytest.raises(LoadError, match=r"taxes/\w+\.csv.*aux/filing_status\.csv has no row"):
+    with pytest.raises(LoadError, match=r"taxes/\w+\.csv.*tables/filing_status\.csv has no row"):
         load_test_copy()
 
 
@@ -97,7 +97,7 @@ def test_check_verbose_names_aux_files_that_copy_the_templates(test_data_dir: Pa
                                        "--data-dir", str(test_data_dir)])
 
     assert result.exit_code == 0, result.output
-    assert "note: aux/federal_brackets.csv is the same as templates/aux/federal_brackets.csv" in result.output
+    assert "note: tables/federal_brackets.csv is the same as templates/tables/federal_brackets.csv" in result.output
 
 
 # ---------- the template tables are complete (#319) ----------
@@ -108,20 +108,20 @@ _TEMPLATE_TABLES = sorted(p for p in TEMPLATE_AUX_DIR.glob("*.csv") if p.name !=
 @pytest.mark.parametrize("path", _TEMPLATE_TABLES, ids=lambda p: p.name)
 def test_every_template_table_has_rows(path: Path) -> None:
     """Every data repo reads these, so a stub breaks whoever lacks their own."""
-    with path.open(newline="") as fh:
+    with path.open(encoding="utf-8", newline="") as fh:
         assert len(list(csv.DictReader(fh))) > 0
 
 
 @pytest.mark.parametrize("path", [p for p in _TEMPLATE_TABLES if "filing_status" in
-                                  p.read_text().splitlines()[0].split(",")], ids=lambda p: p.name)
+                                  p.read_text(encoding="utf-8").splitlines()[0].split(",")], ids=lambda p: p.name)
 def test_filing_status_tables_cover_every_status(path: Path) -> None:
     """A death makes a joint filer Single, so a table with only MFJ fails mid-run."""
-    with path.open(newline="") as fh:
+    with path.open(encoding="utf-8", newline="") as fh:
         statuses = {row["filing_status"] for row in csv.DictReader(fh)}
     assert statuses >= {"MFJ", "Single", "MFS"}
 
 
 def test_the_rmd_factors_cover_every_age_from_72() -> None:
-    with (TEMPLATE_AUX_DIR / "rmd_factors.csv").open(newline="") as fh:
+    with (TEMPLATE_AUX_DIR / "rmd_factors.csv").open(newline="", encoding="utf-8") as fh:
         ages = sorted(int(row["age"]) for row in csv.DictReader(fh))
     assert ages == list(range(72, 131))

@@ -53,7 +53,6 @@ outcome) is in git's common directory: ``analysis-prices.json`` and its lock.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -70,6 +69,8 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
+
+from zabob.retirement.sim import flock
 
 __all__ = [
     "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
@@ -206,7 +207,7 @@ def read_state_file(data_dir: Path, name: str) -> dict[str, Any]:
     or the nightly roll's); {} before the first write, or outside a git
     repository."""
     try:
-        return json.loads((_common_dir(_top(data_dir)) / name).read_text())
+        return json.loads((_common_dir(_top(data_dir)) / name).read_text(encoding="utf-8"))
     except (OSError, ValueError, PriceScheduleError):
         return {}
 
@@ -224,13 +225,13 @@ def update_state_file(top: Path, name: str, lock_name: str, **changes: Any) -> d
     path = _common_dir(top) / name
     fd = os.open(path.with_name(lock_name), os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        flock.lock(fd)
         try:
-            state = json.loads(path.read_text())
+            state = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             state = {}
         state.update(changes)
-        with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f"{name}.",
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f"{name}.",
                                          suffix=".tmp", delete=False) as tmp:
             tmp.write(json.dumps(state, indent=2, sort_keys=True) + "\n")
         os.replace(tmp.name, path)
@@ -251,7 +252,7 @@ def locked_file(top: Path, name: str) -> Generator[bool]:
     fd = os.open(_common_dir(top) / name, os.O_RDWR | os.O_CREAT, 0o644)
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock.lock(fd, block=False)
         except BlockingIOError:
             yield False
             return

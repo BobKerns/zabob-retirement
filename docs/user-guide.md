@@ -296,8 +296,8 @@ project word could be confused with a general word, that is pointed out.
 | **Lot** | One holding inside an account. A brokerage account can have several lots: different funds, or shares bought on different dates. Every account has at least one lot. It is named `default` unless you split the account into more than one lot. |
 | **Chain** | A named, ordered list of places money can come from, or go to. Think: try this place first, then that place. Every account (and every lot) already has its own one-step chain, automatically. You only write a chain file, `chains/source/<name>.csv` or `chains/destination/<name>.csv`, when you want more than one step. See Part 4.6 and [the chains guide](guides/chains.md). |
 | **Series** | A named set of numbers a scenario can refer to by name: a growth or interest rate (`rate__*`), or an inflation projection (`inflation__*`). These files live in that scenario's own `series/` folder. This is a different idea from *asset class*, below. |
-| **`aux/`** | Shared tax-law facts every scenario uses unless it says otherwise: tax brackets, RMD tables, filing status. |
-| **`series/`** | A scenario's own growth-rate and inflation assumptions. Unlike `aux/`, there is no shared copy at the top of the data repo — each scenario has its own, inherited from its parent the same way `accounts.csv` is. |
+| **`tables/`** | Shared tax-law facts every scenario uses unless it says otherwise: tax brackets, RMD tables, filing status. |
+| **`series/`** | A scenario's own growth-rate and inflation assumptions. Unlike `tables/`, there is no shared copy at the top of the data repo — each scenario has its own, inherited from its parent the same way `accounts.csv` is. |
 | **`prices/`** | Shared security price histories every scenario uses unless it says otherwise. |
 | **Itemization** | A CSV file under `itemizations/<name>.csv`. It lists dollar amounts in a `Value` column, and the loader adds them up into one total. Other files can use that total by writing `@name` instead of a plain number (for example `opening_cost_basis = @home_basis`). **This is a different thing from an *itemized deduction*, a tax term — see the next table.** |
 | **`tax_character`** | A label on a money movement that says how it is taxed: `ordinary`, `ltcg`, `stcg`, `tax_free`, `tax_deferred_out`, `return_of_capital`, `none`, and a few others. This label decides which tax bucket the movement is counted in. |
@@ -418,7 +418,7 @@ files pays no income tax.
 - **Ordinary income** includes: salary, pension, interest, the taxable part of
   Social Security, taxable withdrawals from Traditional accounts
   (`tax_deferred_out`), and short-term gains (`stcg`).
-- **Long-term gains** (`ltcg`) use the rates in `aux/ltcg_brackets.csv`, if
+- **Long-term gains** (`ltcg`) use the rates in `tables/ltcg_brackets.csv`, if
   that file exists. These rates apply on top of your ordinary taxable income.
   If the file does not exist, long-term gains are taxed the same as ordinary
   income.
@@ -443,7 +443,7 @@ files pays no income tax.
   fund that pays at its own `_yield` series is exempt only when at least
   half of it is municipal bonds, and then only for that share.
 - **Filing status** comes from the `filing_status` aux table for that tax
-  year: your data repo's `aux/filing_status.csv`, one row per date such as
+  year: your data repo's `tables/filing_status.csv`, one row per date such as
   `2026-01-31,MFJ`. The templates leave it empty, and a scenario that
   computes tax fails to load without a row. One exception: MFJ or MFS automatically changes to Single, starting
   the year after a primary person's final month in `lifespan.csv`. You do
@@ -455,7 +455,7 @@ files pays no income tax.
 - **Inflation**: the brackets, the standard deduction and the long-term
   gain bands rise each year with inflation, as the law raises them. The
   supplied tables carry the latest published figures and grow them with
-  `cpi` from then on (`floor_series`/`amount_series`, see the `aux/`
+  `cpi` from then on (`floor_series`/`amount_series`, see the `tables/`
   README). The Social Security thresholds and the $3,000 capital loss limit
   stay fixed, as they are in law.
 - **State tax** starts from the federal return, as most states' forms do:
@@ -470,7 +470,7 @@ files pays no income tax.
   and the state's standard deduction from
   `state_standard_deduction__CA.csv` (named for the same state). Tables for California, the District of Columbia, Idaho, Kansas,
   Nebraska and North Carolina come with the simulator; for another state,
-  put its files in your `aux/`. Without
+  put its files in your `tables/`. Without
   that file the federal standard deduction is used, and loading warns,
   since most states' deduction is much smaller. Capital gains are taxed
   as ordinary income unless the state's own tables say otherwise: a share
@@ -480,7 +480,7 @@ files pays no income tax.
   Security unless your state taxes it: then add
   `state_social_security__XX.csv`, which starts from the federally taxable
   amount and leaves out an exclusion that phases out with income. The
-  `aux/` README describes them all. Two more tables, also named for the
+  `tables/` README describes them all. Two more tables, also named for the
   state, are optional: `state_surcharge__CA.csv` adds California's 1% on
   taxable income over $1 million, and `state_hsa__CA.csv` says California
   doesn't recognize health savings accounts, so it taxes an HSA like a
@@ -504,7 +504,7 @@ files pays no income tax.
 - **Local income tax**: some counties and cities tax income on top of the
   state (a Maryland county, New York City, an Indiana county, the Portland
   area). Where the local tax is figured on the state's taxable income, put
-  your own county's or city's rates in `aux/state_local_tax__<county>.csv`
+  your own county's or city's rates in `tables/state_local_tax__<county>.csv`
   (any name, such as `MD-county`), in the columns of the state's brackets:
   one band for a flat county rate, the city's brackets, or a 0% band below
   a threshold, with rows for each filing status your state brackets have,
@@ -521,8 +521,8 @@ files pays no income tax.
 - **State retirement income exclusions**: most states leave some pension,
   IRA and 401(k) income out, often from an age, up to an amount per person,
   and sometimes only below a household income. Add your state's rules as
-  `state_retirement_exclusion__<state>.csv` in `aux/` (none ships; the
-  `aux/` README lists the columns), and the state's taxable income leaves
+  `state_retirement_exclusion__<state>.csv` in `tables/` (none ships; the
+  `tables/` README lists the columns), and the state's taxable income leaves
   that income out for each of you. `sim report tax` shows what was left out
   as `state_exclusion`. Give a pension income account its owner, so the
   pension counts as that person's; a joint account's income is split
@@ -531,7 +531,7 @@ files pays no income tax.
   the District of Columbia, Kentucky and Virginia let a married couple
   file separately on one state return, each through the brackets and
   standard deduction alone, which saves tax when you both have income.
-  `state_separate_return__<state>.csv` in `aux/` with `allowed` `yes`
+  `state_separate_return__<state>.csv` in `tables/` with `allowed` `yes`
   turns it on (the District's ships): the state tax figures both ways and
   takes the lower, with your income split by whose accounts it comes from
   (a joint account's split evenly). `sim report tax --return state` shows
@@ -539,7 +539,7 @@ files pays no income tax.
 - **State deductions and credits** of the state's own, such as a renter's
   deduction or credit, a 529 or long-term care premium deduction, personal
   exemptions and exemption credits, or a deduction for federal tax paid, are
-  rows of `state_adjustments__<state>.csv` in `aux/`. California's
+  rows of `state_adjustments__<state>.csv` in `tables/`. California's
   exemption credits and renter's credit ship. A row that counts spending
   or income reads a tag: tag the rule that pays your rent
   `tax:rent` (`sim scheduled edit housing --tags tax:rent`) for the
@@ -768,7 +768,7 @@ The same shape sells an investment through a destination chain: give the
 basis step `tax_character` `return_of_capital` and `basis_of` the lot. A sale
 below its basis then records a capital loss. The yearly tax calculation nets
 it against that year's gains, deducts up to $3,000 from ordinary income
-(`aux/capital_loss_limit.csv`), and carries the rest into later years.
+(`tables/capital_loss_limit.csv`), and carries the rest into later years.
 
 A remodel adds to the home's basis: pay it through a destination chain whose
 step has `tax_character` `capital_improvement` and `basis_of` the home.
@@ -958,7 +958,7 @@ partly with Alice's. `vary_low` can't fall before the scenario starts.
 A triangular range assumes little, but real mortality has a particular
 shape. Deaths are spread over many years before the median and bunched
 into fewer years after it. `vary_distribution` `life_table` gives that shape. The
-age comes from a period life table, by default SSA's (`aux/life_table.csv`),
+age comes from a period life table, by default SSA's (`tables/life_table.csv`),
 for someone of the person's sex who is alive when the scenario starts.
 `age_at_death` is the median you believe, and the base case:
 
@@ -983,7 +983,7 @@ table and another median, to compare. `sim lifespan blend` builds a table
 between two or more, such as one for someone who has lived in both
 countries: `sim lifespan blend us_jp --table default --table jp` averages
 their yearly death rates at each age and writes `life_table__us_jp.csv` to
-the scenario's `aux/` (a mix-in's, to use it wherever the mix-in goes).
+the scenario's `tables/` (a mix-in's, to use it wherever the mix-in goes).
 `--table jp=3` weighs a table more; each weighs 1 by default. A name the
 scenario already reads, such as `jp`, is replaced only with `--replace`.
 Use a country's own table rather than a later
@@ -994,7 +994,7 @@ the median put at Japan's (about 90), the shifted US table gives about a
 gives 6.5% and 0.5%.
 
 `sim lifespan tables` lists every life table there is to choose from: the
-templates' `aux/`, the data repo's and each scenario's, each at its latest
+templates' `tables/`, the data repo's and each scenario's, each at its latest
 vintage. For each age and sex it gives `q`, the chance of dying before the
 next birthday, and the expected age at death for someone who has just
 reached that age, as the simulator reads the table. `sim lifespan check
@@ -1115,10 +1115,10 @@ the move: the new state's brackets, standard deduction, Social Security,
 gain, gains tax, surcharge, retirement exclusion and HSA tables, or none where it has
 none (the federal standard deduction stands in for a missing one). Washington's
 tables ship, so that move needs none of your own. Another state needs its
-tables, as `aux/state_brackets__OR.csv` say, unless they ship or it has no
+tables, as `tables/state_brackets__OR.csv` say, unless they ship or it has no
 income tax (it then reads a 0% table, `state_brackets__none.csv`). A move to another county is a row too:
 `sim tax move 2033-01 CA --county CA-county` reads
-`aux/state_local_tax__CA-county.csv` from then on. A child scenario adds its
+`tables/state_local_tax__CA-county.csv` from then on. A child scenario adds its
 own rows to its parent's, and one of the same month replaces the parent's.
 
 A move to a territory works the same way. Guam, the Northern Mariana Islands
@@ -1169,9 +1169,9 @@ from an account named directly; through a chain, tag it `tax:property`.
 Pay estimated state tax into an account of its own, not the federal
 tax's: the state tax paid into the federal account can't be told apart,
 and only the April settlement there counts. Married filing separately
-halves each dollar limit. The limits are in `aux/itemized_limits.csv`; a
+halves each dollar limit. The limits are in `tables/itemized_limits.csv`; a
 scenario that wants none of this, federal or state, puts an
-`itemized_limits.csv` with only its header line in its `aux/`.
+`itemized_limits.csv` with only its header line in its `tables/`.
 
 When more state tax was withheld than you owed, the state pays the rest
 back the April after. If you itemized that year, the refund is federal
@@ -1213,7 +1213,7 @@ changes a year (it asks for each expense in turn), and
 `sim deduction delete 2028` takes one away.
 
 The deductions are the current scenario's. The command keeps them in the
-scenario's `aux/federal_deductions.csv`, with the expenses in
+scenario's `tables/federal_deductions.csv`, with the expenses in
 `itemizations/deductions_2028.csv` (`sim itemization show deductions_2028`).
 A scenario built on this one inherits them; changing them there gives that
 scenario its own copy, and the parent keeps its own.
@@ -1222,7 +1222,7 @@ State tax uses the same idea, with `--state` on each command. If you don't
 add any, the state figure uses the federal one; most states don't need
 their own. The state figures its own lines from the same spending, but
 never deducts state income tax. It figures them only under its own limits,
-`aux/state_itemized_limits__<state>.csv` (California's ship: no SALT cap,
+`tables/state_itemized_limits__<state>.csv` (California's ship: no SALT cap,
 $1,000,000 of mortgage debt, charity up to half of AGI); a state without
 them gets only the hand-typed total, since its rules may differ from the
 federal ones. A state that taxes an HSA, as California does, counts the medical
@@ -1659,7 +1659,7 @@ scenario starts. Give those in `scenario.csv`'s `meta_json`:
 
 Without them those two years charge no surcharge, and loading warns.
 
-The tiers are in `aux/irmaa_tiers.csv`, with CMS's figures for the year
+The tiers are in `tables/irmaa_tiers.csv`, with CMS's figures for the year
 (CMS publishes the next year's each November). Each row names three
 optional growth series, one each for its income floor and its Part B and
 Part D surcharges. Each series is an `inflation__<name>.csv` file in your
@@ -2512,7 +2512,7 @@ asset-class mix; see Part 4.11.
 
 - [templates/README.md](../templates/README.md) — full CSV column reference and conventions.
 - [`docs/architecture/ADR-003-registries-and-csv-schemas.md`](architecture/ADR-003-registries-and-csv-schemas.md) — authoritative
-  schema, including the aux/prices/series/itemizations override mechanism (§4.1d)
+  schema, including the tables/prices/series/itemizations override mechanism (§4.1d)
   and the data-repo structure diagrams (§4.0).
 - [`docs/architecture/ADR-005-lots-and-per-lot-state.md`](architecture/ADR-005-lots-and-per-lot-state.md) — lots in depth.
 - [notebooks/README.md](../notebooks/README.md) — the same information as interactive widgets.

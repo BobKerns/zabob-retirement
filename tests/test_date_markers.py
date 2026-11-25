@@ -176,7 +176,7 @@ def test_two_spellings_of_one_relative_date_are_one_row(
 
     append_calendar_row(**_MARKER, date="2030-06")
     append_calendar_row(date="ep_start+1y", kind="set_rate", series="Asset_Checking", amount="6%")
-    header = retire_alice_csv("calendar.csv").read_text().splitlines()[0]
+    header = retire_alice_csv("calendar.csv").read_text(encoding="utf-8").splitlines()[0]
     columns = header.split(",")
     child = dict.fromkeys(columns, "") | {
         "date": "ep_start+12m", "kind": "set_rate", "series": "Asset_Checking", "amount": "6%",
@@ -319,7 +319,7 @@ def _sim(test_data_dir: Path, *args: str):  # type: ignore[no-untyped-def]
 
 def _calendar(retire_alice_csv: Callable[[str], Path]) -> list[dict[str, str]]:
     import csv
-    with retire_alice_csv("calendar.csv").open(newline="") as fh:
+    with retire_alice_csv("calendar.csv").open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 

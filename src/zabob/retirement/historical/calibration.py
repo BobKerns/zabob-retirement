@@ -150,8 +150,8 @@ class Fetcher:
             data = self._download(url)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-            stamp.write_text(datetime.now(UTC).date().isoformat() + "\n")
-        self.retrieved[url] = stamp.read_text().strip() if stamp.exists() else "unknown"
+            stamp.write_text(datetime.now(UTC).date().isoformat() + "\n", encoding="utf-8")
+        self.retrieved[url] = stamp.read_text(encoding="utf-8").strip() if stamp.exists() else "unknown"
         return path.read_bytes()
 
     def retrieved_by_place(self) -> dict[str, str]:
@@ -520,7 +520,7 @@ def load_series(fetcher: Fetcher, args: list[str]) -> list[Series]:
             s = load_csv_like(f"fred:{ident}", text, ident, f"FRED {ident}", kind)
         else:
             try:
-                text = Path(ident).read_text()
+                text = Path(ident).read_text(encoding="utf-8")
             except OSError as exc:
                 raise DataError(f"couldn't read {ident}: {exc}") from exc
             s = load_csv_like(f"csv:{ident}", text, Path(ident).stem, ident, kind)

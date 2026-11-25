@@ -45,8 +45,8 @@ def test_use_moves_scenarios_to_the_top_first_named_topmost(test_data_dir: Path)
 
 def test_an_update_drops_missing_and_disabled_scenarios(test_data_dir: Path) -> None:
     _scenarios(test_data_dir, "a", "b")
-    _seed(test_data_dir).write_text("gone\na\nb\nbase\n")
-    (test_data_dir / "scenarios" / "b" / ".disable").write_text("")
+    _seed(test_data_dir).write_text("gone\na\nb\nbase\n", encoding="utf-8")
+    (test_data_dir / "scenarios" / "b" / ".disable").write_text("", encoding="utf-8")
     working_set.use(test_data_dir, "retire_alice", "nope", None)
     assert read_working_set(test_data_dir) == ["retire_alice", "a", "base"]
 
@@ -87,14 +87,14 @@ def test_a_background_build_is_not_use(
 def test_naming_or_defaulting_a_scenario_on_the_cli_is_use(test_data_dir: Path) -> None:
     assert _sim(test_data_dir, "account", "list", "--scenario", "base").exit_code == 0
     assert read_working_set(test_data_dir) == ["base"]
-    current_scenario_path(test_data_dir).write_text("retire_alice\n")
+    current_scenario_path(test_data_dir).write_text("retire_alice\n", encoding="utf-8")
     assert _sim(test_data_dir, "account", "list").exit_code == 0
     assert read_working_set(test_data_dir) == ["retire_alice", "base"]
 
 
 @pytest.mark.uses_current_scenario_write
 def test_switch_is_use_even_when_unchanged(test_data_dir: Path) -> None:
-    _seed(test_data_dir).write_text("base\nretire_alice\n")
+    _seed(test_data_dir).write_text("base\nretire_alice\n", encoding="utf-8")
     result = _sim(test_data_dir, "switch", "retire_alice")
     assert result.exit_code == 0, result.output
     assert read_working_set(test_data_dir) == ["retire_alice", "base"]
@@ -102,7 +102,7 @@ def test_switch_is_use_even_when_unchanged(test_data_dir: Path) -> None:
 
 @pytest.mark.uses_current_scenario_write
 def test_an_edit_is_use(test_data_dir: Path) -> None:
-    _seed(test_data_dir).write_text("retire_alice\nbase\n")
+    _seed(test_data_dir).write_text("retire_alice\nbase\n", encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "base", "--description", "edited")
     assert result.exit_code == 0, result.output
     assert read_working_set(test_data_dir) == ["base", "retire_alice"]
@@ -117,8 +117,8 @@ def test_a_new_scenario_is_use_but_its_parent_is_not(test_data_dir: Path) -> Non
 
 @pytest.mark.uses_current_scenario_write
 def test_cli_rename_puts_it_on_top_and_delete_drops_it(test_data_dir: Path) -> None:
-    _seed(test_data_dir).write_text("base\nretire_alice\n")
-    current_scenario_path(test_data_dir).write_text("base\n")
+    _seed(test_data_dir).write_text("base\nretire_alice\n", encoding="utf-8")
+    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
     assert _sim(test_data_dir, "scenario", "rename", "retire_alice", "retire_bill").exit_code == 0
     assert read_working_set(test_data_dir) == ["retire_bill", "base"]
     assert _sim(test_data_dir, "scenario", "delete", "retire_bill", "--yes").exit_code == 0

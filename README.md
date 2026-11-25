@@ -55,13 +55,13 @@ The simulator works out a state's income tax the same way for every state:
 federal-style income, with capital gains taxed as ordinary income by
 default, less the state's standard deduction, run through the state's
 brackets ([how tax is handled](./docs/user-guide.md#3-how-tax-is-handled)). A
-state needs two tables in `aux/`, `state_brackets__XX.csv` and
+state needs two tables in `tables/`, `state_brackets__XX.csv` and
 `state_standard_deduction__XX.csv`, a state tax, `taxes/state.csv`, and a
 `residence.csv` saying where the household lives. `sim tax state` chooses the
 state, and adds the state tax if the scenario has none; `sim tax move` records
 a move to another state or county. Where a state treats capital gains differently, up to three more
 tables say how: a share of long-term gain excluded, and gain rates of its own
-([the `aux/` README](./templates/aux/README.md#a-states-capital-gains)).
+([the `tables/` README](./templates/tables/README.md#a-states-capital-gains)).
 Social Security is left out unless `state_social_security__XX.csv` says how
 the state taxes it: the federally taxable amount less an exclusion that can
 phase out with income. Two more are optional: `state_surcharge__XX.csv`, a
@@ -175,8 +175,9 @@ To use the simulator, install it from PyPI with [uv](https://docs.astral.sh/uv/)
 uv tool install zabob-retirement
 sim init --example     # Alice and Bill's household, to try things on
 sim init               # or your own data repo, in ~/zabob-retirement
-source ~/zabob-retirement/sim/activate-analysis
 ```
+`sim init` makes the data repo your default, so the commands find it from any
+folder and shell, Windows PowerShell included.
 Upgrade with `uv tool upgrade zabob-retirement`. See
 [docs/SETUP.md](./docs/SETUP.md#install-the-program) for more.
 
@@ -259,8 +260,10 @@ ensembles, accounts, lots, chains, scheduled rules, calendar rows, persons,
 series, tags, symbols and itemizations. Names come from the scenario named on
 the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
-before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir` or
-`$ANALYSIS_DATA_DIR`, which the data repo's `activate-analysis` sets.
+before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
+`$ANALYSIS_DATA_DIR` (which the data repo's `activate-analysis` sets), or
+your default data repo (`sim use`). TAB completion needs bash or zsh with
+`activate-analysis` sourced.
 
 A command run without a name it needs asks for it, listing the choices,
 with the same completion at the prompt.

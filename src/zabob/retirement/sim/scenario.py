@@ -7,7 +7,6 @@ within the simulation framework.
 
 import csv
 import json
-import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -15,6 +14,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from zabob.retirement.oscompat import login_name
+from zabob.retirement import user_config
 from zabob.retirement.sim.loader import LoadError
 from zabob.retirement.sim import chain_edit, registries, units
 from zabob.retirement.sim.dates import month_end_iso
@@ -58,7 +59,7 @@ A file here replaces the parent scenario's file of the same name; a series
 with no file here is inherited from the parent. A file with only its
 header empties the series: this scenario has none, and a scenario built on
 it that reads the series must supply its own. CPI is the exception: it
-lives in `aux/inflation__cpi.csv`, not here.
+lives in `tables/inflation__cpi.csv`, not here.
 
 `sim series list|show|add|edit|delete|revert` read and change these files.
 
@@ -105,9 +106,10 @@ def scenario_readme(name: str, description: str, parents: list[str]) -> str:
     ))
 
 
-def current_user() -> str:
-    """Who a new scenario's ``created_by`` names."""
-    return os.environ.get("ANALYSIS_USER") or os.environ.get("USER") or "unknown"
+def current_user(data_dir: Path | None = None) -> str:
+    """Who a new scenario's ``created_by`` names: the user of ``data_dir``,
+    the data repo it is made in (#687), not of the default one."""
+    return user_config.current_user(data_dir) or login_name()
 
 
 def create_scenario(data_dir: Path, name: str, parent: str | ScenarioRef | None,
@@ -186,7 +188,7 @@ def create_scenario(data_dir: Path, name: str, parent: str | ScenarioRef | None,
             "name": name,
             "description": description,
             "parent_scenario": ":".join(parents),
-            "created_by": current_user(),
+            "created_by": current_user(data_dir),
             "meta_json": json.dumps(
                 {} if ensemble_size is None else {"ensemble_size": ensemble_size},
                 separators=(",", ":"),

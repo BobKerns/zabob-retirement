@@ -54,7 +54,7 @@ def write_chain(retire_alice_csv: Callable[[str], Path]) -> Callable[..., None]:
         path.write_text("account_name,lot,percent\n" + "".join(
             f"{account},{lot},{percent}\n"
             for account, _, rest in (step.partition(",") for step in steps)
-            for lot, percent in [rest.split(",") if rest.count(",") else ("", rest)]))
+            for lot, percent in [rest.split(",") if rest.count(",") else ("", rest)]), encoding="utf-8")
     return _write
 
 

@@ -134,7 +134,7 @@ def test_a_loss_or_a_hobby_pays_nothing_and_needs_no_table() -> None:
 
 def test_a_profit_without_the_table_is_an_error() -> None:
     no_table = {k: v for k, v in TABLES.items() if k[0] != "self_employment_tax"}
-    with pytest.raises(TaxError, match="needs aux/self_employment_tax.csv"):
+    with pytest.raises(TaxError, match="needs tables/self_employment_tax.csv"):
         _federal([_sales("alice", 50_000_00)], tables=no_table)
 
 

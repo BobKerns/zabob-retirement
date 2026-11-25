@@ -23,7 +23,7 @@ def test_ensure_jupyter_mcp_config_creates_file_with_generated_token(tmp_path: P
     assert len(settings.token) == 64  # secrets.token_hex(32)
 
     config_path = tmp_path / ".mcp.json"
-    data = json.loads(config_path.read_text())
+    data = json.loads(config_path.read_text(encoding="utf-8"))
     assert data["mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"] == settings.token
 
 
@@ -37,7 +37,7 @@ def test_ensure_jupyter_mcp_config_reuses_existing_token(tmp_path: Path) -> None
 
 
 def test_ensure_jupyter_mcp_config_rejects_malformed_file(tmp_path: Path) -> None:
-    (tmp_path / ".mcp.json").write_text('{"mcpServers": {}}')
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
 
     try:
         ensure_jupyter_mcp_config(tmp_path)
@@ -87,7 +87,7 @@ def test_cli_jupyter_generates_config_and_execs_jupyter_lab(tmp_path: Path) -> N
 
     config_path = tmp_path / ".mcp.json"
     assert config_path.exists()
-    token = json.loads(config_path.read_text())["mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"]
+    token = json.loads(config_path.read_text(encoding="utf-8"))["mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"]
     assert argv[3] == f"--IdentityProvider.token={token}"
 
 

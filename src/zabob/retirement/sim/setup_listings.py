@@ -412,7 +412,7 @@ def _money_columns(path: Path) -> frozenset[str]:
     balances, a rule's and a year-to-date row's amounts, a chain step's
     ``maximum``, an aux table's money columns, an itemization's ``Value``."""
     folder = path.parent.name
-    if folder in ("aux", "series", "prices"):
+    if folder in ("tables", "series", "prices"):
         kind = path.stem.split("__", 1)[0]
         return registries.AUX_MONEY_COLUMNS.get(kind, frozenset())
     if folder == "itemizations":
@@ -425,7 +425,7 @@ def _money_columns(path: Path) -> frozenset[str]:
 def _referencing_files(data_dir: Path, scenario_dir: Path) -> Iterable[Path]:
     for folder in _lineage_dirs(scenario_dir):
         yield from sorted(folder.rglob("*.csv"))
-    for shared in ("aux", "itemizations"):
+    for shared in ("tables", "itemizations"):
         if (data_dir / shared).is_dir():
             yield from sorted((data_dir / shared).rglob("*.csv"))
 
@@ -510,7 +510,7 @@ def itemization_references(
     data_dir: Path, scenario_dir: Path, *, effective: bool = False,
 ) -> dict[str, list[ItemizationReference]]:
     """Every ``@name`` in a money column (``_money_columns``) of the CSVs
-    the scenario reads -- its lineage's folders and the shared aux/ and
+    the scenario reads -- its lineage's folders and the shared tables/ and
     itemizations/ -- by the name it references. A row a later scenario
     overrides is still reported, in its own file, unless ``effective``:
     then only what the scenario reads, past every override, is."""

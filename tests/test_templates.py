@@ -41,7 +41,7 @@ def test_the_templates_are_the_ones_the_docs_describe() -> None:
 def test_every_template_readme_lists_every_template(readme: str) -> None:
     """Each README carries the whole template tree, so a new template has
     to be added to all of them."""
-    text = (TEMPLATE_SCENARIOS_DIR / readme).read_text()
+    text = (TEMPLATE_SCENARIOS_DIR / readme).read_text(encoding="utf-8")
     assert [name for name in TEMPLATES if f"`{name}`" not in text] == []
 
 
@@ -72,7 +72,7 @@ def test_a_data_repo_folder_replaces_its_template_whole(
     local_templates: Path, test_data_dir: Path, tmp_path: Path,
 ) -> None:
     (local_templates / "t_market_series" / "series" / "rate__stock_us.csv").write_text(
-        "effective_date,annual_rate\n2025-01-31,9%\n")
+        "effective_date,annual_rate\n2025-01-31,9%\n", encoding="utf-8")
     result = load_scenario(test_data_dir, "retire_alice", intent_dir=tmp_path / "intent",
                            compute_stamps=False, allow_dirty_data=True)
     con = sqlite3.connect(result.intent_path)
@@ -196,7 +196,7 @@ def test_a_mixed_in_template_keeps_the_scenarios_span_and_seed(
     """Bob: an ensemble template mixed in after a scenario mustn't override
     its seed (nor, from t_empty, its dates)."""
     folder = test_data_dir / "scenarios" / "retire_alice" / "scenario.csv"
-    folder.write_text(folder.read_text().replace(",42,", ",7,"))
+    folder.write_text(folder.read_text(encoding="utf-8").replace(",42,", ",7,"), encoding="utf-8")
     derive_scenario("mixed", "retire_alice:t_market_ensemble")
     intent = load_scenario(test_data_dir, "mixed", intent_dir=tmp_path / "intent",
                            compute_stamps=False, allow_dirty_data=True).intent_path
@@ -218,7 +218,7 @@ def test_the_ensemble_templates_set_no_seed_of_their_own() -> None:
     override that scenario's seed; t_empty's 42 is only a fallback."""
     import csv
     seeds = {name: next(csv.DictReader(
-                 (TEMPLATE_SCENARIOS_DIR / name / "scenario.csv").read_text().splitlines()))["seed"]
+                 (TEMPLATE_SCENARIOS_DIR / name / "scenario.csv").read_text(encoding="utf-8").splitlines()))["seed"]
              for name in TEMPLATES}
     assert {name for name, seed in seeds.items() if seed} == {"t_empty"}
 

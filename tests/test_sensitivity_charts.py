@@ -87,7 +87,7 @@ def test_chart_file_on_a_monte_carlo_batch(mc_batch: Path, runs_dir: Path, tmp_p
     chart = tmp_path / "correlation.svg"
     result = _sensitivity(runs_dir, "--chart-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
-    assert chart.read_text().lstrip().startswith("<?xml")
+    assert chart.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     assert f"correlation retire_alice ({mc_batch.name})" in result.output
 
 

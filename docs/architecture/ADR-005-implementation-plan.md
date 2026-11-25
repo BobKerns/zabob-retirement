@@ -57,9 +57,9 @@ Exit: Phase 0 baseline still identical; new multi-lot tests pass.
 
 ## Phase 3 — Prices and derived opening balances
 
-1. Register `security_price` in `registries.py` aux kinds (`kind`, `series`=symbol, `price_micros`); loader reads `aux/security_price__<SYMBOL>.csv`.
+1. Register `security_price` in `registries.py` aux kinds (`kind`, `series`=symbol, `price_micros`); loader reads `tables/security_price__<SYMBOL>.csv`.
 2. Loader derives blank `opening_balance` from `quantity × price at scenario.start`; balance-given-and-quantity-given keeps the balance; blank with no derivable value is an error.
-3. Symbol rate series: `aux/rate__<SYMBOL>.csv` resolves through the §5 precedence; add a loader check for an account/ticker name collision.
+3. Symbol rate series: `tables/rate__<SYMBOL>.csv` resolves through the §5 precedence; add a loader check for an account/ticker name collision.
 4. **Price fetcher: done** (`zabob.retirement.sim.prices`, `sim prices fetch`). A `PriceProvider` (a `closes(symbol, start, end)` method; the only one is `YahooProvider`, the public chart endpoint via the standard library, so no new dependency or key) supplies unadjusted daily closes; the fetcher keeps each month's last close since the December before the earliest scenario start's year, plus the latest, and merges them into `prices/security_price__<SYMBOL>.csv` (Phase 9) add-only by date (`--refresh` overwrites). With no symbols named, the symbols are those on lots with a `quantity` plus those named in `securities.csv` or `allocations.csv` or with a `prices/` file, excluding `CASH` and `CD`; a failure for one no lot holds is reported without failing the command ([#151](https://github.com/BobKerns/zabob-retirement/issues/151)). `sim prices show` reads the files back: a summary per symbol, or one symbol's history. The loader and the intent/run `aux_table` snapshot are unchanged, so a run still records the prices it used.
 
 Exit: tests for derived balance, rounding, missing price, and precedence.
@@ -108,19 +108,19 @@ Lifts the Phase 2 restriction that `minimum_balance`, refill and overflow are on
 
 Checking and savings were distinguished nowhere in the engine (both take the no-tax withdrawal path, count as cash for yield and for the realized-gain reports), and with lots one account holds both, so the subkinds `checking` and `savings` merge into `cash` (schema 23; `LIQUID_SUBKINDS`, `TAXABLE_SUBKINDS_WITH_NO_WITHDRAWAL_TAX` and the yield/growth rate role follow). Data migration is a rename of the `subkind` column. The symbol views (`holding_symbols`, `symbol_holders_view`) now include cash lots as well as investment lots, so a `CASH` symbol convention gives one view of all cash.
 
-## Phase 9 — Correcting the aux/series/prices split (done)
+## Phase 9 — Correcting the tables/series/prices split (done)
 
-Phase 6's aux/series split (§4.1d, §4.4) put `security_price__*.csv` and `state_brackets__*.csv`
-in the same `series/` folder as `rate__*.csv`, and gave `series/` a shared root tier like `aux/`.
+Phase 6's tables/series split (§4.1d, §4.4) put `security_price__*.csv` and `state_brackets__*.csv`
+in the same `series/` folder as `rate__*.csv`, and gave `series/` a shared root tier like `tables/`.
 Corrected: security prices are a shared fact regardless of scenario, not a per-scenario
 projection, so they get their own shared folder, `prices/` (Phase 3's `security_price` aux kind
 is unchanged; only the folder moved). State tax brackets are tax law, not a projection, so
-`state_brackets__*.csv` moved back to `aux/`, beside `federal_brackets.csv`. `series/` keeps
+`state_brackets__*.csv` moved back to `tables/`, beside `federal_brackets.csv`. `series/` keeps
 only the genuinely per-scenario kinds (`rate__*`, non-CPI `inflation__*`) and loses its shared
 root tier entirely (`_merged_override_files(..., include_shared=False)`); what's "shared" for
 these is just the root scenario's own `series/`, inherited the same way as any other
-per-scenario file. `sim prices fetch`'s target directory moved from `aux/` (then briefly
-`series/`) to `prices/` to match. Data migration: move `state_brackets__*.csv` back to `aux/`;
+per-scenario file. `sim prices fetch`'s target directory moved from `tables/` (then briefly
+`series/`) to `prices/` to match. Data migration: move `state_brackets__*.csv` back to `tables/`;
 move `rate__*.csv`/non-CPI `inflation__*.csv` into the root scenario's own `series/`; move
 `security_price__*.csv` into a new top-level `prices/`.
 

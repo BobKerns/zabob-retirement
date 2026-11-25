@@ -42,10 +42,10 @@ def _ctx(memory: dict, budgets: dict[str, int], month: date = date(2030, 1, 31))
 def _use(strategy_csv: Callable[[str, str], Path], kind: str, params: dict) -> None:
     """Make ``alice_spending``'s ``flex`` strategy (one row) ``kind`` with ``params``."""
     path = strategy_csv(SCENARIO, FLEX)
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(kind=kind, params_json=json.dumps(params))
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)

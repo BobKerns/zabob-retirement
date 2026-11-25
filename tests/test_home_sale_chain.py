@@ -33,7 +33,7 @@ SALE = {
 def _chain(retire_alice_csv: Callable[[str], Path], role: str, name: str,
            steps: list[dict[str, str]]) -> None:
     path = retire_alice_csv(f"chains/{role}/{name}.csv")
-    with path.open("w", newline="") as fh:
+    with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=CHAIN_COLUMNS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(steps)
@@ -430,7 +430,7 @@ def test_chain_commands_write_and_keep_the_tax_columns(
     added = sim("step", "add", "home_sale", "Asset_Checking", "--tax-character", "ltcg")
     assert "taxed as ltcg" in added
     sim("step", "edit", "home_sale", "1", "--maximum", "")
-    with retire_alice_csv("chains/destination/home_sale.csv").open() as fh:
+    with retire_alice_csv("chains/destination/home_sale.csv").open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert [(r["tax_character"], r["basis_of"]) for r in rows] == [
         ("home_sale", "Asset_Home"), ("ltcg", ""),
@@ -446,7 +446,7 @@ def _sim_ok(data_dir: Path, *args: str) -> None:
 
 
 def _steps(path: Path) -> list[tuple[str, str]]:
-    with path.open() as fh:
+    with path.open(encoding="utf-8") as fh:
         return [(row["basis_of"], row["basis_of_lot"]) for row in csv.DictReader(fh)]
 
 

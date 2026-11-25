@@ -48,7 +48,7 @@ class _Repo:
                               capture_output=True, text=True).stdout.strip()
 
     def commit(self, content: str, message: str) -> str:
-        (self.root / "file.txt").write_text(content)
+        (self.root / "file.txt").write_text(content, encoding="utf-8")
         self.git("add", "file.txt")
         self.git("commit", "-q", "-m", message)
         return self.git("rev-parse", "HEAD")
@@ -118,7 +118,7 @@ def test_main_only_lists_a_promotion_merge_that_changed_something(promote: Modul
     repo.merge_pull(1, lambda: repo.commit("a", "Change"))
     repo.git("checkout", "-q", "main")
     repo.git("merge", "-q", "--no-ff", "--no-commit", "dev")
-    (repo.root / "resolved.txt").write_text("conflict resolved on main")
+    (repo.root / "resolved.txt").write_text("conflict resolved on main", encoding="utf-8")
     repo.git("add", "resolved.txt")
     repo.git("commit", "-q", "-m", "Merge pull request #2 from x/dev")
     [line] = promote.main_only(repo.root, "main", "dev")
@@ -127,7 +127,7 @@ def test_main_only_lists_a_promotion_merge_that_changed_something(promote: Modul
 
 def test_main_only_lists_a_hotfix_dev_lacks_until_dev_has_it(promote: ModuleType, repo: _Repo) -> None:
     repo.git("checkout", "-q", "main")
-    (repo.root / "hotfix.txt").write_text("fix")
+    (repo.root / "hotfix.txt").write_text("fix", encoding="utf-8")
     repo.git("add", "hotfix.txt")
     repo.git("commit", "-q", "-m", "Hotfix: Fixes #9")
     [line] = promote.main_only(repo.root, "main", "dev")
@@ -271,7 +271,7 @@ def test_keywords_clear_runs_the_check_on_the_text(promote: ModuleType, monkeypa
     seen: list[str] = []
 
     def run(args: list[str], **kw: object) -> subprocess.CompletedProcess:
-        seen.append(Path(args[-1]).read_text())
+        seen.append(Path(args[-1]).read_text(encoding="utf-8"))
         # Its output is dropped: a matching line can hold a private keyword.
         assert kw.get("capture_output")
         return subprocess.CompletedProcess(args, 1 if "bad" in seen[-1] else 0)
@@ -299,13 +299,14 @@ def test_bisect_skips_a_node_pytest_cant_find(bisect: ModuleType, tmp_path: Path
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_x.py").write_text(
         "import pytest\n\n\nclass TestThing:\n    def test_old(self):\n        pass\n\n\n"
-        "@pytest.mark.parametrize('n', [1])\ndef test_case(n):\n    pass\n")
+        "@pytest.mark.parametrize('n', [1])\ndef test_case(n):\n    pass\n", encoding="utf-8")
     assert bisect.collects([node], tmp_path, dict(os.environ)) is found
 
 
 def test_bisect_lets_a_collection_error_be_blamed(bisect: ModuleType, tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_x.py").write_text("import no_such_module\n\n\ndef test_old():\n    pass\n")
+    (tmp_path / "tests" / "test_x.py").write_text("import no_such_module\n\n\ndef test_old():\n    pass\n",
+                                                  encoding="utf-8")
     assert bisect.collects(["tests/test_x.py::test_old"], tmp_path, dict(os.environ))
 
 
@@ -329,5 +330,5 @@ def test_bisect_skips_a_merge_where_the_test_is_missing(bisect: ModuleType, tmp_
                                                         test: str, present: bool) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_x.py").write_text("def test_old(case):\n    pass\n\n\nclass TestThing(Base):\n"
-                                                  "    def test_old(self):\n        pass\n")
+                                                  "    def test_old(self):\n        pass\n", encoding="utf-8")
     assert bisect.present(test, tmp_path) is present

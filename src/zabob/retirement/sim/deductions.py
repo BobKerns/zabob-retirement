@@ -2,7 +2,7 @@
 ``federal_deductions``/``state_deductions`` aux tables that ``sim deduction``
 lists and writes.
 
-A scenario's own ``aux/<kind>.csv`` replaces an ancestor's or the shared one
+A scenario's own ``tables/<kind>.csv`` replaces an ancestor's or the shared one
 whole (ADR-003 §4.1d), so a scenario that changes one row starts from the
 rows it inherits. A row's amount is dollars, or ``@name`` for an
 ``itemizations/<name>.csv`` listing the expenses, which ``sim deduction``
@@ -43,18 +43,18 @@ class InForce:
     path: Path | None
     """The file the scenario reads, or None when it has none."""
     defined_in: str
-    """:data:`THIS_SCENARIO`, the ancestor whose ``aux/`` has it,
+    """:data:`THIS_SCENARIO`, the ancestor whose ``tables/`` has it,
     :data:`SHARED`, or "templates"."""
 
 
 def in_force(data_dir: Path, scenario_dir: Path, kind: str) -> InForce:
-    """The ``aux/<kind>.csv`` the scenario reads: its own, else its nearest
+    """The ``tables/<kind>.csv`` the scenario reads: its own, else its nearest
     ancestor's, else the data repo's shared one, else a template's."""
     for folder in reversed(_lineage_dirs(scenario_dir)):
-        path = folder / "aux" / f"{kind}.csv"
+        path = folder / "tables" / f"{kind}.csv"
         if path.is_file():
             return InForce(path, THIS_SCENARIO if folder == scenario_dir else folder.name)
-    for folder, label in ((data_dir / "aux", SHARED), (TEMPLATE_AUX_DIR, "templates")):
+    for folder, label in ((data_dir / "tables", SHARED), (TEMPLATE_AUX_DIR, "templates")):
         path = folder / f"{kind}.csv"
         if path.is_file():
             return InForce(path, label)

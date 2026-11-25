@@ -51,7 +51,7 @@ def test_list_says_where_each_series_comes_from(sim: Callable[..., Result]) -> N
     assert "rate" in line and "6%" in line and "retire_alice" in line
     food = next(line for line in result.output.splitlines() if " food " in line)
     assert "inflation" in food and "t_inflation_series" in food
-    assert "aux/inflation__cpi.csv" in result.output
+    assert "tables/inflation__cpi.csv" in result.output
     rates = sim("series", "list", "--kind", "rate")
     assert " food " not in rates.output and " brokerage_growth " in rates.output
 
@@ -71,7 +71,7 @@ def test_add_writes_a_series_from_options(sim: Callable[..., Result], series_dir
     result = sim("series", "add", "bonds_long", "--kind", "rate", "--rate", "4%", "--set", "2030-01=3.5")
     assert result.exit_code == 0, result.output
     # --rate starts at the scenario's start; a rate's % may be left off.
-    assert (series_dir / "rate__bonds_long.csv").read_text() == (
+    assert (series_dir / "rate__bonds_long.csv").read_text(encoding="utf-8") == (
         _HEADER + "2026-05-31,4%\n2030-01-31,3.5%\n")
     assert _loads(test_data_dir, intent_dir, "retire_alice") == []
 
@@ -79,7 +79,7 @@ def test_add_writes_a_series_from_options(sim: Callable[..., Result], series_dir
 def test_add_asks_for_what_is_left_out(sim: Callable[..., Result], series_dir: Path) -> None:
     result = sim("series", "add", input="tuition\nrate\n2027-09\n5%\n2030-09\n6%\n\n")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "rate__tuition.csv").read_text() == (
+    assert (series_dir / "rate__tuition.csv").read_text(encoding="utf-8") == (
         _HEADER + "2027-09-30,5%\n2030-09-30,6%\n")
 
 
@@ -101,9 +101,9 @@ def test_edit_with_options_changes_the_scenarios_own_file(sim: Callable[..., Res
     assert result.exit_code == 0, result.output
     assert "updated rate series 'brokerage_growth'" in result.output
     path = series_dir / "rate__brokerage_growth.csv"
-    assert path.read_text() == _HEADER + "2026-01-31,6.5%\n2030-01-31,5%\n"
+    assert path.read_text(encoding="utf-8") == _HEADER + "2026-01-31,6.5%\n2030-01-31,5%\n"
     assert sim("series", "edit", "brokerage_growth", "--remove", "2030-01").exit_code == 0
-    assert path.read_text() == _HEADER + "2026-01-31,6.5%\n"
+    assert path.read_text(encoding="utf-8") == _HEADER + "2026-01-31,6.5%\n"
 
 
 def test_editing_an_inherited_series_writes_an_override(
@@ -112,7 +112,8 @@ def test_editing_an_inherited_series_writes_an_override(
     result = sim("series", "edit", "food", "--set", "2030-01=3%")
     assert result.exit_code == 0, result.output
     assert "wrote an override of inflation series 'food' (from t_inflation_series)" in result.output
-    assert (series_dir / "inflation__food.csv").read_text() == _HEADER + "2025-01-31,2.8%\n2030-01-31,3%\n"
+    assert (series_dir / "inflation__food.csv").read_text(encoding="utf-8") == (
+        _HEADER + "2025-01-31,2.8%\n2030-01-31,3%\n")
     listed = next(line for line in sim("series", "list").output.splitlines() if " food " in line)
     assert listed.rstrip(" │").endswith("t_inflation_series")  # Overrides
 
@@ -122,7 +123,7 @@ def test_editing_cpi_overrides_the_shared_file_in_the_scenarios_aux(
 ) -> None:
     result = sim("series", "edit", "cpi", "--set", "2027-01=3%")
     assert result.exit_code == 0, result.output
-    assert (test_scenarios_dir / "retire_alice" / "aux" / "inflation__cpi.csv").is_file()
+    assert (test_scenarios_dir / "retire_alice" / "tables" / "inflation__cpi.csv").is_file()
 
 
 def test_guided_edit_changes_adds_and_removes_rows(sim: Callable[..., Result], series_dir: Path) -> None:
@@ -134,16 +135,16 @@ def test_guided_edit_changes_adds_and_removes_rows(sim: Callable[..., Result], s
         "", ]                        # write
     result = sim("series", "edit", "brokerage_growth", input="\n".join(answers) + "\n")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "rate__brokerage_growth.csv").read_text() == (
+    assert (series_dir / "rate__brokerage_growth.csv").read_text(encoding="utf-8") == (
         _HEADER + "2026-01-31,6.5%\n2040-01-31,4%\n")
 
 
 def test_guided_edit_quit_writes_nothing(sim: Callable[..., Result], series_dir: Path) -> None:
     path = series_dir / "rate__brokerage_growth.csv"
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     result = sim("series", "edit", "brokerage_growth", input="-1\nq\n")
     assert result.exit_code == 0 and "nothing was written" in result.output, result.output
-    assert path.read_text() == before
+    assert path.read_text(encoding="utf-8") == before
 
 
 def test_edit_refuses_to_leave_no_rows(sim: Callable[..., Result]) -> None:
@@ -166,7 +167,7 @@ def test_delete_empties_an_inherited_series_and_suggests_revert(
 ) -> None:
     result = sim("series", "delete", "food", "--yes")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "inflation__food.csv").read_text() == _HEADER
+    assert (series_dir / "inflation__food.csv").read_text(encoding="utf-8") == _HEADER
     assert "`sim series revert food` inherits t_inflation_series's again" in result.output
     # An empty series is no series: it isn't offered, listed or shown.
     assert "food" not in names.series_names(test_data_dir, "retire_alice")
@@ -181,7 +182,7 @@ def test_delete_empties_the_scenarios_own_override_too(sim: Callable[..., Result
     assert sim("series", "edit", "food", "--set", "2030-01=3%").exit_code == 0
     result = sim("series", "delete", "food", "--yes")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "inflation__food.csv").read_text() == _HEADER
+    assert (series_dir / "inflation__food.csv").read_text(encoding="utf-8") == _HEADER
 
 
 def test_an_emptied_series_must_be_supplied_by_a_scenario_reading_it(
@@ -199,7 +200,7 @@ def test_an_emptied_series_must_be_supplied_by_a_scenario_reading_it(
     issues = _loads(test_data_dir, intent_dir, "kid")
     assert any("references series 'food'" in issue for issue in issues), issues
     (kid / "series").mkdir()
-    (kid / "series" / "inflation__food.csv").write_text(_HEADER + "2026-01-31,3%\n")
+    (kid / "series" / "inflation__food.csv").write_text(_HEADER + "2026-01-31,3%\n", encoding="utf-8")
     assert _loads(test_data_dir, intent_dir, "kid") == []
 
 
@@ -207,7 +208,7 @@ def test_delete_refuses_a_series_the_scenario_reads(sim: Callable[..., Result], 
     result = sim("series", "delete", "brokerage_growth", "--yes")
     assert result.exit_code != 0, result.output
     assert "references series 'brokerage_growth'" in result.output
-    assert (series_dir / "rate__brokerage_growth.csv").read_text() == _HEADER + "2026-01-31,6%\n"
+    assert (series_dir / "rate__brokerage_growth.csv").read_text(encoding="utf-8") == _HEADER + "2026-01-31,6%\n"
 
 
 def test_delete_refuses_cpi(sim: Callable[..., Result]) -> None:
@@ -225,7 +226,7 @@ def test_add_gives_an_emptied_series_rates_again(sim: Callable[..., Result], ser
     assert sim("series", "delete", "food", "--yes").exit_code == 0
     result = sim("series", "add", "food", "--kind", "inflation", "--rate", "2%")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "inflation__food.csv").read_text() == _HEADER + "2026-05-31,2%\n"
+    assert (series_dir / "inflation__food.csv").read_text(encoding="utf-8") == _HEADER + "2026-05-31,2%\n"
 
 
 @pytest.mark.parametrize("change", [("delete", "food", "--yes"), ("edit", "food", "--set", "2030-01=3%")])
@@ -255,7 +256,7 @@ def test_revert_offers_only_the_scenarios_own_files_over_inherited_ones(sim: Cal
 # ---------- a name with both kinds ----------
 
 def test_a_name_with_both_kinds_needs_kind(sim: Callable[..., Result], series_dir: Path) -> None:
-    (series_dir / "rate__food.csv").write_text(_HEADER + "2026-01-31,1%\n")
+    (series_dir / "rate__food.csv").write_text(_HEADER + "2026-01-31,1%\n", encoding="utf-8")
     result = sim("series", "show", "food")
     assert result.exit_code != 0 and "say which with --kind" in result.output, result.output
     shown = sim("series", "show", "food", "--kind", "rate")
@@ -273,21 +274,21 @@ def test_an_inflation_series_must_have_a_rate_at_the_start(sim: Callable[..., Re
 
 
 def test_the_rate_at_the_start_follows_dates_not_file_order(sim: Callable[..., Result], series_dir: Path) -> None:
-    (series_dir / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-01-31,6%\n2025-01-31,3%\n")
+    (series_dir / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-01-31,6%\n2025-01-31,3%\n", encoding="utf-8")
     line = next(line for line in sim("series", "list").output.splitlines() if " brokerage_growth " in line)
     assert " 6% " in line, line
 
 
 def test_delete_empties_a_series_in_both_folders(sim: Callable[..., Result], test_scenarios_dir: Path,
                                                  series_dir: Path) -> None:
-    """The loader reads a name's series/ and aux/ files both, so emptying
+    """The loader reads a name's series/ and tables/ files both, so emptying
     only one would leave rates the run still uses."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
+    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n", encoding="utf-8")
     result = sim("series", "delete", "food", "--yes")
     assert result.exit_code == 0, result.output
-    assert (series_dir / "inflation__food.csv").read_text() == _HEADER
+    assert (series_dir / "inflation__food.csv").read_text(encoding="utf-8") == _HEADER
     assert not (aux / "inflation__food.csv").exists()  # only this scenario had it there
     reverted = sim("series", "revert", "food")
     assert reverted.exit_code == 0, reverted.output
@@ -298,9 +299,9 @@ def test_the_rate_at_the_start_counts_a_same_named_aux_file(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
     # The loader reads both files; the later dated row is the one in force.
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
+    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n", encoding="utf-8")
     line = next(line for line in sim("series", "list").output.splitlines() if " brokerage_growth " in line)
     assert " 2% " in line, line
 
@@ -308,14 +309,14 @@ def test_the_rate_at_the_start_counts_a_same_named_aux_file(
 def test_revert_finds_an_override_in_the_scenarios_aux(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    """series/ is inherited, but the child's aux/ has its own file of the name."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    """series/ is inherited, but the child's tables/ has its own file of the name."""
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
-    # Inherited from a parent's aux/ as well, so there is something to revert to.
-    base_aux = test_scenarios_dir / "base" / "aux"
+    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n", encoding="utf-8")
+    # Inherited from a parent's tables/ as well, so there is something to revert to.
+    base_aux = test_scenarios_dir / "base" / "tables"
     base_aux.mkdir(exist_ok=True)
-    (base_aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,1%\n")
+    (base_aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,1%\n", encoding="utf-8")
     result = sim("series", "revert", input="food\n")
     assert result.exit_code == 0, result.output
     assert not (aux / "inflation__food.csv").exists()
@@ -328,16 +329,16 @@ def test_delete_refuses_when_the_file_changed_while_it_asked(
     from zabob.retirement.sim import cli as sim_cli
 
     path = series_dir / "rate__spare.csv"
-    path.write_text(_HEADER + "2026-01-31,1%\n")
+    path.write_text(_HEADER + "2026-01-31,1%\n", encoding="utf-8")
 
     def confirm_after_a_change(*_args: object, **_kwargs: object) -> bool:
-        path.write_text(_HEADER + "2026-01-31,2%\n")
+        path.write_text(_HEADER + "2026-01-31,2%\n", encoding="utf-8")
         return True
 
     monkeypatch.setattr(sim_cli.click, "confirm", confirm_after_a_change)
     result = sim("series", "delete", "spare")
     assert result.exit_code != 0 and "changed on disk" in result.output, result.output
-    assert path.read_text() == _HEADER + "2026-01-31,2%\n"
+    assert path.read_text(encoding="utf-8") == _HEADER + "2026-01-31,2%\n"
 
 
 def test_list_gives_a_template_scenarios_rate_at_the_start(sim: Callable[..., Result]) -> None:
@@ -350,32 +351,32 @@ def test_list_gives_a_template_scenarios_rate_at_the_start(sim: Callable[..., Re
 def test_show_lists_each_folders_file_the_loader_reads(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
+    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n", encoding="utf-8")
     result = sim("series", "show", "brokerage_growth")
     assert result.exit_code == 0, result.output
     assert "series/rate__brokerage_growth.csv" in result.output
-    assert "aux/rate__brokerage_growth.csv" in result.output
+    assert "tables/rate__brokerage_growth.csv" in result.output
     assert "2026-03" in result.output and "2%" in result.output
 
 
 def test_edit_refuses_a_series_with_rates_in_two_folders(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n")
-    before = (series_dir / "rate__brokerage_growth.csv").read_text()
+    (aux / "rate__brokerage_growth.csv").write_text(_HEADER + "2026-03-31,2%\n", encoding="utf-8")
+    before = (series_dir / "rate__brokerage_growth.csv").read_text(encoding="utf-8")
     result = sim("series", "edit", "brokerage_growth", "--set", "2030-01=3%")
     assert result.exit_code != 0 and "merge them into one file" in result.output, result.output
-    assert (series_dir / "rate__brokerage_growth.csv").read_text() == before
+    assert (series_dir / "rate__brokerage_growth.csv").read_text(encoding="utf-8") == before
 
 
 def test_a_set_rate_in_the_first_month_gives_an_inflation_series_its_start_rate(
     series_dir: Path, append_calendar_row: Callable[..., None], test_data_dir: Path, intent_dir: Path,
 ) -> None:
-    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n")
+    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n", encoding="utf-8")
     assert any("inflation__late.csv" in issue for issue in _loads(test_data_dir, intent_dir, "retire_alice"))
     append_calendar_row(date="2026-05-31", kind="set_rate", series="late", amount="2%",
                         params_json='{"aux_kind": "inflation"}')
@@ -384,19 +385,19 @@ def test_a_set_rate_in_the_first_month_gives_an_inflation_series_its_start_rate(
 
 def test_guided_edit_keeps_a_changed_rows_other_cells(sim: Callable[..., Result], series_dir: Path) -> None:
     path = series_dir / "rate__spare.csv"
-    path.write_text("effective_date,annual_rate,description\n2026-01-31,1%,first\n")
+    path.write_text("effective_date,annual_rate,description\n2026-01-31,1%,first\n", encoding="utf-8")
     result = sim("series", "edit", "spare", input="\n".join(["1", "2026-01", "2%", ""]) + "\n")
     assert result.exit_code == 0, result.output
-    assert path.read_text() == "effective_date,annual_rate,description\n2026-01-31,2%,first\n"
+    assert path.read_text(encoding="utf-8") == "effective_date,annual_rate,description\n2026-01-31,2%,first\n"
 
 
 def test_revert_drops_an_own_aux_file_beside_an_inherited_series_file(
     sim: Callable[..., Result], test_scenarios_dir: Path,
 ) -> None:
-    """Only series/ is inherited; the child's own file is in aux/."""
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    """Only series/ is inherited; the child's own file is in tables/."""
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n")
+    (aux / "inflation__food.csv").write_text(_HEADER + "2025-01-31,9%\n", encoding="utf-8")
     result = sim("series", "revert", input="food\n")
     assert result.exit_code == 0, result.output
     assert not (aux / "inflation__food.csv").exists()
@@ -406,22 +407,22 @@ def test_revert_drops_an_own_aux_file_beside_an_inherited_series_file(
 def test_edit_changes_the_only_folders_file_with_rates(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
-    """series/ holds an empty file; aux/ holds the rates the loader reads."""
-    (series_dir / "rate__spare.csv").write_text(_HEADER)
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    """series/ holds an empty file; tables/ holds the rates the loader reads."""
+    (series_dir / "rate__spare.csv").write_text(_HEADER, encoding="utf-8")
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n")
+    (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n", encoding="utf-8")
     result = sim("series", "edit", "spare", "--remove", "2030-01")
     assert result.exit_code == 0, result.output
-    assert (aux / "rate__spare.csv").read_text() == _HEADER + "2026-01-31,1%\n"
-    assert (series_dir / "rate__spare.csv").read_text() == _HEADER
+    assert (aux / "rate__spare.csv").read_text(encoding="utf-8") == _HEADER + "2026-01-31,1%\n"
+    assert (series_dir / "rate__spare.csv").read_text(encoding="utf-8") == _HEADER
 
 
 def test_a_swap_in_the_first_month_gives_an_inflation_series_its_start_rate(
     series_dir: Path, append_calendar_row: Callable[..., None], test_data_dir: Path, intent_dir: Path,
 ) -> None:
-    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n")
-    (series_dir / "inflation__early.csv").write_text(_HEADER + "2020-01-31,2%\n")
+    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n", encoding="utf-8")
+    (series_dir / "inflation__early.csv").write_text(_HEADER + "2020-01-31,2%\n", encoding="utf-8")
     append_calendar_row(date="2026-05-31", kind="swap_aux_table", series="late",
                         params_json='{"aux_kind": "inflation", "source_series": "early"}')
     assert _loads(test_data_dir, intent_dir, "retire_alice") == []
@@ -430,8 +431,8 @@ def test_a_swap_in_the_first_month_gives_an_inflation_series_its_start_rate(
 def test_a_first_month_swap_from_a_series_set_that_month_gives_the_start_rate(
     series_dir: Path, append_calendar_row: Callable[..., None], test_data_dir: Path, intent_dir: Path,
 ) -> None:
-    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n")
-    (series_dir / "inflation__later.csv").write_text(_HEADER + "2030-01-31,2%\n")
+    (series_dir / "inflation__late.csv").write_text(_HEADER + "2030-01-31,3%\n", encoding="utf-8")
+    (series_dir / "inflation__later.csv").write_text(_HEADER + "2030-01-31,2%\n", encoding="utf-8")
     append_calendar_row(date="2026-05-31", kind="set_rate", series="later", amount="2%",
                         params_json='{"aux_kind": "inflation"}')
     append_calendar_row(date="2026-05-31", kind="swap_aux_table", series="late",
@@ -442,12 +443,12 @@ def test_a_first_month_swap_from_a_series_set_that_month_gives_the_start_rate(
 def test_list_counts_and_names_every_folders_file_with_rates(
     sim: Callable[..., Result], test_scenarios_dir: Path, series_dir: Path,
 ) -> None:
-    (series_dir / "rate__spare.csv").write_text(_HEADER)
-    aux = test_scenarios_dir / "retire_alice" / "aux"
+    (series_dir / "rate__spare.csv").write_text(_HEADER, encoding="utf-8")
+    aux = test_scenarios_dir / "retire_alice" / "tables"
     aux.mkdir()
-    (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n")
+    (aux / "rate__spare.csv").write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n", encoding="utf-8")
     line = next(line for line in sim("series", "list").output.splitlines() if " spare " in line)
-    assert " 2 " in line and "aux/rate__spare.csv" in line and "series/rate__spare.csv" not in line, line
+    assert " 2 " in line and "tables/rate__spare.csv" in line and "series/rate__spare.csv" not in line, line
 
 
 def test_edit_uses_the_rows_on_disk_after_asking_for_the_name(
@@ -456,14 +457,14 @@ def test_edit_uses_the_rows_on_disk_after_asking_for_the_name(
     from zabob.retirement.sim import cli as sim_cli
 
     path = series_dir / "rate__spare.csv"
-    path.write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n")
+    path.write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n", encoding="utf-8")
     ask = sim_cli._ask_name
 
     def ask_after_a_change(*args: Any, **kwargs: Any) -> str:
-        path.write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n2035-01-31,3%\n")
+        path.write_text(_HEADER + "2026-01-31,1%\n2030-01-31,2%\n2035-01-31,3%\n", encoding="utf-8")
         return ask(*args, **kwargs)
 
     monkeypatch.setattr(sim_cli, "_ask_name", ask_after_a_change)
     result = sim("series", "edit", "--remove", "2030-01", input="spare\n")
     assert result.exit_code == 0, result.output
-    assert path.read_text() == _HEADER + "2026-01-31,1%\n2035-01-31,3%\n"
+    assert path.read_text(encoding="utf-8") == _HEADER + "2026-01-31,1%\n2035-01-31,3%\n"

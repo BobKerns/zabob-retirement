@@ -23,7 +23,7 @@ def _vary(strategy_csv: Callable[[str, str], Path], rows: str, scenario: str = S
           name: str = "flex") -> Path:
     path = strategy_csv(scenario, f"strategy_vary/{name}.csv")
     path.parent.mkdir(exist_ok=True)
-    path.write_text(HEADER + rows)
+    path.write_text(HEADER + rows, encoding="utf-8")
     return path
 
 
@@ -93,7 +93,7 @@ def test_a_dollar_parameter_varies_in_dollars(
 ) -> None:
     strategy_csv(SCENARIO, "strategies/flex.csv").write_text(
         "kind,chain,rules,params_json\n"
-        'threshold,,flex:optional,"{""portfolio"":""portfolio:invest"",""minimum"":""500000.00""}"\n')
+        'threshold,,flex:optional,"{""portfolio"":""portfolio:invest"",""minimum"":""500000.00""}"\n', encoding="utf-8")
     _vary(strategy_csv, "minimum,uniform,400000.00,600000.00,,,\n")
     recipe = _load(strategy_scenarios, intent_dir).intent_path
     member = resolve_member(recipe, intent_dir / "m1.sqlite3", seed=7, member_index=1, member_count=2,
@@ -120,7 +120,7 @@ def test_a_child_file_replaces_the_parent_file_whole(
     child.mkdir()
     (child / "scenario.csv").write_text(
         "name,description,start,end,seed,parent_scenario,created_by,meta_json\n"
-        "alice_spending_vary,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n")
+        "alice_spending_vary,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n", encoding="utf-8")
     _vary(strategy_csv, "lower,uniform,10%,30%,,,\n", scenario="alice_spending_vary")
     con = sqlite3.connect(_load(strategy_scenarios, intent_dir, "alice_spending_vary").intent_path)
     try:
@@ -163,7 +163,7 @@ def test_a_vary_file_of_a_disabled_strategy_is_unused(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path], intent_dir: Path,
 ) -> None:
     path = strategy_csv(SCENARIO, "strategies/flex.csv")
-    path.write_text(path.read_text().replace(",,,,", ",,,false,", 1))
+    path.write_text(path.read_text(encoding="utf-8").replace(",,,,", ",,,false,", 1), encoding="utf-8")
     _vary(strategy_csv, "upper,uniform,10%,30%,,,\n")
     result = _load(strategy_scenarios, intent_dir)
     assert any("strategy 'flex' is disabled" in u for u in result.unused)
@@ -175,7 +175,7 @@ def test_a_calendar_row_cannot_take_a_strategy_node_name(
     strategy_csv(SCENARIO, "calendar.csv").write_text(
         "date,kind,scheduled_name,account_1,lot_1,account_2,lot_2,series,amount,param_date,"
         "tax_character,params_json,description,tags,name\n"
-        "2030-01-31,set_rate,,,,,,stock_us,5%,,,,,,strategy:flex.upper\n")
+        "2030-01-31,set_rate,,,,,,stock_us,5%,,,,,,strategy:flex.upper\n", encoding="utf-8")
     assert "can't start with 'strategy:'" in _errors(strategy_scenarios, intent_dir)
 
 
@@ -220,9 +220,10 @@ def test_deleting_an_override_drops_its_vary_file(
     child.mkdir()
     (child / "scenario.csv").write_text(
         "name,description,start,end,seed,parent_scenario,created_by,meta_json\n"
-        "alice_spending_vary,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n")
+        "alice_spending_vary,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n", encoding="utf-8")
     (child / "strategies").mkdir()
-    (child / "strategies" / "flex.csv").write_text(strategy_csv(SCENARIO, "strategies/flex.csv").read_text())
+    (child / "strategies" / "flex.csv").write_text(
+        strategy_csv(SCENARIO, "strategies/flex.csv").read_text(encoding="utf-8"), encoding="utf-8")
     vary = _vary(strategy_csv, "upper,uniform,10%,30%,,,\n", scenario="alice_spending_vary")
     result = CliRunner().invoke(main, ["sim", "strategy", "delete", "flex", "--yes", "--scenario",
                                        "alice_spending_vary", "--data-dir", str(strategy_scenarios)])

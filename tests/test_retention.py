@@ -202,7 +202,7 @@ def test_prune_state_deletes_and_leaves_unrecognized_files(
     fake_state: Callable[..., Path], test_data_dir: Path, intent_dir: Path, runs_dir: Path,
 ) -> None:
     (test_data_dir / RETENTION_FILENAME).write_text(
-        "intents:\n  - keep: 1\nruns:\n  - keep: 1\n"
+        "intents:\n  - keep: 1\nruns:\n  - keep: 1\n", encoding="utf-8"
     )
     old_run = fake_state("run", "alice", "2026-10-01T120000Z")
     fake_state("run", "alice", "2026-10-02T120000Z")
@@ -234,14 +234,14 @@ def test_a_missing_retention_file_is_created_with_the_defaults(
     runs = [fake_state("run", "alice", stamp) for stamp in stamps]
     result = prune_state(test_data_dir, intent_dir, runs_dir, now=NOW)
     assert result.created == path
-    assert path.read_text() == DEFAULT_RETENTION
+    assert path.read_text(encoding="utf-8") == DEFAULT_RETENTION
     assert sorted(result.runs) == runs[:2]  # five newest kept; none within 7 days
 
 
 def test_sim_run_prunes_after_running(
     fake_state: Callable[..., Path], test_data_dir: Path, runs_dir: Path,
 ) -> None:
-    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - keep: 1\n")
+    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - keep: 1\n", encoding="utf-8")
     old = fake_state("run", "retire_alice", "2026-01-01T120000Z")
     result = CliRunner().invoke(main, [
         "sim", "run", "retire_alice", "--data-dir", str(test_data_dir), "--allow-dirty-data",
@@ -255,7 +255,7 @@ def test_sim_run_prunes_after_running(
 def test_sim_run_prunes_even_when_the_run_fails(
     fake_state: Callable[..., Path], test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - keep: 1\n")
+    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - keep: 1\n", encoding="utf-8")
     old = fake_state("run", "retire_alice", "2026-01-01T120000Z")
     fake_state("run", "retire_alice", "2026-01-02T120000Z")
     fake_state("run", "retire_alice", "2026-01-03T120000Z", status="failed")
@@ -276,7 +276,7 @@ def test_sim_run_prunes_even_when_the_run_fails(
 def test_sim_load_warns_of_a_bad_retention_file_and_still_succeeds(
     fake_state: Callable[..., Path], test_data_dir: Path,
 ) -> None:
-    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - since 2 days\n")
+    (test_data_dir / RETENTION_FILENAME).write_text("runs:\n  - since 2 days\n", encoding="utf-8")
     old = fake_state("run", "retire_alice", "2026-01-01T120000Z")
     fake_state("run", "retire_alice", "2026-01-02T120000Z")
     result = CliRunner().invoke(main, [
@@ -291,7 +291,7 @@ def test_sim_load_warns_of_a_bad_retention_file_and_still_succeeds(
 
 def test_the_shipped_files_are_the_defaults(prototype_data: Path, repo_root: Path) -> None:
     for folder in (prototype_data, repo_root / "templates"):
-        assert (folder / RETENTION_FILENAME).read_text() == DEFAULT_RETENTION
+        assert (folder / RETENTION_FILENAME).read_text(encoding="utf-8") == DEFAULT_RETENTION
     retention = parse_retention(DEFAULT_RETENTION, base=repo_root)
     assert retention.intents == retention.runs
     assert retention.runs is not None
@@ -363,12 +363,12 @@ def test_over_max_size_prunes_oldest_first_across_scenarios_and_kinds(
     fake_state("intent", "bill", "2026-10-07T120000Z")
     (test_data_dir / RETENTION_FILENAME).write_text(
         "intents:\n  - keep: 5\nruns:\n  - keep: 5\n    protected:\n      - keep: 2\n"
-        "space:\n  max_size: {} B\n")
+        "space:\n  max_size: {} B\n", encoding="utf-8")
     used = _disk_size(state_dir)
     oldest = [alice[0], bill[0], intents]
     limit = used - sum(_disk_size(p) for p in oldest)
     (test_data_dir / RETENTION_FILENAME).write_text(
-        (test_data_dir / RETENTION_FILENAME).read_text().format(limit))
+        (test_data_dir / RETENTION_FILENAME).read_text(encoding="utf-8").format(limit), encoding="utf-8")
 
     result = prune_state(test_data_dir, intent_dir, runs_dir, now=NOW)
 
@@ -384,7 +384,7 @@ def test_low_free_space_prunes_until_enough_is_free(
 ) -> None:
     runs = [fake_state("run", "alice", f"2026-10-0{d}T120000Z") for d in range(1, 7)]
     (test_data_dir / RETENTION_FILENAME).write_text(
-        "runs:\n  - keep: 10\nspace:\n  min_free_percent: 10%\n")
+        "runs:\n  - keep: 10\nspace:\n  min_free_percent: 10%\n", encoding="utf-8")
     total = 1_000_000
     # Short by a little more than the oldest run: the two oldest must go.
     free = total // 10 - _disk_size(runs[0]) - 1
@@ -403,7 +403,7 @@ def test_protected_items_survive_a_shortfall_and_it_is_reported(
     (test_data_dir / RETENTION_FILENAME).write_text(
         "runs:\n  - keep: 10\n    protected:\n      - keep: 2\n"
         f"pins:\n  - {pinned.relative_to(test_data_dir.parent)}\n"
-        "space:\n  min_free: 10 GB\n")
+        "space:\n  min_free: 10 GB\n", encoding="utf-8")
     result = prune_state(test_data_dir, intent_dir, runs_dir, now=NOW,
                          disk_usage=_usage(100 * 10**9, 10**9))
     assert result.runs == runs[:3]
@@ -416,7 +416,7 @@ def test_a_section_without_rules_is_never_pruned_for_space(
     fake_state: Callable[..., Path], test_data_dir: Path, intent_dir: Path, runs_dir: Path,
 ) -> None:
     runs = [fake_state("run", "alice", f"2026-10-0{d}T120000Z") for d in range(1, 4)]
-    (test_data_dir / RETENTION_FILENAME).write_text("space:\n  min_free: 10 GB\n")
+    (test_data_dir / RETENTION_FILENAME).write_text("space:\n  min_free: 10 GB\n", encoding="utf-8")
     result = prune_state(test_data_dir, intent_dir, runs_dir, now=NOW,
                          disk_usage=_usage(100 * 10**9, 10**9))
     assert not result and all(p.exists() for p in runs)
@@ -432,13 +432,13 @@ def test_builder_logs_are_pruned_for_space_in_age_order(
     logs = []
     for day in ("2026-09-01", "2026-10-02", "2026-10-10", "2026-10-11"):
         path = log_dir / f"builder-{day}.log"
-        path.write_text("x" * 5000)
+        path.write_text("x" * 5000, encoding="utf-8")
         os.utime(path, (NOW.timestamp() - 86400 * 7, NOW.timestamp() - 86400 * 7))
         logs.append(path)
     runs = [fake_state("run", "alice", f"2026-10-0{d}T120000Z") for d in (1, 3, 5)]
     (test_data_dir / RETENTION_FILENAME).write_text(
         "runs:\n  - keep: 5\nlogs:\n  - keep: 7\n    protected:\n      - keep: 2\n"
-        "space:\n  min_free: 1 GB\n")
+        "space:\n  min_free: 1 GB\n", encoding="utf-8")
     free = 10**9 - _disk_size(logs[0]) - _disk_size(runs[0]) - 1
     result = prune_state(test_data_dir, intent_dir, runs_dir, now=NOW,
                          disk_usage=_usage(100 * 10**9, free))
@@ -451,7 +451,7 @@ def test_sim_run_warns_when_space_cannot_be_freed(
     test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (test_data_dir / RETENTION_FILENAME).write_text(
-        "runs:\n  - keep: 5\nspace:\n  max_size: 1 B\n")
+        "runs:\n  - keep: 5\nspace:\n  max_size: 1 B\n", encoding="utf-8")
     result = CliRunner().invoke(main, [
         "sim", "run", "retire_alice", "--data-dir", str(test_data_dir), "--allow-dirty-data",
     ])

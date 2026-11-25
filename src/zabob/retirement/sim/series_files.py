@@ -1,7 +1,7 @@
 """A scenario's rate and inflation series as the files that hold them (#471).
 
 A series is a file, ``<kind>__<name>.csv`` with ``kind`` ``rate`` or
-``inflation``, in a scenario's ``series/`` folder (or ``aux/``, where the
+``inflation``, in a scenario's ``series/`` folder (or ``tables/``, where the
 shared ``inflation__cpi.csv`` lives). The most specific file of a name
 replaces the rest whole (ADR-003 §4.1d), so what a scenario reads is one
 file, found here the way the loader finds it.
@@ -28,10 +28,10 @@ SERIES_KINDS = ("rate", "inflation")
 
 HEADER = ["effective_date", "annual_rate"]
 
-SHARED = "shared aux/"
-TEMPLATE = "templates/aux/"
+SHARED = "shared tables/"
+TEMPLATE = "templates/tables/"
 
-_FOLDERS = ("series", "aux")
+_FOLDERS = ("series", "tables")
 """Where a series' file may be, ``series/`` first: it is where one belongs,
 and where a new one is written."""
 
@@ -52,7 +52,7 @@ class SeriesFile:
     name: str
     path: Path
     folder: str
-    """``series`` or ``aux``."""
+    """``series`` or ``tables``."""
     defined_in: str
     """The scenario whose folder holds it, or ``SHARED``/``TEMPLATE``."""
     header: list[str]
@@ -76,7 +76,7 @@ class Series:
     own: bool
     """Whether the first file is the scenario's own."""
     others: tuple[Series, ...] = ()
-    """The same name's files in another folder (``aux/`` beside ``series/``),
+    """The same name's files in another folder (``tables/`` beside ``series/``),
     which the loader reads too."""
 
     @property
@@ -106,7 +106,7 @@ class Series:
 
     @property
     def rows(self) -> list[dict[str, str]]:
-        """Every row the loader reads for the name, ``aux/``'s before
+        """Every row the loader reads for the name, ``tables/``'s before
         ``series/``'s, as it reads them."""
         return [row for part in reversed(self.parts) for row in part.read.rows]
 
@@ -125,7 +125,7 @@ class Series:
     @property
     def revertible(self) -> bool:
         """Whether the scenario has its own file of the name and inherits
-        one, in any folder (its own ``aux/`` file beside an inherited
+        one, in any folder (its own ``tables/`` file beside an inherited
         ``series/`` one counts): what ``sim series revert`` drops."""
         return self.any_own and self.inherited is not None
 
@@ -151,13 +151,13 @@ def _rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
 def tiers(data_dir: Path, scenario: str, folder: str) -> list[Tier]:
     """The folders ``folder`` files are looked up in for ``scenario``, most
     specific first: its own, its ancestors' (later in the load order
-    first), then for ``aux`` the data repo's shared folder and the code
+    first), then for ``tables`` the data repo's shared folder and the code
     repository's templates."""
     scenarios = data_dir / "scenarios"
     found = [Tier(scenario_dir(scenarios, name) / folder, name)
              for name in reversed(load_order(scenarios, scenario))]
-    if folder == "aux":
-        found += [Tier(data_dir / "aux", SHARED), Tier(TEMPLATE_AUX_DIR, TEMPLATE)]
+    if folder == "tables":
+        found += [Tier(data_dir / "tables", SHARED), Tier(TEMPLATE_AUX_DIR, TEMPLATE)]
     return found
 
 
@@ -176,9 +176,9 @@ def _files(data_dir: Path, scenario: str) -> Iterator[tuple[str, str, str, Tier,
 
 def scenario_series(data_dir: Path, scenario: str) -> dict[tuple[str, str], Series]:
     """Every rate and inflation series ``scenario`` sees, by (kind, name),
-    empty ones included. One with files in both ``series/`` and ``aux/`` is
+    empty ones included. One with files in both ``series/`` and ``tables/`` is
     shown and edited from ``series/``; the loader reads both, so its
-    ``aux/`` files are its ``others``."""
+    ``tables/`` files are its ``others``."""
     stacks: dict[tuple[str, str, str], list[tuple[Tier, Path]]] = {}
     for kind, name, folder, tier, path in _files(data_dir, scenario):
         stacks.setdefault((kind, name, folder), []).append((tier, path))

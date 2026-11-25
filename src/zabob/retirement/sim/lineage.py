@@ -3,7 +3,7 @@
 A scenario's ``parent_scenario`` names one parent or, colon-separated, a main
 parent followed by mix-ins (``base:retire_early:high_inflation``). Everything
 that reasons about "the scenarios this one is built from" -- the loader's
-overlays, the aux/series/prices/itemizations override search, staging's
+overlays, the tables/series/prices/itemizations override search, staging's
 affected-scenario check and the provenance scope -- goes through
 :func:`load_order`, so they can't disagree about which folders are read or in
 what order.
@@ -29,8 +29,8 @@ from zabob.retirement.resources import TEMPLATES_DIR
 TEMPLATE_PREFIX = "t_"
 # The checkout's templates/, or the copy a wheel ships (#662).
 TEMPLATE_SCENARIOS_DIR = TEMPLATES_DIR / "scenarios"
-# The tax-law aux tables, read beneath the data repo's aux/ (#317).
-TEMPLATE_AUX_DIR = TEMPLATE_SCENARIOS_DIR.parent / "aux"
+# The tax-law aux tables, read beneath the data repo's tables/ (#317).
+TEMPLATE_AUX_DIR = TEMPLATE_SCENARIOS_DIR.parent / "tables"
 # What a mix-in only scenario is loaded on top of when loaded by itself
 # (#259): it has nothing, and its dates and seed only fill blanks.
 MIXIN_BASE = "t_empty"
