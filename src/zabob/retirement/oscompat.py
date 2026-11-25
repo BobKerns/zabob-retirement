@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-__all__ = ["WINDOWS", "is_link", "kill_tree", "link_dir", "login_name", "pid_alive", "remove_link"]
+__all__ = ["WINDOWS", "is_link", "kill_tree", "link_dir", "login_name", "pid_alive", "remove_link", "utf8_stdio"]
 
 WINDOWS = sys.platform == "win32"
 
@@ -94,3 +94,16 @@ def pid_alive(pid: int) -> bool:
     except PermissionError:
         return True  # someone else's, but there
     return True
+
+
+def utf8_stdio() -> None:
+    """Write UTF-8 to a pipe or a file on Windows, as everywhere else. A
+    console gets Unicode from Python whatever this says, but a redirect
+    (``sim report income > out.txt``) gets the ANSI code page, cp1252,
+    which has no box-drawing characters for a table at all."""
+    if not WINDOWS:
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None and (getattr(stream, "encoding", "") or "").lower().replace("-", "") != "utf8":
+            reconfigure(encoding="utf-8")

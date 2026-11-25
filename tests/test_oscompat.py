@@ -101,3 +101,23 @@ def test_kill_tree_stops_a_process_and_its_children(tmp_path: Path) -> None:
     while oscompat.pid_alive(child) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not oscompat.pid_alive(child)
+
+
+def test_output_to_a_pipe_is_utf8_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A redirect on Windows gets cp1252, which can't write a table's borders."""
+    class Stream:
+        def __init__(self, encoding: str) -> None:
+            self.encoding = encoding
+
+        def reconfigure(self, *, encoding: str) -> None:
+            self.encoding = encoding
+
+    out, err = Stream("cp1252"), Stream("UTF-8")
+    monkeypatch.setattr(oscompat.sys, "stdout", out)
+    monkeypatch.setattr(oscompat.sys, "stderr", err)
+    monkeypatch.setattr(oscompat, "WINDOWS", False)
+    oscompat.utf8_stdio()
+    assert out.encoding == "cp1252"  # elsewhere the locale's is the user's choice
+    monkeypatch.setattr(oscompat, "WINDOWS", True)
+    oscompat.utf8_stdio()
+    assert (out.encoding, err.encoding) == ("utf-8", "UTF-8")

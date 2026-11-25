@@ -8,13 +8,13 @@
 # instead install a published version from PyPI, as a user would, to see
 # how a release fares (`source: pypi`, `version: 1.0.0b1`).
 #
-# Like Gates, it skips draft pull requests; "Run workflow" on a branch runs
-# it on a draft's commits.
+# Like Gates, it skips a draft pull request, unless it is labeled windows:
+# a draft that changes something Windows-specific can be checked as it goes.
 name: Windows
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [main, dev]
   workflow_dispatch:
@@ -34,20 +34,22 @@ permissions:
 
 concurrency:
   group: windows-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Not for a label: one other than windows runs nothing, and mustn't stop the run that is.
+  cancel-in-progress: ${{ github.event.action != 'labeled' }}
 
 jobs:
   install:
     name: Installed program on Windows
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    if: >-
+      ${{ github.event_name != 'pull_request'
+          || (github.event.action != 'labeled' && !github.event.pull_request.draft)
+          || contains(github.event.pull_request.labels.*.name, 'windows')
+             && (github.event.action != 'labeled' || github.event.label.name == 'windows') }}
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:
       run:
         shell: pwsh
-    env:
-      # As a user's terminal would: UTF-8 in and out of Python.
-      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

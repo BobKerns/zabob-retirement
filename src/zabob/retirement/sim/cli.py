@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
-from zabob.retirement.oscompat import WINDOWS, login_name
+from zabob.retirement.oscompat import WINDOWS, login_name, utf8_stdio
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -320,6 +320,7 @@ def _format_warning(
 @click.group(name="sim")
 def sim_group_command() -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
+    utf8_stdio()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
 
