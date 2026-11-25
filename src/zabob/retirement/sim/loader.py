@@ -1415,7 +1415,9 @@ def load_scenario(
     _validate_rmd_rules(scheduled_rows, leaves, chains, issues, roth_leaves=roth_leaves)
     _validate_card_rules(scheduled_rows, accounts, leaves, issues)
     _validate_fill_bracket(
-        scheduled_rows, chains, tax_rows, issues, roth_leaves=roth_leaves,
+        scheduled_rows, chains, tax_rows, issues,
+        # Nothing may be converted into an inherited Roth IRA (#257).
+        roth_leaves=roth_leaves - _inherited_roth_leaves(value_rows, leaves),
         traditional_leaves=frozenset(
             leaves.leaf_of[(m.get("account_name", ""), m.get("lot") or registries.DEFAULT_LOT)]
             for m in value_rows
@@ -2725,6 +2727,32 @@ def _validate_birthdates(rows: list[dict[str, str]], issues: list[str]) -> None:
                 f"{where} ({row.get('id') or '?'}): sex must be one of "
                 f"{list(registries.PERSON_SEXES)} or blank (got '{sex}')"
             )
+        _validate_roth_clock(row, f"{where} ({row.get('id') or '?'})", issues)
+
+
+def roth_clock_year(text: str) -> int | None:
+    """A ``roth_clock_start`` cell (#257) as its tax year: a year, or a date
+    (``YYYY-MM`` or ``YYYY-MM-DD``) whose year is used; None when blank.
+    Raises ``ValueError`` for anything else, or a year before Roth IRAs."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    year = text[:4]
+    if not (len(year) == 4 and year.isdigit() and (len(text) == 4 or text[4] == "-")):
+        raise ValueError(f"'{text}' is not a year (YYYY) or a date")
+    if len(text) > 4:
+        parse_day(text) if len(text) > 7 else parse_month(text)
+    if int(year) < registries.FIRST_ROTH_YEAR:
+        raise ValueError(f"'{text}' is before Roth IRAs began ({registries.FIRST_ROTH_YEAR})")
+    return int(year)
+
+
+def _validate_roth_clock(row: Mapping[str, str], where: str, issues: list[str]) -> None:
+    """A row's ``roth_clock_start``, when it has one, is a year (#257)."""
+    try:
+        roth_clock_year(row.get(registries.ROTH_CLOCK_COLUMN, ""))
+    except ValueError as e:
+        issues.append(f"{where}: {registries.ROTH_CLOCK_COLUMN} {e}")
 
 
 # securities.csv's no_fetch column (#640): blank is 0.
@@ -2992,6 +3020,22 @@ def _validate_lot_money(
             )
         _validate_lot_subkind(row.get("subkind", ""), name in retirement,
                               f"{where} ({name} / {lot})", issues)
+        if row.get(registries.ROTH_CLOCK_COLUMN):
+            if row.get("subkind") != registries.INHERITED_ROTH_SUBKIND:
+                # A person's own Roth IRA clock is theirs, across every lot
+                # (persons.csv), and a Roth 401k's starts with its plan.
+                issues.append(
+                    f"{where} ({name} / {lot}): {registries.ROTH_CLOCK_COLUMN} is only for an "
+                    f"{registries.INHERITED_ROTH_SUBKIND} lot; a person's own clock goes "
+                    "in persons.csv")
+            else:
+                _validate_roth_clock(row, f"{where} ({name} / {lot})", issues)
+                clock, died = row[registries.ROTH_CLOCK_COLUMN][:4], row.get("acquired", "")[:4]
+                if clock.isdigit() and died.isdigit() and clock > died:
+                    # The decedent's clock can't start after their death (acquired).
+                    issues.append(
+                        f"{where} ({name} / {lot}): {registries.ROTH_CLOCK_COLUMN} {clock} is "
+                        f"after the death (acquired {row['acquired']})")
         ob = row.get("opening_balance", "")
         if ob == "":
             issues.append(
@@ -3060,6 +3104,14 @@ def _validate_lot_money(
         rows_by_account.setdefault(row.get("account_name", ""), []).append(row)
     for a in accounts:
         lots = rows_by_account.get(a.get("name", ""), [])
+        subkinds = {r.get("subkind", "") for r in lots}
+        if registries.INHERITED_ROTH_SUBKIND in subkinds and len(subkinds) > 1:
+            # An inherited IRA is titled to the decedent for the beneficiary,
+            # and can't be combined with the beneficiary's own (#257).
+            issues.append(
+                f"account_lots.csv ({a['name']}): an {registries.INHERITED_ROTH_SUBKIND} lot "
+                "needs an account of its own; its other lots are "
+                f"{', '.join(sorted(subkinds - {registries.INHERITED_ROTH_SUBKIND}))}")
         if not lots and a.get("name") in retirement:
             # The zero-balance default lot an account gets otherwise would
             # have no subkind, so nothing would say how it is taxed.
@@ -3615,6 +3667,15 @@ def _validate_irmaa_tiers(
         floors = [floor for _, floor in rows]
         if any(b <= a for a, b in zip(floors, floors[1:], strict=False)):
             issues.append(f"{file} ({effective}, {status}): magi_floor must rise with tier")
+
+
+def _inherited_roth_leaves(value_rows: list[dict[str, str]], leaves) -> frozenset[str]:
+    """The leaf chains of the ``inherited_roth_ira`` lots (#257)."""
+    return frozenset(
+        leaves.leaf_of[key] for m in value_rows
+        if m.get("subkind") == registries.INHERITED_ROTH_SUBKIND
+        and (key := (m.get("account_name", ""), m.get("lot") or registries.DEFAULT_LOT)) in leaves.leaf_of
+    )
 
 
 def _validate_lot_subkind(subkind: str, retirement: bool, where: str, issues: list[str]) -> None:
@@ -7230,14 +7291,15 @@ def _write_intent(
 
     for p in persons:
         con.execute(
-            "INSERT INTO person(id, display, birthdate, sex, role, meta_json, kind) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO person(id, display, birthdate, sex, role, meta_json, kind, "
+            "roth_clock_start) VALUES (?,?,?,?,?,?,?,?)",
             (
                 p["id"], p["display"], p["birthdate"],
                 (p.get("sex") or "").strip() or None,
                 p.get("role") or None,
                 p.get("meta_json") or "{}",
                 (p.get("kind") or "").strip() or None,
+                roth_clock_year(p.get(registries.ROTH_CLOCK_COLUMN, "")),
             ),
         )
     counts["person"] = len(persons)
@@ -7297,8 +7359,9 @@ def _write_intent(
                 "account_id, lot, subkind, tax_treatment, symbol, acquired, quantity_micros, "
                 "series, opening_balance, opening_cost_basis, "
                 "prior_year_end_balance, minimum_balance_cents, "
-                "maximum_balance_cents, refill_target_cents, refill_amount_cents) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "maximum_balance_cents, refill_target_cents, refill_amount_cents, "
+                "roth_clock_start) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     account_ids[a["name"]],
                     lot,
@@ -7322,6 +7385,7 @@ def _write_intent(
                     if m.get("refill_target") else None,
                     _dollars_to_cents(m["refill_amount"], resolver=money_resolver)
                     if m.get("refill_amount") else None,
+                    roth_clock_year(m.get(registries.ROTH_CLOCK_COLUMN, "")),
                 ),
             )
             leaf = registries.leaf_chain_name(a["name"], lot, a["subkind"])
