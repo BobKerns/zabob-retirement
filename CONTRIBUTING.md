@@ -57,9 +57,13 @@ always open: the **Promotion** workflow
 ([`.github/workflows/promotion.yml`](.github/workflows/promotion.yml)) runs
 `scripts/promote_dev.py` on every push to `dev`, which opens the promotion
 as a draft when none is open and otherwise refreshes its body, so what is
-waiting for `main` is listed in one place. It is opened by
-`github-actions[bot]`, which needs the repository setting "Allow GitHub
-Actions to create and approve pull requests" (Settings, Actions, General).
+waiting for `main` is listed in one place. It acts with the
+`PROMOTION_TOKEN` secret, a fine-grained personal access token for this
+repository (Pull requests: read and write, Contents: read); renew it when
+it expires. Without it, the promotion is opened by `github-actions[bot]`,
+which needs the repository setting "Allow GitHub Actions to create and
+approve pull requests" (Settings, Actions, General), and its Gates runs
+wait for approval.
 
 With Claude Code, `/promote` (the skill in
 [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md)) is the
