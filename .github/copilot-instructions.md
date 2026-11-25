@@ -176,8 +176,9 @@ one pull request that `scripts/promote_dev.py` opens or refreshes, as a
 draft so it doesn't rerun the full gates on every push to `dev`; he marks it
 ready to promote and merges it with a merge commit, never a squash. Nothing
 else goes to `main` except a hotfix, which branches from `origin/main` (not
-`dev`, whose unpromoted merges it would carry), is labeled `hotfix`, and is
-merged into `dev` as soon as it lands.
+`dev`, whose unpromoted merges it would carry) as `hotfix/<number>-<desc>`,
+is labeled `hotfix`, and goes to `dev` as soon as it lands, from an
+`issue/<number>-<desc>` branch at the same commits.
 "Fixes #N" in a pull request into `dev` closes nothing until the promotion
 merges, so an issue whose pull request merged stays open until then; the
 promotion pull request lists and closes them.

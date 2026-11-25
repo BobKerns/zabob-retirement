@@ -38,8 +38,11 @@ gitGraph
   with a merge commit (never a squash), after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.
 - **A hotfix**, a fix `main` can't wait for, branches from `origin/main`
-  rather than `dev`, goes to `main` in a pull request labeled `hotfix`, and
-  is then merged into `dev` too.
+  rather than `dev`, on a branch named `hotfix/<number>-<short-description>`,
+  and goes to `main` in a pull request labeled `hotfix`. Then the same
+  commits go to `dev` from a branch named `issue/<number>-<short-description>`
+  (made at the hotfix branch's tip), so each branch's name says where it
+  merges.
 - **`release/x.y`** branches exist only when a release needs one; see
   [Releasing](docs/releasing.md#branches-and-versions).
 
