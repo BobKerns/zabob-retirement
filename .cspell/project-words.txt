@@ -250,6 +250,7 @@ linecap
 linespacing
 linestyle
 linthresh
+LOGNAME
 lognormal
 lookback
 lookthrough
