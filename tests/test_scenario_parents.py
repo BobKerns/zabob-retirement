@@ -324,3 +324,11 @@ def test_a_missing_parent_is_not_a_mix_in(test_data_dir: Path, test_scenarios_di
     csv_path = test_scenarios_dir / "kid" / "scenario.csv"
     csv_path.write_text(csv_path.read_text().replace("extra", "missing"), encoding="utf-8")
     assert not is_mixin_only(test_scenarios_dir, "kid")
+
+
+def test_an_edit_checks_only_the_scenario_and_those_built_on_it(test_data_dir: Path) -> None:
+    from zabob.retirement.sim.cli import _self_and_users
+    _mixin_on_mixin(test_data_dir)
+    assert _sim(test_data_dir, "scenario", "create", "kid", "retire_alice", "more").exit_code == 0
+    assert _self_and_users(test_data_dir, "extra") == ["extra", "kid", "more"]
+    assert _self_and_users(test_data_dir, "kid") == ["kid"]

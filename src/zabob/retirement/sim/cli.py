@@ -192,7 +192,7 @@ from zabob.retirement.sim.overlay import (
 from zabob.retirement.frames import clip_years, index_years, named_rows, row_years
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS, Death, DollarMode, InvestmentAssetSubkind, ItemType
 from zabob.retirement.sim.retention import RETENTION_FILENAME, RetentionError, prune_state
-from zabob.retirement.sim.schema import connect_sim_file
+from zabob.retirement.sim.schema import SCHEMA_VERSION, connect_sim_file
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -851,9 +851,11 @@ def _load_and_run(
                 f"intent file not found: {intent_path}\n"
                 f"  run: analysis sim load {scenario_name}"
             )
-        elif _intent_is_mixin_only(intent_path):
-            # Without the data repo, the intent a `sim check` left says so.
-            _refuse_mixin_only_run(scenario_name, [])
+        else:
+            _refuse_stale_intent(intent_path, scenario_name)
+            if _intent_is_mixin_only(intent_path):
+                # Without the data repo, the intent a `sim check` left says so.
+                _refuse_mixin_only_run(scenario_name, [])
         resolved_by = run_by or os.environ.get("USER") or "unknown"
         _run_loaded(
             scenario_name, intent_path, resolved_intent_dir, resolved_runs_dir,
@@ -890,14 +892,31 @@ def _runnable_users(scenarios_dir: Path, name: str) -> list[str]:
     return sorted(found)
 
 
+def _refuse_stale_intent(intent_path: Path, scenario_name: str) -> None:
+    """Refuse an intent loaded under another schema than this code's: its
+    tables don't match the run file's, so snapshotting it would fail with a
+    raw sqlite error (#347). Only a fresh `sim load` can bring it up to date."""
+    con = connect_sim_file(intent_path)
+    try:
+        row = con.execute("SELECT schema_version FROM intent_manifest WHERE id = 1").fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        con.close()
+    if row is None or row[0] != SCHEMA_VERSION:
+        found = "no schema version" if row is None else f"schema {row[0]}"
+        raise click.ClickException(
+            f"{intent_path} was loaded under {found}, and this code uses schema {SCHEMA_VERSION}\n"
+            f"  run: analysis sim load {scenario_name}")
+
+
 def _intent_is_mixin_only(intent_path: Path) -> bool:
     """Whether the intent was loaded from a mix-in only scenario, as the
-    loader recorded (``scenario.mixin_only``)."""
+    loader recorded (``scenario.mixin_only``). Only for an intent
+    :func:`_refuse_stale_intent` accepted, which has the column."""
     con = connect_sim_file(intent_path)
     try:
         row = con.execute("SELECT mixin_only FROM scenario").fetchone()
-    except sqlite3.Error:
-        return False
     finally:
         con.close()
     return bool(row and row[0])
@@ -19283,7 +19302,8 @@ def _apply_scenario_edit(
         raise click.UsageError("nothing to change: give at least one option (see --help)")
 
     readme: bool | str | None = None
-    runnable = [n for n in sc.list_scenario_names(data) if not is_mixin_only(data / "scenarios", n)]
+    # Only the edited scenario and those built on it can change (#347).
+    runnable = [n for n in _self_and_users(data, name) if not is_mixin_only(data / "scenarios", n)]
     # Validates this scenario and every scenario built on it before writing.
     with _scenario_edit(data, name) as edit:
         folder = edit.scenario_dir
@@ -19329,6 +19349,23 @@ def _apply_scenario_edit(
     elif readme is False:
         click.echo(f"WARN: {data / 'scenarios' / name / 'README.md'} is what listings and notebooks show, "
                    "and it has been edited by hand; update it to match", err=True)
+
+
+def _self_and_users(data: Path, name: str) -> list[str]:
+    """``name`` and every scenario built on it, directly or not, sorted;
+    each ``scenario.csv`` read once."""
+    users: dict[str, list[str]] = {}
+    for other in sc.list_scenario_names(data):
+        for parent in read_parents(data / "scenarios" / other):
+            users.setdefault(parent, []).append(other)
+    found = {name}
+    pending = [name]
+    while pending:
+        for user in users.get(pending.pop(), ()):
+            if user not in found:
+                found.add(user)
+                pending.append(user)
+    return sorted(found)
 
 
 def _new_mixin_only(scenarios_dir: Path, runnable: Sequence[str]) -> list[str]:
