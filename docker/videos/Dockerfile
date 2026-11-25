@@ -12,8 +12,8 @@
 #   /opt/env           the named volume analysis-videos-env: the project's
 #                      venv, uv's cache and Pythons, Playwright's Chromium
 #   /out               where the videos land (and the build cache, .cache)
-#   /data              the video's own data repo (`sim init /data` makes
-#                      /data/sim): a named volume per video
+#   /data              the videos' data repo (`sim init /data` makes
+#                      /data/sim): the named volume analysis-videos-data
 #
 # The entrypoint runs `uv sync` into the volume before each command (a
 # quick check once it's done), so the CLI a tape records is the checkout's
