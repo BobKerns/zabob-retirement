@@ -3,7 +3,7 @@
 #
 #   scripts/videos/docker.sh build VIDEO [--lang L] [--silent] [--rerecord]
 #   scripts/videos/docker.sh check [VIDEO ...]
-#   scripts/videos/docker.sh shell VIDEO
+#   scripts/videos/docker.sh shell
 #   scripts/videos/docker.sh image
 #
 # VIDEO is a folder in docs/videos, by name (01-intro) or path
@@ -16,12 +16,12 @@
 # when it's missing or a file there changed; `image` rebuilds it from
 # scratch, with the newest base image and system packages.
 #
-# Each video has its own data repo, in the named volume analysis-video-VIDEO
+# The videos share one data repo, in the named volume analysis-videos-data
 # mounted at /data. A tape whose script names no demo data (data = ...)
-# starts from a copy of it. `shell VIDEO` opens bash in the container with
-# the volume mounted and ANALYSIS_DATA_DIR=/data/sim, to create the repo
+# starts from a copy of it. `shell` opens bash in the container in /data,
+# with ANALYSIS_DATA_DIR=/data/sim, to create the repo
 # (`sim init /data --no-builder`) or change it with the CLI.
-# `docker volume rm analysis-video-VIDEO` discards it.
+# `docker volume rm analysis-videos-data` discards it.
 set -eu
 
 # Relative to where it was run from, not the repo root.
@@ -39,6 +39,7 @@ image=analysis-videos
 context=docker/videos
 label=zabob.retirement.videos.inputs
 env_volume=analysis-videos-env
+data_volume=analysis-videos-data
 # The checkout, mounted read-only over the image's /repo: piece by piece,
 # so the host's .venv (perhaps for another OS) stays out.
 MOUNTS=(src pyproject.toml uv.lock README.md PYPI.md LICENSE hatch_build.py .python-version templates historical_data
@@ -63,20 +64,19 @@ shift
 
 case $command in
     -h|--help) usage; exit 0 ;;
-    build|shell)
-        [ $# -gt 0 ] || { echo "docker.sh: $command needs a VIDEO" >&2; exit 2; }
+    build)
+        [ $# -gt 0 ] || { echo "docker.sh: build needs a VIDEO" >&2; exit 2; }
         name=$(video_name "$1")
         shift
         ;;
     check)
-        name=
         # Named before the build, so a typo doesn't wait for it.
         folders=()
         for v in "$@"; do
             folders+=("docs/videos/$(video_name "$v")")
         done
         ;;
-    image) [ $# -eq 0 ] || { echo "docker.sh: image takes no arguments" >&2; exit 2; } ;;
+    shell|image) [ $# -eq 0 ] || { echo "docker.sh: $command takes no arguments" >&2; exit 2; } ;;
     *) echo "docker.sh: unknown command $command (build, check, shell or image)" >&2; exit 2 ;;
 esac
 
@@ -117,10 +117,7 @@ fi
 for m in "${MOUNTS[@]}"; do
     docker_run+=(-v "$(pwd)/$m:/repo/$m:ro")
 done
-docker_run+=(-v "$env_volume:/opt/env" -v "$out:/out")
-if [ -n "$name" ]; then
-    docker_run+=(-v "analysis-video-$name:/data")
-fi
+docker_run+=(-v "$env_volume:/opt/env" -v "$data_volume:/data" -v "$out:/out")
 
 case $command in
     build)
@@ -130,6 +127,6 @@ case $command in
         exec "${docker_run[@]}" "$image" python -m zabob.retirement.videos check ${folders[@]+"${folders[@]}"}
         ;;
     shell)
-        exec "${docker_run[@]}" -w /data "$image" bash "$@"
+        exec "${docker_run[@]}" -w /data "$image" bash
         ;;
 esac

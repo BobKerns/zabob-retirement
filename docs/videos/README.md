@@ -55,7 +55,7 @@ order of #366's outline (`01-intro`, `02-setup`, ...).
 A script is markdown with TOML front matter between `+++` lines. The front
 matter's fields are available to every slide; `data` names the demo data a
 tape starts from (a repo folder such as `prototype_data`; leave it out to use
-[the video's own data repo](#each-videos-data-repo)).
+[the videos' data repo](#the-videos-data-repo)).
 
 ````markdown
 +++
@@ -114,7 +114,7 @@ A tape is a list of [VHS](https://github.com/charmbracelet/vhs) commands
 file, the theme's terminal settings, and a hidden setup that:
 
 - copies the front matter's `data` folder (the prototype personas' data),
-  or the video's own data repo, to a fresh, committed scratch folder, after
+  or the videos' data repo, to a fresh, committed scratch folder, after
   the video's `setup.sh` (if any) has run in it, and points
   `ANALYSIS_DATA_DIR` at it, so every recording starts from the same state;
 - installs the program as a user would (`uv tool install zabob-retirement`,
@@ -413,7 +413,7 @@ builds for amd64 and arm64 (Docker Desktop on Apple silicon).
 ```sh
 analysis video build 00-pilot [--lang ja] [--silent] [--rerecord] [--jobs N] [--publish]
 analysis video check                 # every video, or name some
-analysis video shell 01-intro        # bash, with the video's data repo
+analysis video shell                 # bash, in the videos' data repo
 analysis video image                 # rebuild the image from scratch
 ```
 
@@ -440,21 +440,21 @@ the next run makes again.
 Videos and the build cache land in `out/videos` (or `$ANALYSIS_VIDEO_OUT`),
 as in a native build.
 
-### Each video's data repo
+### The videos' data repo
 
 A video that builds its own scenario, rather than starting from
-`prototype_data`, keeps its data in its own data repo: the named Docker
-volume `analysis-video-<video>`, mounted at `/data`. Its script leaves `data`
-out of the front matter, and each tape starts from a fresh copy of that repo,
-so recordings stay repeatable and the CLI's changes during one tape don't
-leak into the next.
+`prototype_data`, takes its data from the videos' data repo: the named Docker
+volume `analysis-videos-data`, mounted at `/data`, one for all videos. Its
+script leaves `data` out of the front matter, and each tape starts from a
+fresh copy of that repo, so recordings stay repeatable and the CLI's changes
+during one tape don't leak into the next.
 
 Create the repo from `shell` with `sim init /data --no-builder` (#289;
 the container has no background builds), which makes the
 simulator's tree at `/data/sim`; `ANALYSIS_DATA_DIR` is already `/data/sim`
 there and `sim` is on `PATH`, so the CLI changes it as it would any data
 repo.
-`docker volume rm analysis-video-<video>` discards it. Outside the container
+`docker volume rm analysis-videos-data` discards it. Outside the container
 the same fallback reads `$ANALYSIS_VIDEO_DATA`, never `$ANALYSIS_DATA_DIR`,
 so a native build can't record the household's real data.
 
