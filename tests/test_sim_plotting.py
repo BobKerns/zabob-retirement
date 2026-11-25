@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import pandas as pd
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 
 from zabob.retirement.sim.plotting import (
     include_zero,
@@ -12,6 +14,10 @@ from zabob.retirement.sim.plotting import (
     plot_stacked_bar,
     plot_timeseries,
 )
+
+
+def _bars(ax: Axes) -> list[Rectangle]:
+    return [patch for patch in ax.patches if isinstance(patch, Rectangle)]
 
 
 def test_plot_timeseries_returns_axes_with_legend() -> None:
@@ -30,6 +36,17 @@ def test_plot_stacked_bar_returns_axes() -> None:
     ax = plot_stacked_bar(df, ["a", "b"], ["#111111", "#222222"], title="stacked")
 
     assert ax.get_title() == "stacked"
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["2026", "2027"]
+    tops = [bar.get_y() + bar.get_height() for bar in _bars(ax)]
+    assert tops == [1, 2, 4, 6]  # a's bars, then b's stacked on them
+
+
+def test_plot_stacked_bar_stacks_negatives_below_zero() -> None:
+    df = pd.DataFrame({"a": [-1.0], "b": [2.0], "c": [-3.0]}, index=pd.Index([2026]))
+
+    ax = plot_stacked_bar(df, ["a", "b", "c"], ["#111111", "#222222", "#333333"], title="t")
+
+    assert [(bar.get_y(), bar.get_height()) for bar in _bars(ax)] == [(0, -1), (0, 2), (-1, -3)]
 
 
 def test_plot_income_expense_net_returns_axes() -> None:

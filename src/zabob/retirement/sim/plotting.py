@@ -154,7 +154,20 @@ def plot_stacked_bar(
     """Stacked bar chart of ``columns`` from a year-indexed DataFrame."""
     if ax is None:
         ax = _new_axes()
-    df[list(columns)].plot(kind="bar", stacked=True, ax=ax, color=list(colors))
+    # Stacked by hand, not with DataFrame.plot: pandas' plotting imports
+    # pyplot on first use, even onto axes of a plain Figure. Positive and
+    # negative values stack away from zero separately, as pandas stacks them.
+    data = df[list(columns)].fillna(0.0).astype(float)
+    x = range(len(data))
+    above = [0.0] * len(data)
+    below = [0.0] * len(data)
+    for column, color in zip(columns, colors, strict=False):
+        values = data[column].tolist()
+        bottom = [a if v >= 0 else b for v, a, b in zip(values, above, below, strict=True)]
+        ax.bar(x, values, width=0.5, bottom=bottom, color=color, label=str(column))
+        above = [a + max(v, 0.0) for v, a in zip(values, above, strict=True)]
+        below = [b + min(v, 0.0) for v, b in zip(values, below, strict=True)]
+    ax.set_xticks(list(x), [str(label) for label in data.index], rotation=90)
     _finish(ax, title, ylabel)
     ax.set_xlabel(xlabel)
     ax.grid(True, axis="y", alpha=0.3)

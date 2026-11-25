@@ -52,12 +52,22 @@ def test_a_redraw_displays_a_png_with_a_real_chart(two_lot_run: RunConnection,
 
 
 def test_the_plotting_helpers_leave_pyplot_unloaded() -> None:
-    """``plot_timeseries`` and friends draw on a plain ``Figure`` when given no
-    axes: a pyplot figure is one ``flush_figures`` can reach mid-draw."""
+    """``plot_timeseries``, ``plot_stacked_bar`` and ``plot_income_expense_net``
+    draw on a plain ``Figure`` when given no axes, and never load pyplot (as
+    pandas' ``DataFrame.plot`` would): a pyplot figure is one
+    ``flush_figures`` can reach mid-draw, and importing pyplot picks a
+    backend under the CLI."""
     code = ("import sys, pandas as pd\n"
-            "from zabob.retirement.sim.plotting import plot_timeseries\n"
+            "from zabob.retirement.sim.plotting import (\n"
+            "    plot_income_expense_net, plot_stacked_bar, plot_timeseries)\n"
             "idx = pd.date_range('2026-01-31', periods=3, freq='ME')\n"
             "plot_timeseries({'x': pd.Series([1.0, 2.0, 3.0], index=idx)}, title='t')\n"
+            "years = pd.Index([2026, 2027], name='year')\n"
+            "plot_stacked_bar(pd.DataFrame({'a': [1, -2], 'b': [3, 4]}, index=years),\n"
+            "                 ['a', 'b'], ['#111111', '#222222'], title='t')\n"
+            "plot_income_expense_net(pd.DataFrame(\n"
+            "    {'income': [1.0, 2.0], 'expenses': [0.5, 1.0], 'net': [0.5, 1.0]}, index=years),\n"
+            "    title='t')\n"
             "print('matplotlib.pyplot' in sys.modules)")
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert result.stdout.strip() == "False"
