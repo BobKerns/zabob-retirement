@@ -8,7 +8,7 @@ a name belongs to may come later on the line. Once the whole line is parsed,
 mistyped one); otherwise the command checks the name itself.
 
 Completion reads what the line has so far. The data repo is ``--data-dir``
-or ``$ANALYSIS_DATA_DIR``; the scenario is the ``--scenario`` option or the
+or ``user_config.data_dir_setting()``; the scenario is the ``--scenario`` option or the
 command's scenario argument, else the current scenario; a lot belongs to
 the account argument it pairs with (``--from-lot`` with FROM_ACCOUNT).
 """

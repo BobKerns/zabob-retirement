@@ -222,7 +222,8 @@ def find_state_dir(data_dir: Path | str | None, default: Path | str) -> Path:
     """Resolve a data repo's ``state/intent`` or ``state/runs`` dir (ADR-004 §4).
 
     State lives beside the data dir, not inside it. Falls back to
-    ``$ANALYSIS_DATA_DIR`` and then to ``default`` relative to the cwd.
+    ``user_config.data_dir_setting()`` (``$ANALYSIS_DATA_DIR``, the data repo the
+    cwd is in, the user's default) and then to ``default`` relative to the cwd.
     """
     if data_dir is None:
         data_dir = data_dir_setting()

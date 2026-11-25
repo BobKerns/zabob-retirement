@@ -364,7 +364,7 @@ def _resolve_config(data_dir: Path | None, config_file: Path | None) -> tuple[Re
 
 _data_dir_option = click.option(
     "--data-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
-    help=f"Data repo whose {CONFIG_FILENAME} to use (default: $ANALYSIS_DATA_DIR).",
+    help=f"Data repo whose {CONFIG_FILENAME} to use (default: the one `sim use` shows).",
 )
 _config_option = click.option(
     "--config", "config_file", type=click.Path(dir_okay=False, exists=True, path_type=Path), default=None,

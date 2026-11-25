@@ -127,6 +127,8 @@ def test_the_data_repo_the_working_folder_is_in_comes_before_the_default(
     assert user_config.local_data_dir(other / "notebooks") == other / "sim"
     monkeypatch.chdir(other / "notebooks")
     assert user_config.data_dir_setting() == str((other / "sim").resolve())
+    out = _sim("use").output
+    assert "(the data repo this folder is in)" in out and f"your default otherwise: {made.parent}" in out
     # Inside a code checkout with data/private/sim.
     checkout = tmp_path / "checkout"
     (checkout / "data" / "private").mkdir(parents=True)
