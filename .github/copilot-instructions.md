@@ -171,7 +171,9 @@ years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
 ## The dev branch
 
 Work merges into `dev`, not `main`: branch from `origin/dev`, and open pull
-requests against `dev`. Whenever `dev` has anything `main` lacks, a
+requests against `dev` (the Retarget workflow, `.github/workflows/retarget.yml`,
+moves one opened against `main` to `dev`, unless it is the promotion or a
+`hotfix/` branch). Whenever `dev` has anything `main` lacks, a
 promotion of `dev` to `main` is open: the Promotion workflow
 (`.github/workflows/promotion.yml`) runs `scripts/promote_dev.py` on every
 push to `dev`, which opens it as a draft (so it doesn't rerun the full

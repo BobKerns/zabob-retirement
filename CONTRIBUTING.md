@@ -9,6 +9,14 @@ three places: this page, for a person starting out;
 fuller project guide, which the agents read too (architecture, invariants,
 conventions); and [`CLAUDE.md`](CLAUDE.md), for branches and worktrees.
 
+## Asking first
+
+Questions, and ideas that aren't settled yet, go in
+[Discussions](https://github.com/BobKerns/zabob-retirement/discussions):
+Q&A for support, Ideas for features. An idea becomes an issue once it's
+agreed, and work starts from an issue. Leave real balances, names and account
+details out of every post.
+
 ## Setting up
 
 Clone the repository and run `./scripts/setup.sh`; [docs/SETUP.md](docs/SETUP.md)
@@ -33,7 +41,9 @@ gitGraph
 
 - **`dev`** is where work lands. Branch from `origin/dev`, name the branch
   `issue/<number>-<short-description>`, and open the pull request against
-  `dev`.
+  `dev`. GitHub offers `main` as the base; a pull request opened against
+  it is retargeted to `dev` for you, with a comment saying so
+  ([`.github/workflows/retarget.yml`](.github/workflows/retarget.yml)).
 - **`main`** moves only when `dev` is promoted: one pull request, merged
   after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.

@@ -409,6 +409,13 @@ Spell checking is handled by cspell (see `cspell.json` and `.cspell/project-word
 
 Use spaces for all indentation and alignment. Hard tab characters (\t) are not allowed anywhere in the repository, including code, markdown, and documentation. This prevents formatting issues and ensures consistency across all editors and platforms.
 
+## Questions and ideas
+Ask questions in [Discussions](https://github.com/BobKerns/zabob-retirement/discussions)
+(Q&A), suggest features under Ideas, and share scenarios and strategies under
+Show and tell. Issues are for bugs and settled work. It's a public forum, so
+leave out real balances, names and account details: describe the problem with
+the example household (Alice and Bill) or made-up figures.
+
 ## Contributing
 How work is branched, reviewed and merged is in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
