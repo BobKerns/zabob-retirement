@@ -148,6 +148,18 @@ def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = 
     return "\n".join(lines) + "\n"
 
 
+def keep_added_fixes(old_body: str, body: str) -> str:
+    """body, plus the "Fixes #N" lines someone added to the promotion by hand
+    (old_body) that body doesn't already close. A refresh rewrites the whole
+    body, and would otherwise drop them."""
+    have = set(closed_issues(body))
+    added = [line.strip() for line in old_body.splitlines()
+             if re.fullmatch(r"Fixes #\d+", line.strip()) and int(line.strip()[7:]) not in have]
+    if not added:
+        return body
+    return body.rstrip("\n") + ("\n" if "\nFixes #" in body else "\n\n") + "\n".join(dict.fromkeys(added)) + "\n"
+
+
 def _run(*args: str, input: str | None = None) -> str:
     return subprocess.run(args, cwd=REPO, check=True, capture_output=True, text=True, input=input).stdout
 
@@ -198,8 +210,11 @@ def _promote(dry_run: bool) -> int:
         return 0
     open_pulls = _api("repos/{owner}/{repo}/pulls?base=main&state=open&per_page=100")
     assert isinstance(open_pulls, list)
-    existing = next((p for p in open_pulls if p["head"]["ref"] == "dev"), None)
+    # dev of this repository: a fork's pull request from its own dev isn't it.
+    existing = next((p for p in open_pulls if p["head"]["ref"] == "dev" and p["head"]["repo"]
+                     and p["head"]["repo"]["full_name"] == p["base"]["repo"]["full_name"]), None)
     if existing:
+        body = keep_added_fixes(existing["body"] or "", body)
         pull = _api(f"repos/{{owner}}/{{repo}}/pulls/{existing['number']}", "PATCH", {"body": body})
     else:
         # A draft, which Gates skips: an open promotion would run the full

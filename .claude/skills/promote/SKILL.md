@@ -37,8 +37,8 @@ git log --first-parent --oneline origin/main..origin/dev
 ```
 
 It prints the pull request's URL: a new draft, or the open promotion with
-its body refreshed. It uses only GitHub's REST API, so it works from a
-cloud session too.
+its body refreshed (keeping any "Fixes" line added by hand). It uses only
+GitHub's REST API, so it works from a cloud session too.
 
 ## 3. Watch it
 

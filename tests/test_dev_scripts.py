@@ -138,6 +138,15 @@ def test_promotion_body_leaves_reverted_pulls_out_and_names_issues_to_reopen(pro
     assert promote.closed_issues(body) == ()
 
 
+def test_a_refresh_keeps_fixes_lines_added_by_hand(promote: ModuleType) -> None:
+    body = promote.promotion_body([promote.Pull(716, "Typo", (706,))])
+    old = body + "Fixes #12\nFixes #706\n"
+    assert promote.keep_added_fixes(old, body) == body + "Fixes #12\n"
+    assert promote.keep_added_fixes(body, body) == body
+    bare = promote.promotion_body([promote.Pull(716, "Typo", ())])
+    assert promote.keep_added_fixes("Fixes #12", bare) == bare + "\nFixes #12\n"
+
+
 def test_only_the_fixes_lines_close_anything(promote: ModuleType) -> None:
     pulls = [promote.Pull(716, "Closes #3 by accident: typo", (706,))]
     body = promote.promotion_body(pulls, [promote.Pull(714, "Resolves BobKerns/zabob-retirement#5", (8,))])

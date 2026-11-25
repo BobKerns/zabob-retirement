@@ -69,8 +69,9 @@ Without Claude, run the script it uses, signed in to `gh`:
 Check the body before marking the promotion ready: every merged pull
 request is listed, and every issue meant to close has a "Fixes" line. A pull
 request into `dev` whose own body had no closing line closes nothing, so
-add the line to the promotion by hand. Fix anything review or Gates finds in
-a pull request into `dev` and run the script again to refresh the body.
+add the line to the promotion by hand; refreshing the body keeps a "Fixes"
+line added that way. Fix anything review or Gates finds in a pull request
+into `dev` and run the script again to refresh the body.
 Merge only when that fix is on `dev`, with a merge commit, never a squash.
 
 ## A pull request
