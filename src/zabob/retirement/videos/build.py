@@ -43,7 +43,7 @@ from zabob.retirement.videos import theme as themes
 from zabob.retirement.videos.script import Scene, Script, ScriptError
 from zabob.retirement.videos.theme import Theme
 
-# Where a video's own data repo is, for a tape whose script names no demo data.
+# Where the videos' data repo is, for a tape whose script names no demo data.
 VIDEO_DATA_ENV = "ANALYSIS_VIDEO_DATA"
 
 # A slide with no narration still stays up this long.
@@ -350,10 +350,10 @@ class _Builder:
         return wav, durations, "made", key
 
     def tape_data(self) -> Path:
-        """The data a tape starts from: front matter ``data``, else the video's own data repo.
+        """The data a tape starts from: front matter ``data``, else the videos' data repo.
 
-        The video's own repo is ``$ANALYSIS_VIDEO_DATA`` (the video container
-        mounts the video's data volume there). It is deliberately not
+        That repo is ``$ANALYSIS_VIDEO_DATA`` (the video container mounts the
+        videos' data volume there). It is deliberately not
         ``$ANALYSIS_DATA_DIR``, which in a planner's shell names the real data.
         """
         data_name = self.script.meta.get("data")
@@ -366,15 +366,15 @@ class _Builder:
         if not env:
             raise ScriptError(
                 f"{self.script.path}: a tape needs data = \"<demo data dir>\" in the front matter, "
-                f"or the video's data repo in ${VIDEO_DATA_ENV} (scripts/videos/docker.sh sets it)"
+                f"or the videos' data repo in ${VIDEO_DATA_ENV} (scripts/videos/docker.sh sets it)"
             )
         data = Path(env)
         # A data repo's mark (data_repo.is_data_repo), not just a folder: an
         # aborted `sim init` leaves a partial one.
         if not (data / "persons.csv").is_file():
             raise ScriptError(
-                f"{self.script.path}: the video's data {data} doesn't exist yet; create it first "
-                f"(scripts/videos/docker.sh shell {self.script.name})"
+                f"{self.script.path}: the videos' data {data} doesn't exist yet; create it first "
+                "(scripts/videos/docker.sh shell)"
             )
         return data
 
