@@ -3,7 +3,7 @@
     .venv/bin/python scripts/affected_tests.py [--base REF] [--list] [--slow] [-- PYTEST-ARGS]
 
 The change is everything between the merge base of HEAD and REF (default
-origin/main) and the working tree: commits, staged and unstaged edits, and
+origin/dev, or origin/main before dev exists) and the working tree: commits, staged and unstaged edits, and
 untracked files. Each changed path selects the tests of every area that owns
 it; a path no area owns selects the whole suite. Slow tests are left out
 unless --slow is given, as in the everyday local gate.
@@ -21,11 +21,12 @@ import subprocess
 import sys
 import tomllib
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 AREAS = REPO / "tests" / "areas.toml"
 ALL = "tests"
+# pytest.ExitCode.NO_TESTS_COLLECTED, without importing pytest: Gates runs
+# --list with only the standard library.
+NO_TESTS_COLLECTED = 5
 
 
 @dataclass(frozen=True)
@@ -95,14 +96,22 @@ def changed_files(base: str, root: Path = REPO) -> list[str]:
     return sorted(paths)
 
 
+def default_base(root: Path = REPO) -> str:
+    """origin/dev, where pull requests merge; origin/main until dev exists."""
+    found = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", "origin/dev"],
+                           capture_output=True)
+    return "origin/dev" if found.returncode == 0 else "origin/main"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--base", default="origin/main",
-                        help="branch the change is measured from (default origin/main)")
+    parser.add_argument("--base", help="branch the change is measured from (default origin/dev,"
+                        " or origin/main before dev exists)")
     parser.add_argument("--list", action="store_true", help="print the selection instead of running it")
     parser.add_argument("--slow", action="store_true", help="include tests marked slow")
     parser.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     args = parser.parse_args(argv)
+    args.base = args.base or default_base()
 
     try:
         changed = changed_files(args.base)
@@ -126,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.slow:
         command += ["-m", "not slow"]
     code = subprocess.run([*command, *tests, *args.pytest_args], cwd=REPO).returncode
-    if code == pytest.ExitCode.NO_TESTS_COLLECTED and not args.slow:
+    if code == NO_TESTS_COLLECTED and not args.slow:
         # Every selected test is marked slow: nothing failed.
         print("Every selected test is marked slow; run with --slow to include them.", file=sys.stderr)
         return 0

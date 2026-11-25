@@ -83,3 +83,8 @@ tests = ["tests/test_research_plugin.py"]
 name = "test selection"
 paths = ["scripts/affected_tests.py", "tests/areas.toml"]
 tests = ["tests/test_affected_tests.py"]
+
+[[area]]
+name = "dev branch"
+paths = ["scripts/promote_dev.py", "scripts/bisect_dev.py"]
+tests = ["tests/test_dev_scripts.py"]
