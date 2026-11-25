@@ -233,6 +233,13 @@ request into `dev`, or revert that merge (`git revert -m 1 <merge>`).
   inline `shutil.copytree`/`tmp_path` setup. Check there before writing setup;
   a new reusable need becomes a new fixture. Its module docstring explains the
   session (shared, read-only) vs. function (private, mutation-safe) families.
+- **Actions are pinned to commits.** Every `uses:` in a workflow names a
+  full commit SHA with its release as a comment
+  (`actions/checkout@<sha>  # v7.0.1`), never a tag or branch: the
+  repository rejects anything else. Find the SHA with
+  `git ls-remote --tags https://github.com/<owner>/<repo>` (the `^{}` line
+  for an annotated tag). Dependabot proposes updates weekly, into `dev`;
+  `tests/test_workflows.py` checks the pins.
 - **Tabs are forbidden** in all text files (code, markdown, docs) — spaces only.
 - Spell checking (cspell) runs over markdown, Python, CSV, and TOML (see
   `cspell.json`). Add project-specific words to `.cspell/project-words.txt`,
