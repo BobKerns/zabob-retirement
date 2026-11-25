@@ -6,7 +6,9 @@ the *ambient* shell — which, on a dev machine with the data repo activated,
 is the developer's real, personal data directory. That happened: a test run
 overwrote the real data repo's ``.current_scenario`` with a prototype
 scenario name. Clearing these here makes any such test fail loudly with
-"ANALYSIS_DATA_DIR not set" instead of quietly mutating real data.
+"no data repo" instead of quietly mutating real data. The user's default
+data repo (#687, ``user_config``) is a per-test empty config folder for the
+same reason.
 
 Fixture pattern for filesystem test data
 -----------------------------------------
@@ -72,6 +74,7 @@ import git
 import pandas as pd
 import pytest
 
+from zabob.retirement import user_config
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
 from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
@@ -110,6 +113,21 @@ def _no_ambient_analysis_env(
 ) -> None:
     for name in _ANALYSIS_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Nor the developer's default data repo (#687): `sim init` in a test
+    # records its own there.
+    config = tmp_path_factory.mktemp("user-config")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    monkeypatch.setenv("APPDATA", str(config))
+    # Nor the data repo a test happens to run in: a checkout's own
+    # data/private/sim. A test of that step passes `start` (see
+    # tests/test_user_config.py) or changes into a data repo of its own.
+    real_local = user_config.local_data_dir
+    base = tmp_path_factory.getbasetemp()
+
+    def _local_under_tmp(start: Path | None = None) -> Path | None:
+        here = (start or Path.cwd()).resolve()
+        return real_local(here) if here.is_relative_to(base.resolve()) else None
+    monkeypatch.setattr(user_config, "local_data_dir", _local_under_tmp)
     # Without $ANALYSIS_DATA_DIR the notebook widgets fall back to the
     # checkout's data/private/sim: on a dev machine, the real data repo,
     # whose disabled scenarios once hid a test's recipe (#401).

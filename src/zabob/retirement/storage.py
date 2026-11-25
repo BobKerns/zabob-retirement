@@ -9,6 +9,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.user_config import current_user
+
 STATE_DB_FILENAME = "state.sqlite3"
 
 _DATE_INPUT_FORMATS = ("%m/%d/%Y", "%Y-%m-%d")
@@ -453,7 +455,7 @@ class JsonStateStore:
             # credit them the way new events are credited.
             self._conn.execute(
                 "UPDATE events SET user = ? WHERE user IS NULL OR TRIM(user) = ''",
-                (os.getenv("ANALYSIS_USER") or os.getenv("USER", ""),),
+                (current_user() or os.getenv("USER", ""),),
             )
 
 

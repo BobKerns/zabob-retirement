@@ -17,13 +17,17 @@ uv tool install zabob-retirement
 ```
 
 (`zabob-retire` is the same program under a shorter name.) Then make your
-data repo, the git repository of CSV files that holds your household, and
-activate it:
+data repo, the git repository of CSV files that holds your household:
 
 ```sh
-sim init                                          # in ~/zabob-retirement, asking who you are
-source ~/zabob-retirement/sim/activate-analysis   # in each new shell
+sim init        # in ~/zabob-retirement, asking who you are
 ```
+
+That's all: `sim init` makes it your default data repo, so every `sim`
+command finds it, from any folder and in any new terminal. `sim use DIR`
+switches to another. In bash or zsh, `source
+~/zabob-retirement/sim/activate-analysis` adds the data repo and you to the
+prompt and turns on TAB completion of names; it's optional.
 
 `sim init` saves a first version with git: on macOS, if a window offers to
 install the command-line developer tools (which include git), let it finish,
@@ -37,12 +41,15 @@ To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
 
+On Windows, this works in PowerShell or Windows Terminal as it stands; see
+[Windows](#windows) for what differs.
+
 The rest of this page is for working from a clone of the code.
 
 ## Install with one line
 
 If you don't have the code yet, or don't use git, paste this into a terminal
-(macOS, Linux or WSL; on Windows, [set up WSL](#windows-set-up-wsl-first)
+(macOS, Linux or WSL; on Windows, [set up WSL](#windows-wsl)
 first):
 
 ```sh
@@ -65,12 +72,41 @@ Video: [Setup and install](https://youtu.be/qnug-0zzlqA) walks through the
 install, a new data repo, activating it, and saving your work
 ([日本語](https://youtu.be/Eu0r0Hk1ghM)).
 
-## Windows: set up WSL first
+## Windows
 
-The simulator runs on Linux and macOS. On Windows it runs in WSL, the Windows
-Subsystem for Linux, which runs Ubuntu inside Windows 11, or Windows 10
-version 2004 or later. The video [WSL for Windows](https://youtu.be/yHr90VdoHGQ)
-walks through this ([日本語](https://youtu.be/zeTFTujsWwI)).
+The program runs on Windows itself. In PowerShell (or a Windows Terminal
+tab), install uv as its
+[installation page](https://docs.astral.sh/uv/getting-started/installation/)
+says:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+The data repo keeps its versions with git, so install
+[Git for Windows](https://git-scm.com/downloads/win) too, with its defaults.
+Open a new terminal, so it finds both, and go on with
+[Install the program](#install-the-program): `uv tool install
+zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
+
+- There are no background builds yet
+  ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)): a command
+  that shows a run whose data or code changed builds it first, so it may
+  take a moment the first time.
+- There is no TAB completion of names, since `activate-analysis` is for bash
+  and zsh. Commands still ask for a name they need, with completion as you
+  type.
+- Windows Terminal doesn't take the image protocols `--graph` and `--chart`
+  use, so it saves the chart as a PNG and prints its path. VS Code's
+  terminal shows them (below).
+
+### Windows: WSL
+
+For the one-line install below, or to work from a clone of the code, use
+WSL, the Windows Subsystem for Linux, which runs Ubuntu inside Windows 11, or
+Windows 10 version 2004 or later. The video
+[WSL for Windows](https://youtu.be/yHr90VdoHGQ) walks through this
+([日本語](https://youtu.be/zeTFTujsWwI)).
 
 1. Right-click Start and choose **Terminal (Admin)** (on Windows 10,
    **Windows PowerShell (Admin)**), then run `wsl --install`. Restart when

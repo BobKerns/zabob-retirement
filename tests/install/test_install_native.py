@@ -34,16 +34,19 @@ def session(new_user_env: dict[str, str]) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("ANALYSIS_") and k != "VIRTUAL_ENV"}
     env.update(new_user_env)
     env["USERPROFILE"] = env["HOME"]  # Path.home() on Windows
+    # Where `sim init` records the default data repo (#687): the new user's.
+    env["APPDATA"] = str(Path(env["HOME"]) / "AppData" / "Roaming")
+    env["XDG_CONFIG_HOME"] = str(Path(env["HOME"]) / ".config")
     env["PATH"] = os.pathsep.join([str(BIN), env.get("PATH", "")])
     if not WINDOWS:
         env["ANALYSIS_NO_BUILDER"] = "1"
     return env
 
 
-def _sim(env: dict[str, str], *args: str, data_dir: Path | None = None) -> str:
-    """Run ``sim ARGS`` in the user's home folder; its stdout and stderr."""
-    if data_dir is not None:
-        env = {**env, "ANALYSIS_DATA_DIR": str(data_dir)}
+def _sim(env: dict[str, str], *args: str) -> str:
+    """Run ``sim ARGS`` in the user's home folder, with no activation and
+    no ``--data-dir``: the default ``sim init`` recorded is what finds the
+    data repo (#687). Returns its stdout and stderr."""
     done = subprocess.run([str(BIN / "sim"), *args], cwd=env["HOME"], env=env, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
     assert done.returncode == 0, done.stdout + done.stderr
@@ -54,11 +57,8 @@ def _sim(env: dict[str, str], *args: str, data_dir: Path | None = None) -> str:
 def data_dir(session: dict[str, str]) -> Path:
     """``sim init --example``: the prototype household in ~/zabob-retirement."""
     out = _sim(session, "init", "--example")
-    root = Path(session["HOME"]) / "zabob-retirement"
-    if WINDOWS:
-        # Its one line of activation, as PowerShell takes it (#687).
-        assert f"$env:ANALYSIS_DATA_DIR = '{root / 'sim'}'" in out
-    return root / "sim"
+    assert "your default data repo" in out
+    return Path(session["HOME"]) / "zabob-retirement" / "sim"
 
 
 def test_init_stores_text_with_lf_line_endings(data_dir: Path) -> None:
@@ -66,34 +66,34 @@ def test_init_stores_text_with_lf_line_endings(data_dir: Path) -> None:
 
 
 def test_every_scenario_loads(session: dict[str, str], data_dir: Path) -> None:
-    _sim(session, "check", "--all", data_dir=data_dir)
+    _sim(session, "check", "--all")
 
 
 def test_a_scenario_runs_and_reports(session: dict[str, str], data_dir: Path) -> None:
-    _sim(session, "run", "retire_alice", data_dir=data_dir)
-    assert "net_worth" in _sim(session, "networth", "retire_alice", data_dir=data_dir)
+    _sim(session, "run", "retire_alice")
+    assert "net_worth" in _sim(session, "networth", "retire_alice")
     # A rich table: its box characters must survive the console's encoding.
-    assert "2030" in _sim(session, "report", "income", "retire_alice", data_dir=data_dir)
+    assert "2030" in _sim(session, "report", "income", "retire_alice")
 
 
 @pytest.mark.skipif(not WINDOWS, reason="the foreground build is Windows's (#748)")
 def test_a_changed_scenario_is_rebuilt_before_it_is_shown(session: dict[str, str], data_dir: Path) -> None:
-    _sim(session, "run", "base", data_dir=data_dir)
+    _sim(session, "run", "base")
     persons = data_dir / "persons.csv"
     persons.write_text(persons.read_text(encoding="utf-8").replace("1965-03-15", "1965-04-15"), encoding="utf-8")
-    _sim(session, "commit", "base", data_dir=data_dir)
-    assert "building base first" in _sim(session, "networth", "base", data_dir=data_dir)
+    _sim(session, "commit", "base")
+    assert "building base first" in _sim(session, "networth", "base")
 
 
 def test_a_notebook_runs_headless(session: dict[str, str], data_dir: Path) -> None:
     """net_worth.ipynb, executed as Jupyter would, against the example."""
-    _sim(session, "run", "base", data_dir=data_dir)
+    _sim(session, "run", "base")
     notebook = data_dir.parent / "notebooks" / "net_worth.ipynb"
     script = ("import sys, nbformat\nfrom nbclient import NotebookClient\n"
               "nb = nbformat.read(sys.argv[1], as_version=4)\n"
               "NotebookClient(nb, timeout=600, kernel_name='python3',"
               " resources={'metadata': {'path': sys.argv[2]}}).execute()\n")
-    env = {**session, "ANALYSIS_DATA_DIR": str(data_dir), "MPLBACKEND": "Agg"}
+    env = {**session, "MPLBACKEND": "Agg"}
     done = subprocess.run([sys.executable, "-c", script, str(notebook), str(notebook.parent)], env=env,
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert done.returncode == 0, done.stdout + done.stderr[-4000:]
