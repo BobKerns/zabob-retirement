@@ -240,6 +240,26 @@ def test_promote_leaves_an_up_to_date_promotion_alone(promote: ModuleType, monke
     assert writes == []
 
 
+def test_promote_writes_nothing_with_a_blocked_keyword(promote: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    writes = _github(promote, monkeypatch, None)
+    monkeypatch.setattr(promote, "_keywords_clear", lambda text: False)
+    assert promote._promote(dry_run=False) == 3
+    assert writes == []
+
+
+def test_keywords_clear_runs_the_check_on_the_text(promote: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def run(args: list[str], **kw: object) -> subprocess.CompletedProcess:
+        seen.append(Path(args[-1]).read_text())
+        return subprocess.CompletedProcess(args, 1 if "bad" in seen[-1] else 0)
+
+    monkeypatch.setattr(promote.subprocess, "run", run)
+    assert promote._keywords_clear("fine")
+    assert not promote._keywords_clear("a bad title")
+    assert seen == ["fine", "a bad title"]
+
+
 def test_an_issue_a_promoted_pull_fixes_is_not_listed_against_a_reverted_one(promote: ModuleType) -> None:
     body = promote.promotion_body([promote.Pull(716, "Typo", (706,))], [promote.Pull(714, "Areas", (706,))])
     assert "- #714 Areas\n" in body
