@@ -13,7 +13,8 @@
 # It acts with PROMOTION_TOKEN (Pull requests: read and write), so the base
 # change is an ordinary edited event and Gates reruns on the pull request
 # against dev. With the GITHUB_TOKEN fallback the edit starts no run; the
-# next push does.
+# next push does. Any API failure (an expired token, a missing dev) fails
+# the run, so a pull request left on main shows a red check here.
 name: Retarget to dev
 
 on:
@@ -45,11 +46,6 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          # Until dev exists, main is still where pull requests go.
-          if ! gh api "repos/$REPO/branches/dev" --silent 2>/dev/null; then
-              echo "There is no dev branch yet."
-              exit 0
-          fi
           # dev's promotion: this repository's dev, not a fork's.
           if [ "$HEAD_REF" = dev ] && [ "$HEAD_REPO" = "$REPO" ]; then
               echo "dev's promotion stays on main."
