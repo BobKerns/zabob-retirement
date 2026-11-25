@@ -1,0 +1,15 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/BobKerns/zabob-retirement/discussions/categories/q-a
+    about: >-
+      Questions about setup, scenarios or results go in Discussions (Q&A).
+      Leave out real balances, names and account details.
+  - name: Suggest an idea
+    url: https://github.com/BobKerns/zabob-retirement/discussions/categories/ideas
+    about: >-
+      Feature ideas start in Discussions (Ideas); they become issues once
+      they're settled.
+  - name: Show what you built
+    url: https://github.com/BobKerns/zabob-retirement/discussions/categories/show-and-tell
+    about: Share a scenario or strategy in Discussions (Show and tell).
