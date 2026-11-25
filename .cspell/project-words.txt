@@ -98,6 +98,7 @@ CORRECTFITID
 counterclock
 cpus
 CREAT
+creationflags
 CREDITCARD
 CREDITCARDMSGSRSV
 creds
@@ -305,7 +306,9 @@ nonqualified
 NOPASSWD
 NOSYSTEM
 noto
+ntdll
 ntos
+NTSTATUS
 nunique
 OBBBA
 OFXHEADER

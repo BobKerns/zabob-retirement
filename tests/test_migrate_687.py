@@ -56,8 +56,15 @@ def test_the_migration_renames_tracked_folders_with_git(data_repo_sim: Path) -> 
 
         assert _migration().main([str(data_repo_sim), "--write"]) == 0
         staged = repo.git.diff("--cached", "--name-status", "-M").splitlines()
-    assert staged and all(line.startswith("R100") for line in staged)
-    assert any("sim/aux/inflation__cpi.csv\tsim/tables/inflation__cpi.csv" in line for line in staged)
+    renames = [line for line in staged if not line.endswith(".gitattributes")]
+    assert renames and all(line.startswith("R100") for line in renames)
+    assert any("sim/aux/inflation__cpi.csv\tsim/tables/inflation__cpi.csv" in line for line in renames)
+    # And text=auto, as sim init gives a new data repo, so CRLF saves keep the tree id.
+    attributes = (data_repo_sim.parent / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    assert "* text=auto" in attributes
+    assert "A\t.gitattributes" in staged or "M\t.gitattributes" in staged
+    assert _migration().main([str(data_repo_sim), "--write"]) == 0  # nothing left to do
+    assert (data_repo_sim.parent / ".gitattributes").read_text(encoding="utf-8").count("* text=auto") == 1
 
 
 def test_the_migration_stops_when_both_folders_exist(test_data_dir: Path, old_aux_layout: list[Path]) -> None:

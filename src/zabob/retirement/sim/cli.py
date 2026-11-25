@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
-from zabob.retirement.oscompat import WINDOWS, login_name, utf8_stdio
+from zabob.retirement.oscompat import WINDOWS, is_link, link_dir, login_name, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
@@ -359,7 +359,7 @@ def sim_group_command() -> None:
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER). Used only when running.",
+    help="Identifier recorded in simulation_run.run_by (default: your login name). Used only when running.",
 )
 @click.option(
     "--run/--no-run",
@@ -687,7 +687,7 @@ def _resolve_data_dir(data_dir: Path | None) -> Path:
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER)",
+    help="Identifier recorded in simulation_run.run_by (default: your login name)",
 )
 @click.option("--allow-dirty-data", is_flag=True, default=False)
 @click.option("--allow-dirty-code", is_flag=True, default=False)
@@ -4225,7 +4225,7 @@ def _report_row(
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER)",
+    help="Identifier recorded in simulation_run.run_by (default: your login name)",
 )
 @click.option(
     "--force", is_flag=True, default=False,
@@ -5708,7 +5708,7 @@ def init_command(
         if os.path.lexists(private):
             raise click.ClickException(
                 f"{_shown(private, resolve=False)} is already there"
-                + (f", leading to {_shown(private.resolve())}" if private.is_symlink() else "")
+                + (f", leading to {_shown(private.resolve())}" if is_link(private) else "")
                 + f". To use it: sim use {_shown(private, resolve=False)}. For a new data "
                 "repo elsewhere, give its DIR; to start over here, remove it first.")
         directory = private
@@ -5722,7 +5722,7 @@ def init_command(
     if not no_builder and not linked:
         if not os.path.lexists(private):
             private.parent.mkdir(exist_ok=True)
-            private.symlink_to(root)
+            link_dir(private, root)  # a junction where Windows refuses a symlink
             linked = True
             click.echo(f"linked {_shown(private, resolve=False)} to {_shown(root)}")
         else:

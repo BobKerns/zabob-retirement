@@ -164,6 +164,16 @@ def lock_holder(intent_dir: Path, scenario: str) -> LockHolder | None:
 _held: dict[Path, list[int]] = {}
 
 
+def _holder(intent_dir: Path) -> str:
+    """Who holds a lock: the user of the data repo whose state this is (its
+    ``sim/`` beside ``state/``), not of the one the working folder or the
+    default names (#687)."""
+    data_dir = Path(intent_dir).resolve().parent.parent / "sim"
+    if (data_dir / "persons.csv").is_file():
+        return current_user(data_dir) or login_name()
+    return os.environ.get("ANALYSIS_USER", "").strip() or login_name()
+
+
 @contextmanager
 def build_lock(
     intent_dir: Path, scenario: str, *,
@@ -192,7 +202,7 @@ def build_lock(
             flock.lock(fd)
         record = {
             "pid": os.getpid(),
-            "user": current_user() or login_name(),
+            "user": _holder(intent_dir),
             "host": socket.gethostname(),
             "since": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%SZ"),
             "by": "builder" if os.environ.get(BUILDER_CHILD_ENV) else "manual",
