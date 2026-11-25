@@ -9,8 +9,10 @@ of ten merges takes three or four short runs. It works in a temporary
 worktree, so the current checkout and its branch are left alone; the tests
 run with this checkout's virtual environment against that worktree's code.
 
-At a merge where a given test doesn't exist yet the merge is skipped, not
-blamed; any other failure, a collection error included, blames it. The
+At a merge where a given test doesn't exist yet (its file, or the node
+pytest is asked for: a new method, a new parameter case) the merge is
+skipped, not blamed; any other failure, a collection error included, blames
+it. The
 answer is the first merge where the tests fail: revert it with
 `git revert -m 1 <merge>` in a pull request into dev, or fix forward.
 """
@@ -35,8 +37,10 @@ TEMPLATE_DATA = "BISECT_DEV_TEMPLATE_DATA"
 
 
 def present(test: str, tree: Path) -> bool:
-    """Whether the test exists at the commit checked out in tree. A test
-    added later can't say anything about this commit."""
+    """Whether the test's file and top-level name exist at the commit checked
+    out in tree: a quick first look, before any data is built. A test added
+    later can't say anything about this commit; collects() settles the
+    nodes below the top level."""
     path, _, name = test.partition("::")
     file = tree / path
     if not file.exists():
@@ -49,6 +53,16 @@ def present(test: str, tree: Path) -> bool:
         return True
     return re.search(rf"^(?:def {re.escape(top)}\(|class {re.escape(top)}\b)",
                      file.read_text(encoding="utf-8"), re.MULTILINE) is not None
+
+
+def collects(tests: list[str], tree: Path, env: dict[str, str]) -> bool:
+    """Whether pytest finds every node asked for. A node id it can't match
+    (a method or parameter case added later) is exit 4 with "no match in
+    any of", which isn't the commit's fault; a collection error is, so it
+    counts as found and the real run blames it."""
+    run = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *tests],
+                         cwd=tree, env=env, capture_output=True, text=True)
+    return not (run.returncode == 4 and "no match in any of" in run.stdout + run.stderr)
 
 
 def verdict(pytest_code: int) -> int:
@@ -82,6 +96,8 @@ def step(tests: list[str]) -> int:
         subprocess.run([str(tree / "scripts" / "link-data.sh"), "--template"], check=True,
                        stdout=subprocess.DEVNULL)
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [str(tree / "src"), os.environ.get("PYTHONPATH")]))}
+    if not collects(tests, tree, env):
+        return SKIP
     code = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *tests],
                           cwd=tree, env=env).returncode
     return verdict(code)
