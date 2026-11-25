@@ -42,6 +42,23 @@ jobs:
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
 
+      # Gates checks a pull request's title and body, but this token's edits
+      # start no Gates run, so a refresh of a ready promotion would go
+      # unchecked (a merged pull request's title can be edited later). Check
+      # the body before it is written; the title is the script's own.
+      - name: Check the body for blocked keywords
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # The private keyword list (docs/SETUP.md). The check never prints it.
+          BLOCKED_KEYWORDS_PRIVATE: ${{ secrets.BLOCKED_KEYWORDS_PRIVATE }}
+        run: |
+          if [ -z "$BLOCKED_KEYWORDS_PRIVATE" ]; then
+              echo "::warning::The BLOCKED_KEYWORDS_PRIVATE secret is not set; only the public keyword list is checked."
+          fi
+          uv run --no-project python scripts/promote_dev.py --dry-run > "$RUNNER_TEMP/body.txt"
+          scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/body.txt"
+
       - name: Open or refresh
         env:
           GH_TOKEN: ${{ github.token }}
