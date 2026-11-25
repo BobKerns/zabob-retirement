@@ -14,7 +14,7 @@ the body names those to reopen.
 
 The pull request opens as a draft, so Gates leaves it alone while dev
 keeps moving; mark it ready when it's time to promote, which runs the full
-gates on it once. Merge it with a merge commit, never a squash: dev's merges then
+gates on it once. The repository allows only merge commits, so dev's merges
 stay on main's history, where scripts/bisect_dev.py and
 `git log --first-parent` find them. Needs `gh`, signed in; it uses only
 GitHub's REST API.
@@ -146,8 +146,7 @@ def promotion_body(pulls: list[Pull], reverted: tuple[Pull, ...] | list[Pull] = 
     def issues(numbers: tuple[int, ...] | list[int]) -> str:
         return ", ".join(f"#{n}" for n in numbers)
 
-    lines = [f"Promotes dev to main: {len(pulls)} pull request{'s' if len(pulls) != 1 else ''}.", "",
-             "Merge with a merge commit, not a squash, so dev's merges stay on main's history.", ""]
+    lines = [f"Promotes dev to main: {len(pulls)} pull request{'s' if len(pulls) != 1 else ''}.", ""]
     # A title's own closing words are made inert: only the "Fixes" lines at
     # the end close anything.
     lines += [f"- #{p.number} {_defused(p.title)}" + (f" (for {issues(p.closes)})" if p.closes else "") for p in pulls]

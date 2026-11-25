@@ -84,5 +84,4 @@ current head, both the push run on dev and the promotion's own latest run
 (a body refresh made with a user's token, as this skill's is, is an
 `edited` event, which reruns the promotion's checks and cancels the run
 before it; the workflow's own refreshes rerun nothing), every finding fixed on dev or answered, nothing open into dev
-that was meant to go with it. Remind them to merge with a merge commit,
-never a squash.
+that was meant to go with it.

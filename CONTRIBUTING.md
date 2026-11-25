@@ -35,7 +35,7 @@ gitGraph
   `issue/<number>-<short-description>`, and open the pull request against
   `dev`.
 - **`main`** moves only when `dev` is promoted: one pull request, merged
-  with a merge commit (never a squash), after the whole test suite has
+  after the whole test suite has
   passed on it. So `main` is always fully tested. Releases are tagged on it.
 - **A hotfix**, a fix `main` can't wait for, branches from `origin/main`
   rather than `dev`, on a branch named `hotfix/<number>-<short-description>`,
@@ -85,7 +85,7 @@ into `dev` and run the script again to refresh the body.
 If the body says main has changes `dev` lacks (a hotfix merged straight to
 main), merge `origin/main` into `dev` through a pull request first, so
 `dev`'s Gates test what main will get.
-Merge only when that fix is on `dev`, with a merge commit, never a squash.
+Merge only when that fix is on `dev`.
 
 ## A pull request
 

@@ -178,7 +178,7 @@ push to `dev`, which opens it as a draft (so it doesn't rerun the full
 gates on every push to `dev`) or refreshes its body. `/promote`, the skill
 in `.claude/skills/promote/`, is the manual fallback when that run fails,
 and checks the promotion before merge. Bob marks it ready when he wants to
-promote and merges it with a merge commit, never a squash. Nothing else
+promote and merges it. Nothing else
 goes to `main` except a hotfix, which branches from `origin/main` (not
 `dev`, whose unpromoted merges it would carry) as `hotfix/<number>-<desc>`,
 is labeled `hotfix`, and goes to `dev` as soon as it lands, from an
