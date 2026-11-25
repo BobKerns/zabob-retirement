@@ -88,15 +88,46 @@ def start_tree(command: Sequence[str], **kwargs: Any) -> subprocess.Popen:
     can later stop it and whatever it starts, even once it has exited. On
     POSIX that is its own process group; on Windows, which has none, a Job
     Object, which (unlike ``taskkill /T``) still holds the children after
-    their parent is gone."""
+    their parent is gone. The process starts suspended and is resumed once
+    it is in the job."""
     if not WINDOWS:
         return subprocess.Popen(command, start_new_session=True, **kwargs)
-    proc = subprocess.Popen(command, **kwargs)
+    # Suspended until it is in the job, so nothing it starts (a .cmd shim's
+    # node, say) can begin outside it.
+    flags = kwargs.pop("creationflags", 0) | 0x00000004  # CREATE_SUSPENDED
+    proc = subprocess.Popen(command, creationflags=flags, **kwargs)
     try:
         _JOBS[proc.pid] = _job_for(proc.pid)
     except OSError:
         pass  # kill_tree falls back to taskkill /T
+    finally:
+        try:
+            _resume(proc.pid)
+        except OSError:
+            proc.kill()
+            raise
     return proc
+
+
+def _resume(pid: int) -> None:
+    """Resume a process started suspended. Popen keeps no handle on its
+    thread, so the whole process, as Process Explorer's Resume does."""
+    assert sys.platform == "win32"
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = _kernel32()
+    ntdll = ctypes.WinDLL("ntdll")
+    ntdll.NtResumeProcess.restype = ctypes.c_long
+    ntdll.NtResumeProcess.argtypes = (wintypes.HANDLE,)
+    process = kernel32.OpenProcess(0x0800, False, pid)  # PROCESS_SUSPEND_RESUME
+    if not process:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if status := ntdll.NtResumeProcess(process):
+            raise OSError(f"NtResumeProcess failed: NTSTATUS {status & 0xFFFFFFFF:#010x}")
+    finally:
+        kernel32.CloseHandle(process)
 
 
 def _job_for(pid: int) -> int:
@@ -148,6 +179,9 @@ def kill_tree(proc: subprocess.Popen) -> None:
         kernel32 = _kernel32()
         kernel32.TerminateJobObject(job, 1)
         kernel32.CloseHandle(job)
+        # And by the tree, in case anything left the job (a child started
+        # with CREATE_BREAKAWAY_FROM_JOB): harmless when the root is gone.
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False)
         return
     try:
         os.killpg(proc.pid, signal.SIGKILL)
