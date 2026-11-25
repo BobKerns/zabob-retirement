@@ -438,7 +438,7 @@ def _tape_builder(videos_root: Path, repo_root: Path, tmp_path: Path, front: str
     return _Builder(scripts.load(folder), theme, tmp_path, repo_root, engine="silent", rerecord=False)
 
 
-def test_tape_data_front_matter_wins_over_the_videos_own_repo(
+def test_tape_data_front_matter_wins_over_the_videos_repo(
     videos_root: Path, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(VIDEO_DATA_ENV, str(tmp_path))
@@ -446,7 +446,7 @@ def test_tape_data_front_matter_wins_over_the_videos_own_repo(
     assert builder.tape_data() == repo_root / "prototype_data"
 
 
-def test_tape_data_falls_back_to_the_videos_own_repo(
+def test_tape_data_falls_back_to_the_videos_repo(
     videos_root: Path, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     own = tmp_path / "own"
@@ -458,7 +458,7 @@ def test_tape_data_falls_back_to_the_videos_own_repo(
     with pytest.raises(scripts.ScriptError, match="needs data"):
         builder.tape_data()
     monkeypatch.setenv(VIDEO_DATA_ENV, str(own))
-    with pytest.raises(scripts.ScriptError, match="doesn't exist yet.*docker.sh shell 01-own-data"):
+    with pytest.raises(scripts.ScriptError, match=r"doesn't exist yet.*docker.sh shell\)"):
         builder.tape_data()
     (own / "persons.csv").write_text("id\n", encoding="utf-8")
     assert builder.tape_data() == own
@@ -898,7 +898,7 @@ def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
     from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
-    for args in (["build", "01-intro", "--docker"], ["shell", "01-intro"], ["image"]):
+    for args in (["build", "01-intro", "--docker"], ["shell"], ["image"]):
         result = CliRunner().invoke(main, ["video", *args])
         assert result.exit_code == 1 and "Docker" in result.output
     assert video_runs == {"docker": [], "local": []}
@@ -968,3 +968,23 @@ def test_python_m_analysis_videos_runs_locally(monkeypatch: pytest.MonkeyPatch,
         videos_main.main(["build", "01-intro", "--docker"])
     assert done.value.code == 1
     assert video_runs["docker"] == [] and len(video_runs["local"]) == 1
+
+
+def test_the_demo_finds_each_build_of_the_wheel_in_a_folder_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uv caches a find-links wheel by its folder and file name, both the
+    same from build to build, so a fixed folder reinstalled the first wheel
+    it saw (#687: old code read aux/ after the rename)."""
+    built = tmp_path / "built"
+    (built / "wheels").mkdir(parents=True)
+    wheel = built / "wheels" / "zabob_retirement-1.0.0b1-py3-none-any.whl"
+    monkeypatch.setattr(render, "_program_wheel", lambda: (built, "uv"))
+    folders = []
+    for code in (b"old code", b"new code", b"old code"):
+        wheel.write_bytes(code)
+        render._wheel_digest.cache_clear()
+        folders.append(render._wheels_dir(tmp_path / "demo"))
+    render._wheel_digest.cache_clear()
+    assert folders[0] != folders[1] and folders[0] == folders[2]
+    assert all(folder.parent == tmp_path / "demo" for folder in folders)

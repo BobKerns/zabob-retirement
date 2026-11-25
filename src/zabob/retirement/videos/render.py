@@ -486,6 +486,24 @@ def _program_wheel() -> tuple[Path, str]:
     return out, uv
 
 
+@functools.cache
+def _wheel_digest() -> str:
+    """A short digest of the built wheel's bytes."""
+    built = _program_wheel()[0] / "wheels"
+    digest = hashlib.sha256()
+    for wheel in sorted(built.iterdir()):
+        digest.update(wheel.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def _wheels_dir(root: Path) -> Path:
+    """Where the demo finds the wheel: a folder named for its contents. uv
+    caches a find-links wheel by its location and file name, and both stay
+    the same from build to build (DEMO_ROOT, the version), so a fixed folder
+    got the first wheel it ever saw installed again, old code and all."""
+    return root / f"wheels-{_wheel_digest()}"
+
+
 def _uv_env(root: Path) -> dict[str, str]:
     """What makes `uv tool install zabob-retirement`, typed in a tape whose
     HOME is the demo's, install this checkout's wheel, quickly and the same
@@ -498,7 +516,7 @@ def _uv_env(root: Path) -> dict[str, str]:
     uv = _program_wheel()[1]
     return {
         "UV_PYTHON": sys.executable,
-        "UV_FIND_LINKS": str(root / "wheels"),
+        "UV_FIND_LINKS": str(_wheels_dir(root)),
         "UV_CONSTRAINT": str(root / "constraints.txt"),
         "UV_CACHE_DIR": run([uv, "cache", "dir"]).stdout.strip(),
         "UV_PYTHON_INSTALL_DIR": run([uv, "python", "dir"]).stdout.strip(),
@@ -509,7 +527,7 @@ def _install_program(root: Path) -> None:
     """Install the program into the demo's home, as the user would have
     (video 2's install scene removes it and installs it again on camera)."""
     built, uv = _program_wheel()
-    shutil.copytree(built / "wheels", root / "wheels")
+    shutil.copytree(built / "wheels", _wheels_dir(root))
     shutil.copy2(built / "constraints.txt", root / "constraints.txt")
     home = root / "home"
     home.mkdir(exist_ok=True)
