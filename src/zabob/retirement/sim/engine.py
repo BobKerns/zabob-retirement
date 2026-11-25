@@ -644,6 +644,8 @@ def run_scenario(
                     con, step_id, month_s, inheritances.by_month[month_s], balances,
                     account_kinds, refill_ctx, outside_lots,
                 )
+            if month.month == 12:
+                _check_inherited_roth_deadline(refill_ctx, balances, month)
 
             con.executemany(
                 "INSERT INTO lot_state(step_id, lot_id, balance, cost_basis, "
@@ -686,6 +688,12 @@ def run_scenario(
                 "  run_args_json, '$.skipped_rule_kinds', json(?)) WHERE id = 1",
                 (json.dumps(skipped_counts, sort_keys=True),),
             )
+        if refill_ctx.inherited_roth_events:
+            con.execute(
+                "UPDATE simulation_run SET run_args_json = json_set("
+                "  run_args_json, '$.inherited_roth_warnings', json(?)) WHERE id = 1",
+                (json.dumps(refill_ctx.inherited_roth_events),),
+            )
         if refill_ctx.negative_events:
             con.execute(
                 "UPDATE simulation_run SET run_args_json = json_set("
@@ -726,6 +734,12 @@ class RothLot(NamedTuple):
     then: tuple[date, RothLot] | None = None
     """From this date on, the lot follows these rules instead: a death
     changes the clock or the age test (#256)."""
+    inherited: bool = False
+    """An ``inherited_roth_ira`` lot (#257): no money may go in, and it is
+    never rolled into the beneficiary's own Roth IRA."""
+    empty_by: date | None = None
+    """When an inherited lot must be empty (Dec 31 of the tenth year after
+    the death, its ``acquired`` date); None when it has no date."""
 
 
 def _earlier_clock(*clocks: date | None) -> date | None:
@@ -742,7 +756,14 @@ def _roth_lots(
     A Roth IRA's clock is the owner's, across all their Roth IRA lots; a Roth
     401k's is the plan's, across that account's Roth lots. It starts on Jan 1
     of the year of the earliest of those lots' ``acquired`` dates, or of the
-    account's ``opened`` when a lot has none. With neither, it has run.
+    account's ``opened`` when a lot has none. With neither, it has run. A
+    person's ``roth_clock_start`` (#257) is one more year in their Roth IRA
+    clock's minimum, and with it set, an undated lot adds nothing rather
+    than meaning the clock has run.
+
+    An inherited Roth IRA (#257) keeps the decedent's clock, its lot's
+    ``roth_clock_start`` (blank: it has run), apart from the beneficiary's
+    own, with no age test, and must be empty ten years after the death.
 
     A death changes the rules from the month after the final month (#256).
     The two ``primary`` persons are spouses. Under the default
@@ -762,18 +783,20 @@ def _roth_lots(
         "SELECT m.id, m.subkind, m.acquired, a.opened, a.owner, a.id FROM account_lot m "
         "JOIN account a ON a.id = m.account_id WHERE m.subkind IN ('roth_ira', 'roth_401k')"
     ).fetchall()
+    stated = {person: year for person, year in con.execute(
+        "SELECT id, roth_clock_start FROM person WHERE roth_clock_start IS NOT NULL")}
 
     def clock_key(subkind: str, owner: str | None, account_id: int) -> tuple[str, object]:
         return ("ira", owner or account_id) if subkind == "roth_ira" else ("401k", account_id)
 
-    years: dict[tuple[str, object], list[int]] = {}
+    years: dict[tuple[str, object], list[int]] = {("ira", p): [y] for p, y in stated.items()}
     undated: set[tuple[str, object]] = set()  # a lot with no date: the clock has run
     for _lot, subkind, acquired, opened, owner, account_id in rows:
         key = clock_key(subkind, owner, account_id)
         dated = acquired or opened
         if dated:
             years.setdefault(key, []).append(int(dated[:4]))
-        else:
+        elif not (subkind == "roth_ira" and owner in stated):
             undated.add(key)
     clocks: dict[tuple[str, object], date | None] = {
         key: None if key in undated else date(min(years[key]), 1, 1)
@@ -831,6 +854,20 @@ def _roth_lots(
             clock_start=clock,
             birthdate=birthdates.get(owner) if owner else None,
             then=then,
+        )
+    for lot, clock_year, acquired in con.execute(
+        "SELECT id, roth_clock_start, acquired FROM account_lot WHERE subkind = ?",
+        (registries.INHERITED_ROTH_SUBKIND,),
+    ):
+        # The beneficiary's own death changes nothing: the next beneficiary
+        # keeps the decedent's clock and deadline.
+        lots[lot] = RothLot(
+            basis_first=True,
+            clock_start=date(clock_year, 1, 1) if clock_year else None,
+            birthdate=None,
+            inherited=True,
+            empty_by=(date(int(acquired[:4]) + registries.INHERITED_ROTH_YEARS, 12, 31)
+                      if acquired else None),
         )
     return lots
 
@@ -1253,7 +1290,8 @@ class RefillContext:
                  "account_tax_treatment", "account_subkind", "account_name",
                  "cost_bases", "quantities", "growth_sources", "share_sources", "acquired",
                  "chain_name", "refilling", "last_refill", "negative_since",
-                 "negative_events", "roth", "hsa", "strategies", "inheritance")
+                 "negative_events", "roth", "hsa", "strategies", "inheritance",
+                 "inherited_roth_events")
 
     def __init__(
         self, graph: ChainGraph, aux, chain_base_date: date,
@@ -1290,6 +1328,9 @@ class RefillContext:
         self.last_refill: dict[int, RefillAttempt] = {}
         self.negative_since: dict[int, bool] = {}
         self.negative_events: list[dict[str, Any]] = []
+        # #257: what a run did to an inherited Roth IRA that the rules don't
+        # allow, once per lot and kind; see _check_inherited_roth.
+        self.inherited_roth_events: list[dict[str, Any]] = []
         # The run's strategies (#326), when it has any: asked at the chains they own.
         self.strategies: StrategyRuntime | None = None
         # A death's sweep under way (#274), which skips the dead's lots and
@@ -1486,6 +1527,8 @@ def _post_transfer(
     if remainder is None:
         remainder = requested - amount
     track = refill_ctx if net_effects else None
+    if track is not None and amount > 0:
+        _check_inherited_roth(track, account_kinds, from_id, to_id, month_s)
     if track is not None and amount > 0 and refill_mark is None:
         refill_mark = _ensure_min_balance(
             con, balances, account_kinds, step_id, month_s, track,
@@ -1517,6 +1560,56 @@ def _post_transfer(
                          tax_year=tax_year, reason_kind=reason_kind, reason_id=reason_id)
     _link_refills(con, refill_mark, event_id)
     return event_id
+
+
+def _inherited_roth_warning(ctx: RefillContext, lot: int, kind: str, month_s: str, message: str) -> None:
+    """Warn once per inherited Roth lot and ``kind`` (#257), and record it
+    under ``run_args_json.$.inherited_roth_warnings``. Like a negative
+    balance, the run goes on: the scenario stays runnable past it."""
+    name = ctx.account_name.get(lot, str(lot))
+    if any(e["lot_id"] == lot and e["kind"] == kind for e in ctx.inherited_roth_events):
+        return
+    warnings.warn(f"{month_s}: inherited Roth IRA {name!r}: {message}", RuntimeWarning, stacklevel=3)
+    ctx.inherited_roth_events.append(
+        {"month": month_s, "account": name, "lot_id": lot, "kind": kind, "message": message})
+
+
+def _check_inherited_roth(
+    ctx: RefillContext, account_kinds: Mapping[int, str], from_id: int, to_id: int, month_s: str,
+) -> None:
+    """A beneficiary can't add to an inherited Roth IRA, nor roll it into a
+    retirement account of their own (#257): flag a transfer that does. Only
+    money from the household's own assets is a contribution: its growth, the
+    inheritance arriving from an income account during the run, a death's
+    sweep, and a move between two inherited lots are fine."""
+    to_roth, from_roth = ctx.roth.get(to_id), ctx.roth.get(from_id)
+    if (to_roth is not None and to_roth.inherited
+            and account_kinds.get(from_id) == "asset"
+            and from_id not in ctx.growth_sources and ctx.inheritance is None
+            and not (from_roth is not None and from_roth.inherited)):
+        _inherited_roth_warning(
+            ctx, to_id, "contribution", month_s,
+            "money moved in; a beneficiary can't contribute to an inherited IRA")
+    elif (from_roth is not None and from_roth.inherited
+            and ctx.account_subkind.get(to_id) == registries.RETIREMENT_SUBKIND
+            and not (to_roth is not None and to_roth.inherited)):
+        _inherited_roth_warning(
+            ctx, from_id, "rollover", month_s,
+            "moved into another retirement account; a non-spouse beneficiary can't roll it over")
+
+
+def _check_inherited_roth_deadline(
+    ctx: RefillContext, balances: Mapping[int, int], month: date,
+) -> None:
+    """At a month's end, flag each inherited Roth lot still holding money on
+    the day it had to be empty (#257). The real penalty is an excise tax on
+    what's left, which isn't modeled."""
+    for lot, roth in ctx.roth.items():
+        if roth.empty_by == month and balances.get(lot, 0) > 0:
+            _inherited_roth_warning(
+                ctx, lot, "deadline", month.isoformat(),
+                f"{balances[lot] / 100:.2f} left after the ten-year deadline "
+                f"({month.isoformat()}); it must be emptied by then")
 
 
 def _record_hsa_gain(

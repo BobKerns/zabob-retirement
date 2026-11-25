@@ -1387,6 +1387,51 @@ def add_person(test_data_dir: Path) -> Callable[..., None]:
 
 
 @pytest.fixture(scope="function")
+def update_person(test_data_dir: Path) -> Callable[..., None]:
+    """Set columns on one person of the private data copy's shared
+    persons.csv, adding any column it lacks: ``update_person("bill",
+    roth_clock_start="2009")``."""
+    def _update(person: str, **columns: str) -> None:
+        path = test_data_dir / "persons.csv"
+        persons = pd.read_csv(path, dtype=str, keep_default_na=False)
+        row = persons["id"] == person
+        assert row.any(), person
+        for column, value in columns.items():
+            if column not in persons.columns:
+                persons[column] = ""
+            persons.loc[row, column] = value
+        persons.to_csv(path, index=False)
+    return _update
+
+
+INHERITED_ROTH_BILL = "Asset_InheritedRoth_Bill"
+
+
+@pytest.fixture(scope="function")
+def add_inherited_roth(retire_alice_csv: Callable[[str], Path]) -> Callable[..., str]:
+    """``add_inherited_roth(**lot_columns)``: a Roth IRA Bill inherited from
+    someone outside the household (#257), in an account of its own, whose
+    name it returns: $50,000, of which $20,000 is basis, with no ``acquired``
+    date (so no ten-year deadline) unless ``lot_columns`` say otherwise."""
+    def _add(**lot_columns: str) -> str:
+        accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
+        accounts.loc[len(accounts)] = {
+            **dict.fromkeys(accounts.columns, ""),
+            "name": INHERITED_ROTH_BILL, "kind": "asset", "subkind": "retirement",
+            "owner": "bill", "opened": "2026-01-31", "meta_json": "{}"}
+        accounts.to_csv(retire_alice_csv("accounts.csv"), index=False)
+        lots = pd.read_csv(retire_alice_csv("account_lots.csv"), dtype=str, keep_default_na=False)
+        lots.loc[len(lots)] = {
+            **dict.fromkeys(lots.columns, ""),
+            "account_name": INHERITED_ROTH_BILL, "lot": "default", "subkind": "inherited_roth_ira",
+            "opening_balance": "50000.00",
+            "opening_cost_basis": "20000.00", **lot_columns}
+        lots.to_csv(retire_alice_csv("account_lots.csv"), index=False)
+        return INHERITED_ROTH_BILL
+    return _add
+
+
+@pytest.fixture(scope="function")
 def update_scheduled(retire_alice_csv: Callable[[str], Path]) -> Callable[..., None]:
     """Set columns on one existing rule of the private copy's scheduled.csv:
     ``update_scheduled("living", person="joint")``."""
