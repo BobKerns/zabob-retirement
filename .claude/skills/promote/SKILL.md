@@ -9,6 +9,15 @@ disable-model-invocation: true
 The user decides when dev is promoted; this skill runs only when they ask
 (`/promote`). It never merges: the user merges the promotion.
 
+## 0. Acknowledge at once
+
+Before running anything, tell the user in one line that you're starting
+the promotion (in a chat, a message; in a terminal, a line of text). The
+steps below take a minute or more and print nothing to them until the pull
+request appears, so without this the command looks ignored. Once the
+dry run is back, tell them which pull requests the promotion will carry
+(one line each), and anything in step 1 that needs their answer.
+
 ## 1. Look before opening
 
 ```sh
@@ -64,6 +73,8 @@ runs the full Gates and Copilot's review, once.
   the body.
 
 Tell the user when the promotion is clean to merge: Gates green on dev's
-current head, every finding fixed on dev or answered, nothing open into dev
+current head, both the push run on dev and the promotion's own latest run
+(a body refresh is an `edited` event, which reruns the promotion's checks
+and cancels the run before it), every finding fixed on dev or answered, nothing open into dev
 that was meant to go with it. Remind them to merge with a merge commit,
 never a squash.
