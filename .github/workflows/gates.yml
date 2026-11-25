@@ -322,8 +322,9 @@ jobs:
           if [ "$NEEDED" = true ] && [ "$LINT" != success ]; then exit 1; fi
           if [ "$RUN_TESTS" = true ] && [ "$TESTS" != success ]; then exit 1; fi
 
-  # Work merges into dev; only a promotion (head dev) or a hotfix (labeled
-  # hotfix) goes straight to main. Not a required check: it makes a pull
+  # Work merges into dev; only a promotion (head dev) or a hotfix goes
+  # straight to main. A hotfix needs both its branch name (hotfix/...) and the
+  # hotfix label, so each confirms the other was meant. Not a required check: it makes a pull
   # request opened against the wrong base loud, and retargeting it to dev
   # clears it.
   base:
@@ -343,10 +344,18 @@ jobs:
               echo "There is no dev branch yet."
               exit 0
           fi
-          if [ "$HEAD_REF" != dev ] && [ "$HOTFIX" != true ]; then
-              echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (label hotfix) goes to main. Edit the pull request's base to dev."
-              exit 1
+          [ "$HEAD_REF" = dev ] && exit 0
+          case "$HEAD_REF" in hotfix/*) named=true ;; *) named=false ;; esac
+          if [ "$named" = true ] && [ "$HOTFIX" = true ]; then
+              exit 0
+          elif [ "$named" = true ]; then
+              echo "::error::A hotfix into main needs the hotfix label too. Add it, or retarget the pull request to dev."
+          elif [ "$HOTFIX" = true ]; then
+              echo "::error::A hotfix comes from a branch named hotfix/<number>-<description>, made from origin/main. Push the fix there and open the pull request from it."
+          else
+              echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (branch hotfix/..., label hotfix) goes to main. Edit the pull request's base to dev."
           fi
+          exit 1
 
   docs:
     name: Spelling and markdown

@@ -409,5 +409,8 @@ Spell checking is handled by cspell (see `cspell.json` and `.cspell/project-word
 
 Use spaces for all indentation and alignment. Hard tab characters (\t) are not allowed anywhere in the repository, including code, markdown, and documentation. This prevents formatting issues and ensures consistency across all editors and platforms.
 
+## Contributing
+How work is branched, reviewed and merged is in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ## Releasing
 Publishing to PyPI is described in [docs/releasing.md](./docs/releasing.md).

@@ -10,7 +10,10 @@ shared with Copilot; edit it there, not here:
 - Branch only when the live branch (`git branch --show-current`) is `main`
   or `dev`; otherwise the current branch is the one to use.
 - A branch for a GitHub issue is `issue/<number>-<brief-kebab-description>`
-  (e.g. `issue/40-cert-verify`). Never name a branch plain `issue`.
+  (e.g. `issue/40-cert-verify`). Never name a branch plain `issue`. A hotfix
+  branch is `hotfix/<number>-<brief-kebab-description>`, and the branch that
+  carries the same fix into `dev` is `issue/<number>-<...>`, even when it is
+  the same commit: the name says where the branch merges.
 - Base new branches on `origin/dev` after `git fetch`, not local `main` or
   `dev`, and don't update local `main`. Pull requests target `dev`; see "The
   dev branch" in the shared guidance. A hotfix, the one exception, branches
