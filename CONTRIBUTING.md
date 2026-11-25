@@ -50,6 +50,29 @@ gitGraph
 on it only in a pull request into `main`. The issue closes when `dev` is
 promoted, and the promotion's pull request lists every issue it closes.
 
+## Promoting dev
+
+The maintainer decides when `dev` is promoted. With Claude Code, `/promote`
+(the skill in [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md))
+does it the same way each time: it checks the promotion's body against
+`dev`'s merges, opens or refreshes the promotion as a draft, then watches
+it, fixing review findings and Gates failures in pull requests into `dev`,
+and says when it is clean to merge. It never merges.
+
+Without Claude, run the script it uses, signed in to `gh`:
+
+```sh
+.venv/bin/python scripts/promote_dev.py --dry-run   # the body it would write
+.venv/bin/python scripts/promote_dev.py             # open or refresh the draft
+```
+
+Check the body before marking the promotion ready: every merged pull
+request is listed, and every issue meant to close has a "Fixes" line. A pull
+request into `dev` whose own body had no closing line closes nothing, so
+add the line to the promotion by hand. Fix anything review or Gates finds in
+a pull request into `dev` and run the script again to refresh the body.
+Merge only when that fix is on `dev`, with a merge commit, never a squash.
+
 ## A pull request
 
 1. Open it as a **draft**. Checks and reviews skip drafts, so iterate there
