@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.sim.loader import LoadError
 from zabob.retirement.sim import chain_edit, registries, units
 from zabob.retirement.sim.dates import month_end_iso
@@ -107,7 +108,7 @@ def scenario_readme(name: str, description: str, parents: list[str]) -> str:
 
 def current_user() -> str:
     """Who a new scenario's ``created_by`` names."""
-    return os.environ.get("ANALYSIS_USER") or os.environ.get("USER") or "unknown"
+    return os.environ.get("ANALYSIS_USER") or login_name()
 
 
 def create_scenario(data_dir: Path, name: str, parent: str | ScenarioRef | None,

@@ -76,8 +76,8 @@ def test_recipe_lists_leave_out_disabled_ensembles(
     for name in ("base", "retire_alice"):
         batch = runs_dir / name / "monte-carlo" / "2026-10-26T043000Z"
         batch.mkdir(parents=True)
-        (batch / "batch_manifest.json").write_text('{"mode": "monte_carlo"}')
-    (test_data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("")
+        (batch / "batch_manifest.json").write_text('{"mode": "monte_carlo"}', encoding="utf-8")
+    (test_data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("", encoding="utf-8")
     assert list_ensemble_recipes(runs_dir) == ["base", "retire_alice"]
     assert list_ensemble_recipes(runs_dir, test_data_dir) == ["retire_alice"]
     assert list_ensemble_recipes(runs_dir, test_data_dir, keep=["base"]) == ["base", "retire_alice"]

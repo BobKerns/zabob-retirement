@@ -17,7 +17,6 @@ the background builder, or two terminals:
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
@@ -27,6 +26,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from zabob.retirement.oscompat import login_name
+from zabob.retirement.sim import flock
 
 __all__ = [
     "BUILDER_CHILD_ENV",
@@ -89,9 +91,9 @@ def naming_lock(runs_dir: Path, scenario: str) -> Generator[None]:
     even when runs use different intent dirs."""
     folder = runs_dir / LOCK_DIR
     folder.mkdir(parents=True, exist_ok=True)
-    fd = os.open(folder / f"{scenario}.names", os.O_RDWR | os.O_CREAT, 0o644)
+    fd = os.open(folder / f"{scenario}.names", os.O_RDWR | os.O_CREAT | flock.O_BINARY, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        flock.lock(fd)
         yield
     finally:
         os.close(fd)
@@ -132,16 +134,16 @@ def lock_holder(intent_dir: Path, scenario: str) -> LockHolder | None:
     is free (or the record can't be read)."""
     path = lock_path(intent_dir, scenario)
     try:
-        fd = os.open(path, os.O_RDONLY)
+        fd = os.open(path, os.O_RDONLY | flock.O_BINARY)
     except FileNotFoundError:
         return None
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            flock.lock(fd, shared=True, block=False)
         except BlockingIOError:
             pass  # held: the record is the holder's
         else:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            flock.unlock(fd)
             return None
         try:
             raw = json.loads(os.read(fd, 4096) or b"{}")
@@ -179,23 +181,24 @@ def build_lock(
             held[1] -= 1
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | flock.O_BINARY, 0o644)
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock.lock(fd, block=False)
         except BlockingIOError:
             if on_wait is not None:
                 on_wait(lock_holder(intent_dir, scenario))
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            flock.lock(fd)
         record = {
             "pid": os.getpid(),
-            "user": os.environ.get("ANALYSIS_USER") or os.environ.get("USER") or "unknown",
+            "user": os.environ.get("ANALYSIS_USER") or login_name(),
             "host": socket.gethostname(),
             "since": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%SZ"),
             "by": "builder" if os.environ.get(BUILDER_CHILD_ENV) else "manual",
         }
         os.ftruncate(fd, 0)
-        os.pwrite(fd, json.dumps(record).encode(), 0)
+        os.lseek(fd, 0, os.SEEK_SET)  # no os.pwrite on Windows
+        os.write(fd, json.dumps(record).encode())
         _held[path] = [fd, 1]
         try:
             yield

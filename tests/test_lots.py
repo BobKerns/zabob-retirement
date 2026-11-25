@@ -77,9 +77,9 @@ def test_post_transfer_records_lot_and_owning_account(ledger_con: sqlite3.Connec
 
 
 def _edit(path: Path, old: str, new: str) -> None:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert old in text, (path.name, old)
-    path.write_text(text.replace(old, new, 1))
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
 def test_duplicate_account_and_lot_rejected(
@@ -273,7 +273,7 @@ def test_chain_file_lot_column_matches_account_lot_spelling(
     _liquidity_chain(retire_alice_csv).write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
         "Asset_Savings,default,,,,\n"
-        "Asset_TraditionalIRA_Alice,default,,,,\n"
+        "Asset_TraditionalIRA_Alice,default,,,,\n", encoding="utf-8"
     )
     con = sqlite3.connect(load_test_copy().intent_path)
     try:
@@ -292,7 +292,7 @@ def test_chain_file_investment_row_without_lot_is_rejected(
 ) -> None:
     _liquidity_chain(retire_alice_csv).write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
-        "Asset_TraditionalIRA_Alice,,,,,\n"
+        "Asset_TraditionalIRA_Alice,,,,,\n", encoding="utf-8"
     )
     with pytest.raises(LoadError, match="needs a lot"):
         load_test_copy()
@@ -303,7 +303,7 @@ def test_colon_spelling_is_not_a_reference(
 ) -> None:
     _liquidity_chain(retire_alice_csv).write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
-        "Asset_TraditionalIRA_Alice:default,,,,,\n"
+        "Asset_TraditionalIRA_Alice:default,,,,,\n", encoding="utf-8"
     )
     with pytest.raises(LoadError, match="'Asset_TraditionalIRA_Alice:default' is not a known account"):
         load_test_copy()
@@ -354,7 +354,7 @@ def test_year_to_date_row_lot_column_is_checked(
 ) -> None:
     retire_alice_csv("year_to_date.csv").write_text(
         "name,from_account,to_account,to_lot,amount,tax_character\n"
-        "growth,Income_CapitalGain,Asset_Brokerage_Joint,nope,1.00,ltcg\n"
+        "growth,Income_CapitalGain,Asset_Brokerage_Joint,nope,1.00,ltcg\n", encoding="utf-8"
     )
     with pytest.raises(LoadError, match="has no lot 'nope'"):
         load_test_copy()
@@ -393,7 +393,7 @@ def test_shipped_account_lots_files_carry_every_lot_column(
         prototype_data / "scenarios" / "retire_alice" / "account_lots.csv",
         repo_root / "templates" / "scenarios" / "base" / "account_lots.csv",
     ):
-        assert tuple(path.read_text().splitlines()[0].split(",")) == ACCOUNT_LOTS_CSV_HEADER, path
+        assert tuple(path.read_text(encoding="utf-8").splitlines()[0].split(",")) == ACCOUNT_LOTS_CSV_HEADER, path
 
 
 def test_explain_lists_each_lot_with_its_symbol_and_quantity(two_lot_run_file: Path) -> None:
@@ -604,7 +604,7 @@ def _tax_by_bracket(income: int, brackets: list[tuple[int, int]]) -> int:
 def _bracket_rows(path: Path, status: str) -> list[tuple[int, int]]:
     import csv
 
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f)
                 if r["filing_status"] == status and r["effective_date"] == "2026-01-31"]
     return sorted((units.dollars_to_cents(r["floor"]), units.percent_to_micros(r["marginal_rate"]))
@@ -623,7 +623,7 @@ def test_long_term_gains_are_taxed_at_the_preferential_rates(
     add_tax()
     retire_alice_csv("year_to_date.csv").write_text(
         "name,from_account,to_account,amount,tax_character\n"
-        "gain,Income_CapitalGain,Asset_Checking,100000.00,ltcg\n"
+        "gain,Income_CapitalGain,Asset_Checking,100000.00,ltcg\n", encoding="utf-8"
     )
 
     def federal(name: str) -> dict[str, int]:
@@ -639,10 +639,10 @@ def test_long_term_gains_are_taxed_at_the_preferential_rates(
 
     aux = test_data_dir / "aux"
     ltcg_file = aux / "ltcg_brackets.csv"
-    kept = ltcg_file.read_text()
+    kept = ltcg_file.read_text(encoding="utf-8")
     ltcg_file.unlink()
     as_ordinary = federal("ordinary.sqlite3")
-    ltcg_file.write_text(kept)
+    ltcg_file.write_text(kept, encoding="utf-8")
     preferential = federal("preferential.sqlite3")
 
     assert as_ordinary["federal_ltcg_taxed"] == 10_000_000 == preferential["federal_ltcg_taxed"]
@@ -684,7 +684,7 @@ def test_state_tax_still_treats_gains_as_ordinary(
     add_residence("2026-05", "CA")
     retire_alice_csv("year_to_date.csv").write_text(
         "name,from_account,to_account,amount,tax_character\n"
-        "gain,Income_CapitalGain,Asset_Checking,100000.00,ltcg\n"
+        "gain,Income_CapitalGain,Asset_Checking,100000.00,ltcg\n", encoding="utf-8"
     )
 
     def state_liability(name: str) -> int:

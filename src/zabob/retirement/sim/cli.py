@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
+from zabob.retirement.oscompat import WINDOWS, login_name
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -249,7 +250,7 @@ def _shown(path: Path, *, resolve: bool = True) -> str:
     leads to: data/private is how a checkout names its data repo, wherever
     that is."""
     full = Path(path).expanduser()
-    bases = ((Path.cwd(), ""), (Path.home(), "~/"))
+    bases = ((Path.cwd(), ""), (Path.home(), "~" + os.sep))
     if resolve:
         full, bases = full.resolve(), tuple((base.resolve(), prefix) for base, prefix in bases)
     for base, prefix in bases:
@@ -789,7 +790,7 @@ def run(
         try:
             _run_pool(
                 scenario_name, resolved_data_dir, resolved_intent_dir, resolved_runs_dir,
-                run_by=run_by or os.environ.get("USER") or "unknown",
+                run_by=run_by or login_name(),
                 allow_dirty_data=allow_dirty_data, allow_dirty_code=allow_dirty_code,
                 ensemble_size=ensemble_size, jobs=jobs, rebuild=rebuild,
             )
@@ -854,7 +855,7 @@ def _load_and_run(
         elif _intent_is_mixin_only(intent_path):
             # Without the data repo, the intent a `sim check` left says so.
             _refuse_mixin_only_run(scenario_name, [])
-        resolved_by = run_by or os.environ.get("USER") or "unknown"
+        resolved_by = run_by or login_name()
         _run_loaded(
             scenario_name, intent_path, resolved_intent_dir, resolved_runs_dir,
             run_by=resolved_by, allow_dirty_data=allow_dirty_data,
@@ -1991,7 +1992,7 @@ def _is_ensemble(data_dir: Path, name: str) -> bool:
 
 
 def _run_by(run_by: str | None) -> str:
-    return run_by or os.environ.get("USER") or "unknown"
+    return run_by or login_name()
 
 
 def _ensemble_batch_dir(
@@ -4277,7 +4278,7 @@ def all_scenarios(
             try:
                 _run_pool(
                     name, resolved, _resolve_state_dir(intent_dir, DEFAULT_INTENT_DIR, resolved),
-                    resolved_runs_dir, run_by=run_by or os.environ.get("USER") or "unknown",
+                    resolved_runs_dir, run_by=run_by or login_name(),
                     allow_dirty_data=allow_dirty_data, allow_dirty_code=allow_dirty_code,
                     ensemble_size=None, jobs=_available_cpus(), built=built, failed=failed,
                 )
@@ -5719,7 +5720,13 @@ def _next_steps(activate: str) -> None:
     click.echo()
     click.secho("Next, activate the data repo in this shell (the sim commands find it that way):", bold=True)
     click.echo()
-    click.secho(f"    source {activate}", bold=True)
+    if WINDOWS:
+        # activate-analysis is bash or zsh; in PowerShell, its one essential
+        # line by hand (#687).
+        data_dir = str(Path(activate).expanduser().parent.resolve())
+        click.secho(f'    $env:ANALYSIS_DATA_DIR = "{data_dir}"', bold=True)
+    else:
+        click.secho(f"    source {activate}", bold=True)
     click.echo()
     click.echo("Then add the rest of the household with `sim person add` and accounts to the base "
                "scenario with `sim account add`.")

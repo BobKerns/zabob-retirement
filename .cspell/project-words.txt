@@ -253,6 +253,7 @@ lognormal
 lookback
 lookthrough
 lotb
+lseek
 lstsq
 ltcg
 Macrotrends
@@ -267,6 +268,7 @@ MHLW
 microcap
 midnightblue
 misaki
+mklink
 mktree
 MKTVAL
 MMKX
@@ -275,6 +277,7 @@ modifyitems
 mojimoji
 MONEYMRKT
 movflags
+MPLBACKEND
 msecs
 mtimes
 mult
@@ -312,6 +315,8 @@ OLDFILEUID
 oneline
 oneoff
 OpenStax
+oscompat
+osfhandle
 overfit
 packagetype
 pacman
@@ -395,6 +400,7 @@ RRGGBB
 rsms
 rtol
 runfile
+safecrlf
 sandboxed
 scen
 sdir
@@ -455,11 +461,13 @@ suptitle
 SWVXX
 symlog
 sysconf
+SYSTEMROOT
 tablink
 tailnet
 tailweight
 TARGETARCH
 targetdate
+taskkill
 taxchar
 tbill
 tbond

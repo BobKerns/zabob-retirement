@@ -73,7 +73,7 @@ def test_a_switch_from_no_current_scenario_names_only_the_new_one(test_data_dir:
 
 @pytest.mark.uses_current_scenario_write
 def test_a_new_scenarios_parent_does_not_become_current(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("base\n")
+    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
 
     result = _sim(test_data_dir, "scenario", "create", "late", "retire_alice")
 
@@ -94,7 +94,7 @@ def test_a_new_ensemble_announces_that_it_is_current(test_data_dir: Path) -> Non
 
 @pytest.mark.uses_current_scenario_write
 def test_renaming_another_scenario_leaves_the_current_one(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("base\n")
+    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
 
     result = _sim(test_data_dir, "scenario", "rename", "retire_alice", "retire_bill")
 
@@ -136,7 +136,7 @@ def test_a_guided_scenario_edit_makes_its_scenario_current_even_unchanged(
 
 
 def test_a_current_scenario_that_is_gone_is_named_as_such(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("gone\n")
+    current_scenario_path(test_data_dir).write_text("gone\n", encoding="utf-8")
 
     result = _sim(test_data_dir, "account", "list")
 

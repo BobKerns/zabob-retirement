@@ -1282,7 +1282,7 @@ def write_batch_manifest(
     if pool is not None:
         # ADR-009: where a pool batch's members came from.
         manifest["pool"] = pool
-    path.write_text(json.dumps(manifest, indent=2))
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
 def read_batch_manifest(batch_dir: Path) -> dict[str, Any] | None:
@@ -1292,7 +1292,7 @@ def read_batch_manifest(batch_dir: Path) -> dict[str, Any] | None:
     path = Path(batch_dir) / BATCH_MANIFEST_FILENAME
     if not path.is_file():
         return None
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def member_run_statuses(batch_dir: Path) -> dict[str, str]:

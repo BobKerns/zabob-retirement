@@ -26,7 +26,6 @@ import math
 import os
 import re
 import shutil
-import signal
 import subprocess
 import tempfile
 import threading
@@ -37,6 +36,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.oscompat import kill_tree
 from zabob.retirement.sim import registries, units
 from zabob.retirement.sim.dates import month_end_iso
 
@@ -698,10 +698,7 @@ def run_skill(
     timed_out = threading.Event()
 
     def kill() -> None:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        kill_tree(proc)
 
     def stop() -> None:
         timed_out.set()

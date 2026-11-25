@@ -103,7 +103,7 @@ def test_interrupted_edit_writes_nothing(test_data_dir: Path) -> None:
 
     with pytest.raises(KeyboardInterrupt):
         with staging.staged_edit(test_data_dir, "retire_alice") as edit:
-            edit.path(real).write_text("garbage\n")
+            edit.path(real).write_text("garbage\n", encoding="utf-8")
             raise KeyboardInterrupt
 
     assert _snapshot(test_data_dir) == before
@@ -122,7 +122,7 @@ def test_multi_file_edit_commits_every_file(test_data_dir: Path) -> None:
     assert result.exit_code == 0, result.output
     scenario_dir = test_data_dir / "scenarios" / "retire_alice"
     for name in ("accounts.csv", "account_lots.csv", "scheduled.csv"):
-        assert "Asset_Checking_2" in (scenario_dir / name).read_text(), name
+        assert "Asset_Checking_2" in (scenario_dir / name).read_text(encoding="utf-8"), name
     leftovers = [p for p in scenario_dir.rglob("*.tmp")]
     assert not leftovers
 
@@ -171,7 +171,7 @@ def test_inheriting_scenario_already_broken_is_reported_not_blamed(
 
     assert result.exit_code == 0, result.output
     assert "WARN: scenario child already failed to load before this edit" in result.output
-    calendar = (test_data_dir / "scenarios" / "retire_alice" / "calendar.csv").read_text()
+    calendar = (test_data_dir / "scenarios" / "retire_alice" / "calendar.csv").read_text(encoding="utf-8")
     assert "2027-03-31,set_rate" in calendar
 
 
@@ -217,9 +217,10 @@ def test_concurrent_change_to_a_file_being_written_refuses_the_edit(test_data_di
     with pytest.raises(staging.ConcurrentEdit, match="calendar.csv"):
         with staging.staged_edit(test_data_dir, "retire_alice") as edit:
             _add_rate_row(edit.path(calendar))
-            calendar.write_text(calendar.read_text() + "\n")  # another edit lands first
+            calendar.write_text(calendar.read_text(encoding="utf-8") + "\n",
+                                encoding="utf-8")  # another edit lands first
 
-    assert "2027-03-31,set_rate" not in calendar.read_text()
+    assert "2027-03-31,set_rate" not in calendar.read_text(encoding="utf-8")
 
 
 def test_concurrent_change_to_another_file_is_kept(test_data_dir: Path) -> None:
@@ -231,10 +232,10 @@ def test_concurrent_change_to_another_file_is_kept(test_data_dir: Path) -> None:
     with staging.staged_edit(test_data_dir, "retire_alice") as edit:
         _add_rate_row(edit.path(scenario_dir / "calendar.csv"))
         readme = scenario_dir / "README.md"
-        readme.write_text(result_text)
+        readme.write_text(result_text, encoding="utf-8")
 
-    assert readme.read_text() == result_text
-    assert "2027-03-31,set_rate" in (scenario_dir / "calendar.csv").read_text()
+    assert readme.read_text(encoding="utf-8") == result_text
+    assert "2027-03-31,set_rate" in (scenario_dir / "calendar.csv").read_text(encoding="utf-8")
 
 
 def test_failed_commit_rolls_back_files_already_swapped(

@@ -12,10 +12,10 @@ import pytest
 
 @pytest.mark.parametrize("name", ["setup-test", "install-test"])
 def test_each_test_image_is_built_from_the_shared_base(repo_root: Path, name: str) -> None:
-    dockerfile = (repo_root / "docker" / name / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / name / "Dockerfile").read_text(encoding="utf-8")
     assert re.search(r"^ARG BASE=analysis-test-base$", dockerfile, re.M)
     assert re.search(r"^FROM \$\{BASE\}$", dockerfile, re.M)
-    script = (repo_root / "scripts" / "start-container.sh").read_text()
+    script = (repo_root / "scripts" / "start-container.sh").read_text(encoding="utf-8")
     assert 'docker build -q -t "$base" docker/base' in script
 
 

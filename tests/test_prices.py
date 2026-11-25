@@ -59,16 +59,16 @@ def test_a_new_file_gets_the_month_ends_and_an_existing_one_is_only_added_to(tmp
     first = fetch_prices(aux, ["AAA"], provider, since=date(2026, 4, 1), today=date(2026, 6, 2))
     assert (first[0].added, first[0].changed) == (3, 0)
     path = aux / "security_price__AAA.csv"
-    assert path.read_text() == (
+    assert path.read_text(encoding="utf-8") == (
         "effective_date,price\n2026-04-30,10.00\n2026-05-29,11.50\n2026-06-02,12.50\n"
     )
-    path.write_text(path.read_text().replace("2026-05-29,11.50", "2026-05-29,99.00"))
+    path.write_text(path.read_text(encoding="utf-8").replace("2026-05-29,11.50", "2026-05-29,99.00"), encoding="utf-8")
     again = fetch_prices(aux, ["AAA"], provider, since=date(2026, 4, 1), today=date(2026, 6, 2))
     assert (again[0].added, again[0].changed) == (0, 0)
-    assert "2026-05-29,99.00" in path.read_text()  # an existing price is not overwritten
+    assert "2026-05-29,99.00" in path.read_text(encoding="utf-8")  # an existing price is not overwritten
     refreshed = fetch_prices(aux, ["AAA"], provider, since=date(2026, 4, 1),
                              today=date(2026, 6, 2), refresh=True)
-    assert refreshed[0].changed == 1 and "2026-05-29,11.50" in path.read_text()
+    assert refreshed[0].changed == 1 and "2026-05-29,11.50" in path.read_text(encoding="utf-8")
 
 
 def test_dry_run_writes_nothing_and_failures_are_reported_per_symbol(tmp_path: Path) -> None:
@@ -112,15 +112,16 @@ def test_a_fetch_fills_in_a_missing_or_blank_name(
 ) -> None:
     # #640 (Bob): a name the provider finds fills a blank one, adding the
     # row when absent; a name already written stays.
-    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,\nQQQ,Mine,\n")
-    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\nBBB,,bond,100%\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,\nQQQ,Mine,\n", encoding="utf-8")
+    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\nBBB,,bond,100%\n",
+                                                   encoding="utf-8")
     provider = FakeProvider({s: DAILY for s in ("AAA", "BBB", "QQQ")})
     provider.names = {"AAA": "Fund A", "BBB": "Fund B", "QQQ": "Nasdaq 100"}
     monkeypatch.setitem(prices.PRICE_PROVIDERS, "yahoo", lambda: provider)
     result = CliRunner().invoke(main, ["sim", "prices", "fetch", "--data-dir", str(test_data_dir)])
     assert result.exit_code == 0, result.output
     assert "AAA: named 'Fund A' in securities.csv" in result.output
-    assert (test_data_dir / "securities.csv").read_text().splitlines() == [
+    assert (test_data_dir / "securities.csv").read_text(encoding="utf-8").splitlines() == [
         "symbol,name,no_fetch", "AAA,Fund A,", "QQQ,Mine,", "BBB,Fund B,"]
 
 
@@ -141,9 +142,10 @@ def test_prices_in_use_lists_symbols_with_a_quantity_and_the_earliest_start(tmp_
     ]:
         folder = tmp_path / name
         folder.mkdir()
-        (folder / "scenario.csv").write_text(f"name,start\n{name},{start}\n")
+        (folder / "scenario.csv").write_text(f"name,start\n{name},{start}\n", encoding="utf-8")
         (folder / "account_lots.csv").write_text(
-            "account_name,lot,symbol,acquired,quantity,series,opening_balance,opening_cost_basis,x\n" + rows)
+            "account_name,lot,symbol,acquired,quantity,series,opening_balance,opening_cost_basis,x\n" + rows,
+                encoding="utf-8")
     use = prices.prices_in_use(tmp_path)
     assert use.symbols == ["AAA", "CCC"]  # BBB has no quantity, CASH is skipped
     assert use.earliest_start == date(2026, 5, 31)
@@ -303,10 +305,11 @@ def test_the_default_yahoo_provider_uses_the_real_http_get() -> None:
 
 
 def test_known_symbols_are_those_named_anywhere_but_cash_and_cd(test_data_dir: Path) -> None:
-    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nCASH,Cash\n")
-    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\nCD,,cd,100%\nBBB,,bond,100%\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nCASH,Cash\n", encoding="utf-8")
+    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\nCD,,cd,100%\nBBB,,bond,100%\n",
+                                                   encoding="utf-8")
     (test_data_dir / "prices").mkdir(exist_ok=True)
-    (test_data_dir / "prices" / "security_price__TYPED.csv").write_text("effective_date,price\n")
+    (test_data_dir / "prices" / "security_price__TYPED.csv").write_text("effective_date,price\n", encoding="utf-8")
     assert prices.known_symbols(test_data_dir) == ["BBB", "QQQ", "TYPED"]
 
 
@@ -314,7 +317,7 @@ def test_bare_fetch_gets_a_symbol_no_lot_holds_and_only_reports_its_failure(
     test_data_dir: Path, add_account_value, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     add_account_value("Asset_Roth_Alice", lot="x", symbol="AAA", quantity="10", opening_balance="1.00")
-    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nTYPED,Typed by hand\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nTYPED,Typed by hand\n", encoding="utf-8")
     provider = FakeProvider({"AAA": DAILY, "QQQ": DAILY})
     monkeypatch.setitem(prices.PRICE_PROVIDERS, "yahoo", lambda: provider)
     runner = CliRunner()
@@ -333,7 +336,7 @@ def test_a_bare_fetch_skips_a_no_fetch_symbol_and_a_named_one_warns(
 ) -> None:
     # #640: held or not, a marked symbol is fetched only when named.
     add_account_value("Asset_Roth_Alice", lot="x", symbol="AAA", quantity="10", opening_balance="1.00")
-    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,1\nQQQ,Q,\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name,no_fetch\nAAA,,1\nQQQ,Q,\n", encoding="utf-8")
     provider = FakeProvider({"AAA": DAILY, "QQQ": DAILY})
     monkeypatch.setitem(prices.PRICE_PROVIDERS, "yahoo", lambda: provider)
     runner = CliRunner()
@@ -368,7 +371,7 @@ QQQ_PRICES = "effective_date,price\n2025-12-31,400.00\n2026-08-31,560.00\n2026-0
 
 
 def test_price_summary_gives_the_latest_price_and_its_changes(tmp_path: Path) -> None:
-    (tmp_path / "security_price__QQQ.csv").write_text(QQQ_PRICES)
+    (tmp_path / "security_price__QQQ.csv").write_text(QQQ_PRICES, encoding="utf-8")
     frame = prices.price_summary(tmp_path, ["ABCDX"])
     assert list(frame["symbol"]) == ["ABCDX", "QQQ"]
     qqq = frame.iloc[1]
@@ -380,7 +383,7 @@ def test_price_summary_gives_the_latest_price_and_its_changes(tmp_path: Path) ->
 
 
 def test_price_history_changes_from_the_row_before_even_before_since(tmp_path: Path) -> None:
-    (tmp_path / "security_price__QQQ.csv").write_text(QQQ_PRICES)
+    (tmp_path / "security_price__QQQ.csv").write_text(QQQ_PRICES, encoding="utf-8")
     history = prices.price_history(tmp_path, "QQQ", since=date(2026, 9, 1))
     assert history is not None
     assert list(history["effective_date"]) == [date(2026, 9, 30), date(2026, 10, 13)]
@@ -390,8 +393,8 @@ def test_price_history_changes_from_the_row_before_even_before_since(tmp_path: P
 
 def test_show_command_lists_every_symbol_and_one_symbols_history(test_data_dir: Path) -> None:
     (test_data_dir / "prices").mkdir(exist_ok=True)
-    (test_data_dir / "prices" / "security_price__QQQ.csv").write_text(QQQ_PRICES)
-    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nABCDX,A fund\n")
+    (test_data_dir / "prices" / "security_price__QQQ.csv").write_text(QQQ_PRICES, encoding="utf-8")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Q\nABCDX,A fund\n", encoding="utf-8")
     runner = CliRunner()
     every = runner.invoke(main, ["sim", "prices", "show", "--data-dir", str(test_data_dir)],
                           env={"COLUMNS": "200"})
@@ -411,6 +414,6 @@ def test_symbols_read_from_the_files_are_upper_cased(test_data_dir: Path, add_ac
     # The loader rejects these, but fetch reads the files itself and must not
     # write a lower-case price file or miss that a lot holds the symbol.
     add_account_value("Asset_Roth_Alice", lot="x", symbol="aaa", quantity="10", opening_balance="1.00")
-    (test_data_dir / "securities.csv").write_text("symbol,name\n" "qqq,Q\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\n" "qqq,Q\n", encoding="utf-8")
     assert prices.prices_in_use(test_data_dir / "scenarios").symbols == ["AAA"]
     assert prices.known_symbols(test_data_dir) == ["QQQ"]

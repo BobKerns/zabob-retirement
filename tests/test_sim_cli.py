@@ -352,7 +352,7 @@ def test_sim_load_records_current_scenario_and_defaults_to_it(
          "--allow-dirty-data", "--no-run"],
     )
     assert result.exit_code == 0, result.output
-    assert (data / ".current_scenario").read_text().strip() == "retire_alice"
+    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "retire_alice"
 
     # No scenario argument: falls back to the recorded one.
     again = runner.invoke(
@@ -457,14 +457,14 @@ def test_sim_scenario_create_derives_and_activates(test_data_dir: Path, tmp_path
     assert result.exit_code == 0, result.output
 
     scenario_dir = data / "scenarios" / "late"
-    assert (data / ".current_scenario").read_text().strip() == "late"
+    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "late"
     for role in ("source", "destination"):
-        assert (scenario_dir / "chains" / role / ".gitignore").read_text() == ""
-    assert (scenario_dir / "chains" / "source" / "_example.csv").read_text() == (
+        assert (scenario_dir / "chains" / role / ".gitignore").read_text(encoding="utf-8") == ""
+    assert (scenario_dir / "chains" / "source" / "_example.csv").read_text(encoding="utf-8") == (
         "account_name,lot,maximum,percent,series,cadence\n"
     )
     # series/ starts with a README rather than empty, so git keeps it (#91).
-    assert (scenario_dir / "series" / "README.md").read_text() == SERIES_README
+    assert (scenario_dir / "series" / "README.md").read_text(encoding="utf-8") == SERIES_README
     assert "  series/README.md\n" in result.output
     for listed in ("chains/source/.gitignore", "chains/source/_example.csv", "chains/destination/.gitignore"):
         assert f"  {listed}\n" in result.output
@@ -598,7 +598,7 @@ def test_sim_add_fixed_appends_calendar_row_and_check_passes(test_data_dir: Path
     )
     assert result.exit_code == 0, result.output
 
-    cal = (data / "scenarios" / "retire_alice" / "calendar.csv").read_text()
+    cal = (data / "scenarios" / "retire_alice" / "calendar.csv").read_text(encoding="utf-8")
     last = cal.strip().splitlines()[-1]
     assert "2030-06-30" in last
     assert "one_off_transfer" in last
@@ -634,7 +634,7 @@ def test_sim_add_scheduled_appends_row_with_defaults_and_check_passes(
     )
     assert result.exit_code == 0, result.output
 
-    sched = (data / "scenarios" / "retire_alice" / "scheduled.csv").read_text()
+    sched = (data / "scenarios" / "retire_alice" / "scheduled.csv").read_text(encoding="utf-8")
     last = sched.strip().splitlines()[-1]
     assert "xfer_asset_checking_to_asset_brokerage_joint_default_2030-01-31" in last
     assert ",monthly," in last
@@ -675,7 +675,7 @@ def test_sim_add_fixed_prompts_when_args_missing(test_data_dir: Path) -> None:
         input="2030-06-30\nAsset_Checking\nAsset_Brokerage_Joint\ndefault\n42.00\n",
     )
     assert result.exit_code == 0, result.output
-    cal = (data / "scenarios" / "retire_alice" / "calendar.csv").read_text()
+    cal = (data / "scenarios" / "retire_alice" / "calendar.csv").read_text(encoding="utf-8")
     assert "2030-06-30" in cal
     assert ",42.00," in cal
 
@@ -697,7 +697,7 @@ def test_sim_add_account_appends_accounts_and_model(test_data_dir: Path) -> None
     assert result.exit_code == 0, result.output
 
 
-    accounts = (data / "scenarios" / "retire_alice" / "accounts.csv").read_text()
+    accounts = (data / "scenarios" / "retire_alice" / "accounts.csv").read_text(encoding="utf-8")
     assert "Asset_NewBrokerage,asset,brokerage_taxable,joint,taxable" in accounts
 
     check = runner.invoke(
@@ -714,7 +714,7 @@ def test_sim_add_account_names_the_lot_of_its_opening_balance(test_data_dir: Pat
 
     named = add("Asset_Bank", "--opening-balance", "100", "--lot", "checking")
     assert named.exit_code == 0, named.output
-    lots = (test_data_dir / "scenarios" / "retire_alice" / "account_lots.csv").read_text()
+    lots = (test_data_dir / "scenarios" / "retire_alice" / "account_lots.csv").read_text(encoding="utf-8")
     assert "Asset_Bank,checking,,,,,,100.00," in lots
     check = CliRunner().invoke(main, ["sim", "check", "retire_alice", "--data-dir", str(test_data_dir)])
     assert check.exit_code == 0, check.output
@@ -1391,7 +1391,7 @@ def test_sim_ensemble_create_writes_the_series_readme(test_data_dir: Path) -> No
     )
     assert result.exit_code == 0, result.output
     readme = test_data_dir / "scenarios" / "my_recipe" / "series" / "README.md"
-    assert readme.read_text() == SERIES_README
+    assert readme.read_text(encoding="utf-8") == SERIES_README
 
 
 def test_sim_ensemble_create_rejects_zero_size(test_data_dir: Path) -> None:
@@ -1794,7 +1794,7 @@ def test_sim_calendar_add_set_rate_refuses_a_series_with_no_file(
     ])
     assert result.exit_code != 0
     assert "'no_such_series' under aux_kind 'inflation' doesn't exist" in result.output
-    assert "no_such_series" not in path.read_text()
+    assert "no_such_series" not in path.read_text(encoding="utf-8")
 
 
 def test_only_check_warns_of_a_set_rate_series_nothing_reads(
@@ -1816,7 +1816,7 @@ def test_only_check_warns_of_a_set_rate_series_nothing_reads(
     )
     assert result.exit_code == 0, result.output
     assert "WARN:" not in result.output
-    assert "apparel_2028" in path.read_text()
+    assert "apparel_2028" in path.read_text(encoding="utf-8")
     check = runner.invoke(main, ["sim", "check", "retire_alice", "--data-dir", str(test_data_dir)])
     assert check.exit_code == 0, check.output
     assert "WARN:" in check.output and "is never read" in check.output
@@ -2282,7 +2282,7 @@ def test_sim_run_jobs_reports_failures_without_taking_down_the_pool(
     # ramp from. Its reader starts with the ramp, which supplies its first
     # rate in time (#475).
     retire_alice_csv("series/rate__never_before_seen_series.csv").write_text(
-        "effective_date,annual_rate\n2035-01-31,3%\n"
+        "effective_date,annual_rate\n2035-01-31,3%\n", encoding="utf-8"
     )
     append_scheduled_row(
         name="new_series_growth", from_account="Income_Inheritance",

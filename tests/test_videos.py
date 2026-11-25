@@ -114,7 +114,7 @@ def test_script_errors(videos_root: Path, body: str, message: str) -> None:
 def test_a_code_slide_reads_its_lines_from_a_file_beside_the_script(videos_root: Path) -> None:
     folder = _write(videos_root / "01-x", "## Scene `a`: A\n\n```slide\ntemplate = 'window'\nlook = 'code'\n"
                     "code_file = 'plugin.py'\ncode_lines = [2, 3]\n```\n\nWords.\n")
-    (folder / "plugin.py").write_text("one\ntwo\nthree\nfour\n")
+    (folder / "plugin.py").write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
     fields = scripts.load(folder).scenes[0].visual.fields
     assert (fields["code"], fields["first"]) == ("two\nthree", 2)
 
@@ -219,10 +219,11 @@ def test_slide_html_inlines_pictures_as_data_uris(videos_root: Path) -> None:
     theme = themes.load(videos_root)
     (theme.assets / "portrait.png").write_bytes(b"\x89PNG fake")
     page = theme.templates / "pic.html"
-    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}')
+    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}',
+                    encoding="utf-8")
     html = render.slide_html(theme, {}, {"template": "pic"}, "en")
     assert '<img src="data:image/png;base64,iVBORyBmYWtl">' in html
-    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}')
+    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}', encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match="no picture 'nobody'"):
         render.slide_html(theme, {}, {"template": "pic"}, "en")
 
@@ -303,15 +304,15 @@ def test_narration_edit_rebuilds_only_that_scene(videos_root: Path, repo_root: P
     except Error as error:
         pytest.skip(f"no browser: {error.message.splitlines()[0]}")
     assert [(s.narration, s.visual, s.clip) for s in first.scenes] == [("made", "made", "made")] * 2
-    assert first.video.is_file() and first.captions.read_text().count("-->") == 2
+    assert first.video.is_file() and first.captions.read_text(encoding="utf-8").count("-->") == 2
     assert render.duration(first.video) == pytest.approx(first.length, abs=0.2)
     assert first.thumbnail.is_file() and first.thumbnail.suffix == ".jpg"
 
-    (folder / "script.md").write_text(SLIDES_ONLY.replace("Goodbye for now.", "See you next time."))
+    (folder / "script.md").write_text(SLIDES_ONLY.replace("Goodbye for now.", "See you next time."), encoding="utf-8")
     second = build(folder, out_dir=out, engine="silent", repo=repo_root, log=lambda _: None)
     states = {s.id: (s.narration, s.visual, s.clip) for s in second.scenes}
     assert states == {"intro": ("cached", "cached", "cached"), "end": ("made", "cached", "made")}
-    assert "See you next time." in second.captions.read_text()
+    assert "See you next time." in second.captions.read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -328,11 +329,11 @@ def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, t
     theme = themes.load(videos_root)
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     setup = tmp_path / "setup.sh"
-    setup.write_text('echo "$ANALYSIS_DATA_DIR" > "$ANALYSIS_DATA_DIR/where.txt"\n')
+    setup.write_text('echo "$ANALYSIS_DATA_DIR" > "$ANALYSIS_DATA_DIR/where.txt"\n', encoding="utf-8")
     store = render.prepare_demo(data, setup, theme, tmp_path / "store")
-    assert (store / "data" / "where.txt").read_text().strip() == str(demo_root / "data")
+    assert (store / "data" / "where.txt").read_text(encoding="utf-8").strip() == str(demo_root / "data")
     status = render.run(["git", "status", "--porcelain"], cwd=store / "data").stdout
     assert status == ""
     log = render.run(["git", "log", "--format=%s %an"], cwd=store / "data").stdout.split("\n")
@@ -351,7 +352,7 @@ def test_the_tapes_environment_drops_the_builders_activation(
         monkeypatch.setenv(name, "from-the-builder")
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     store = render.prepare_demo(data, None, themes.load(videos_root), tmp_path / "store")
     shown = render.run(["bash", "-c", f"source {store / '.videorc'} && env"], cwd=tmp_path).stdout
     assert "from-the-builder" not in shown
@@ -361,9 +362,9 @@ def test_the_tapes_environment_drops_the_builders_activation(
 def test_prepare_demo_reports_a_failing_setup(videos_root: Path, tmp_path: Path, demo_root: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     setup = tmp_path / "setup.sh"
-    setup.write_text("echo before\nfalse\necho never\n")
+    setup.write_text("echo before\nfalse\necho never\n", encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match=r"setup\.sh failed \(1\)"):
         render.prepare_demo(data, setup, themes.load(videos_root), tmp_path / "store")
 
@@ -459,12 +460,12 @@ def test_tape_data_falls_back_to_the_videos_own_repo(
     monkeypatch.setenv(VIDEO_DATA_ENV, str(own))
     with pytest.raises(scripts.ScriptError, match="doesn't exist yet.*docker.sh shell 01-own-data"):
         builder.tape_data()
-    (own / "persons.csv").write_text("id\n")
+    (own / "persons.csv").write_text("id\n", encoding="utf-8")
     assert builder.tape_data() == own
 
 
 def test_video_image_pins_the_builders_tool_versions(repo_root: Path) -> None:
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     args = dict(re.findall(r"^ARG (\w+)=(\S+)$", dockerfile, re.MULTILINE))
     assert args["VHS_VERSION"] == render.VHS_VERSION
     assert f"/BobKerns/vhs/releases/download/v$VHS_VERSION/vhs_${{VHS_VERSION}}_Linux_" in dockerfile
@@ -513,9 +514,9 @@ def test_a_slide_shows_a_picture_setup_made(videos_root: Path, tmp_path: Path, d
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "repo"
     (repo / "demo").mkdir(parents=True)
-    (repo / "demo" / "scenario.csv").write_text("name\nbase\n")
+    (repo / "demo" / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     folder = _write(videos_root / "03-figure", FIGURE)
-    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG one" > ../home/graph.png\n')
+    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG one" > ../home/graph.png\n', encoding="utf-8")
     pages: list[str] = []
 
     def screenshot(html: str, theme: themes.Theme, out: Path) -> None:
@@ -540,10 +541,10 @@ def test_a_slide_shows_a_picture_setup_made(videos_root: Path, tmp_path: Path, d
     made, key = visual()
     assert made == "made" and "data:image/png;base64,UE5HIG9uZQ==" in pages[-1]
     assert visual() == ("cached", key)  # read from the cache without preparing the demo again
-    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG two" > ../home/graph.png\n')
+    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG two" > ../home/graph.png\n', encoding="utf-8")
     state, new_key = visual()
     assert state == "made" and new_key != key and "UE5HIHR3bw==" in pages[-1]
-    (folder / "setup.sh").write_text("true\n")
+    (folder / "setup.sh").write_text("true\n", encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match="setup.sh made no home/graph.png"):
         visual()
 
@@ -733,7 +734,7 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
     """The image is rebuilt only when docker/videos changes (#612), so it
     must copy nothing else: the checkout is mounted, and what the code needs
     from it at run time must be among the mounts."""
-    docker_sh = (repo_root / "scripts" / "videos" / "docker.sh").read_text()
+    docker_sh = (repo_root / "scripts" / "videos" / "docker.sh").read_text(encoding="utf-8")
     body = re.search(r"^MOUNTS=\((.*?)\)", docker_sh, re.MULTILINE | re.DOTALL)
     assert body is not None
     mounts = set(body.group(1).split())
@@ -743,11 +744,12 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
             "prototype_data", "notebooks", "scripts/videos", "docs/videos"} <= mounts
     # The tapes record the program installed from a wheel built from the
     # mounted checkout, so all the sdist takes must be mounted too.
-    sdist = tomllib.loads((repo_root / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["sdist"]
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    sdist = pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]
     assert set(sdist["only-include"]) <= mounts
     assert ".venv" not in mounts
     assert "context=docker/videos" in docker_sh
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     copied = [line.split()[1:-1] for line in re.findall(r"^COPY .+$", dockerfile, re.MULTILINE)]
     for sources in copied:
         for source in sources:
@@ -757,10 +759,10 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
 def test_video_image_playwright_matches_the_lock(repo_root: Path) -> None:
     """The image installs the system libraries of the Playwright the venv
     syncs; a Playwright bump must bump the Dockerfile too."""
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     pinned = re.search(r"^ARG PLAYWRIGHT_VERSION=(\S+)$", dockerfile, re.MULTILINE)
     locked = re.search(r'^name = "playwright"\nversion = "([^"]+)"',
-                       (repo_root / "uv.lock").read_text(), re.MULTILINE)
+                       (repo_root / "uv.lock").read_text(encoding="utf-8"), re.MULTILINE)
     assert pinned is not None and locked is not None
     assert pinned.group(1) == locked.group(1)
 

@@ -93,7 +93,7 @@ def test_refused_changes_write_nothing(test_data_dir: Path, args: list[str], mes
 
 def test_a_chain_keeps_one_step(test_data_dir: Path, retire_alice_csv: Callable[[str], Path]) -> None:
     (retire_alice_csv("chains/source") / "solo.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     result = _sim(test_data_dir, "step", "rm", "solo", "1")
     assert result.exit_code != 0 and "only step; `sim chain delete solo`" in result.output
 
@@ -116,11 +116,11 @@ def test_rename_follows_every_reference(guide_chains: Path, test_scenarios_dir: 
     assert _steps(test_scenarios_dir, "retirement_draw")[0][0] == "gap"
     renamed = _sim(guide_chains, "rename", "ss_split", "benefit_split")
     assert renamed.exit_code == 0, renamed.output
-    scheduled = (test_scenarios_dir / "retire_alice" / "scheduled.csv").read_text()
+    scheduled = (test_scenarios_dir / "retire_alice" / "scheduled.csv").read_text(encoding="utf-8")
     assert "ss_alice,Income_SS_Alice,,benefit_split," in scheduled
     liquidity = _sim(guide_chains, "rename", "asset_checking_liquidity", "liquidity")
     assert liquidity.exit_code == 0, liquidity.output
-    assert ",liquidity," in (test_scenarios_dir / "retire_alice" / "account_lots.csv").read_text()
+    assert ",liquidity," in (test_scenarios_dir / "retire_alice" / "account_lots.csv").read_text(encoding="utf-8")
     load_test_copy()
 
 
@@ -200,7 +200,7 @@ def test_a_chain_file_is_found_by_its_exact_name(
 ) -> None:
     chains = retire_alice_csv("chains/source")
     for stem in ("odd[1]", "odd1", "odd_more"):
-        (chains / f"{stem}.csv").write_text("account_name,lot,maximum,percent,series,cadence\n")
+        (chains / f"{stem}.csv").write_text("account_name,lot,maximum,percent,series,cadence\n", encoding="utf-8")
     scenario = test_scenarios_dir / "retire_alice"
     assert chain_edit.chain_file(scenario, "odd[1]") == chains / "odd[1].csv"
     assert chain_edit.chain_file(scenario, "odd*") is None
@@ -313,7 +313,7 @@ def test_rename_refuses_a_name_a_mix_in_brings(test_data_dir: Path, derive_scena
 
 def test_two_files_for_one_chain_are_refused(test_data_dir: Path, retire_alice_csv: Callable[[str], Path]) -> None:
     (retire_alice_csv("chains/destination") / "asset_checking_liquidity.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nIncome_Interest,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nIncome_Interest,,,,,\n", encoding="utf-8")
     result = _sim(test_data_dir, "delete", "asset_checking_liquidity")
     assert result.exit_code != 0
     assert "chain 'asset_checking_liquidity' is in both source/ and destination/" in result.output
@@ -339,7 +339,7 @@ def test_rename_reaches_a_mix_in_with_the_same_chain(test_data_dir: Path, test_s
 def test_an_underscore_template_is_not_a_chain(test_scenarios_dir: Path,
                                                retire_alice_csv: Callable[[str], Path]) -> None:
     (retire_alice_csv("chains/source") / "_example.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     assert chain_edit.chain_file(test_scenarios_dir / "retire_alice", "example") is None
 
 
@@ -347,10 +347,10 @@ def test_rename_leaves_underscore_templates_alone(test_data_dir: Path,
                                                   retire_alice_csv: Callable[[str], Path]) -> None:
     template = retire_alice_csv("chains/source") / "_example.csv"
     text = "account_name,lot,maximum,percent,series,cadence\nasset_checking_liquidity,,,,,\n"
-    template.write_text(text)
+    template.write_text(text, encoding="utf-8")
     result = _sim(test_data_dir, "rename", "asset_checking_liquidity", "liquidity")
     assert result.exit_code == 0, result.output
-    assert template.read_text() == text
+    assert template.read_text(encoding="utf-8") == text
 
 
 def test_add_asks_the_role_and_names_it(test_data_dir: Path, test_scenarios_dir: Path) -> None:

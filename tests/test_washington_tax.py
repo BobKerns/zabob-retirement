@@ -236,7 +236,7 @@ def test_the_drawdown_passes_a_homes_gain_apart(ledger: sqlite3.Connection) -> N
 
 def test_the_shipped_washington_tables_carry_its_law() -> None:
     def read(kind: str) -> list[dict[str, str]]:
-        with open(TEMPLATE_AUX_DIR / f"{kind}__WA.csv", newline="") as fh:
+        with open(TEMPLATE_AUX_DIR / f"{kind}__WA.csv", encoding="utf-8", newline="") as fh:
             return list(csv.DictReader(fh))
 
     gains = [(r["floor"], r["marginal_rate"]) for r in read(registries.STATE_GAINS_TAX)

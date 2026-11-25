@@ -402,8 +402,8 @@ def test_the_loader_wants_mfs_rows_where_spouses_may_file_separately(
     brackets = test_data_dir / "aux" / "state_brackets__CA.csv"
     dated = _first_date(brackets)
     write_aux("state_separate_return__CA.csv", f"effective_date,allowed\n{dated},yes\n")
-    rows = brackets.read_text().splitlines(keepends=True)
-    brackets.write_text("".join(r for r in rows if ",MFS," not in r))
+    rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
+    brackets.write_text("".join(r for r in rows if ",MFS," not in r), encoding="utf-8")
     with pytest.raises(LoadError, match=rf"aux/state_brackets__CA.csv \({dated}\): no MFS rows"):
         load_test_copy()
 
@@ -439,9 +439,9 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
     later = _years_on(dated, mfs_from)
     write_aux("state_separate_return__CA.csv",
               f"effective_date,allowed\n{dated},no\n{_years_on(dated, 5)},yes\n")
-    header, *rows = brackets.read_text().splitlines(keepends=True)
+    header, *rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
     brackets.write_text(header + "".join(r for r in rows if ",MFS," not in r)
-                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)))
+                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)), encoding="utf-8")
     if refused:
         with pytest.raises(LoadError, match=rf"state_brackets__CA.csv \({dated}\): no MFS"):
             load_test_copy()
@@ -451,7 +451,7 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
 
 def _first_date(path: Path) -> str:
     """The earliest effective date in aux table ``path``."""
-    return min(line.split(",", 1)[0] for line in path.read_text().splitlines()[1:])
+    return min(line.split(",", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()[1:])
 
 
 def _years_on(dated: str, years: int) -> str:

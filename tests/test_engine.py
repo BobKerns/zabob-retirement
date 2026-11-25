@@ -1592,7 +1592,7 @@ def test_person_lifespan_stops_associated_transfers(
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")  # only 2026-2027 events are asserted on
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     intent_path = load_scenario(
         repo, "retire_alice",
@@ -1650,11 +1650,12 @@ def test_a_dead_owners_account_keeps_its_rules_without_a_person(
     (#256): with no person, Alice's salary account keeps paying."""
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")
-    (repo / "scenarios" / "retire_alice" / "lifespan.csv").write_text("person,age_at_death\nalice,61.8333\n")
+    (repo / "scenarios" / "retire_alice" / "lifespan.csv").write_text("person,age_at_death\nalice,61.8333\n",
+                                                                      encoding="utf-8")
     scheduled = repo / "scenarios" / "retire_alice" / "scheduled.csv"
-    text = scheduled.read_text()
+    text = scheduled.read_text(encoding="utf-8")
     assert "salary_alice,Income_Salary_Alice,,Asset_Checking,,monthly,,fixed_amount,,alice," in text
-    scheduled.write_text(text.replace("fixed_amount,,alice,", "fixed_amount,,,", 1))
+    scheduled.write_text(text.replace("fixed_amount,,alice,", "fixed_amount,,,", 1), encoding="utf-8")
     intent_path = load_scenario(
         repo, "retire_alice", intent_dir=tmp_path / "intent", loaded_by="test", allow_dirty_data=True,
     ).intent_path
@@ -1688,7 +1689,7 @@ def test_person_lifespan_does_not_stop_solely_owned_asset_growth(
     df.to_csv(accounts_csv, index=False)
 
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     intent_path = load_scenario(
         repo, "retire_alice",
@@ -1725,7 +1726,7 @@ def test_on_death_sweeps_full_balance_once(
     repo = test_data_dir
     _shorten_scenario_end(repo, "2028-12-31")  # only 2027-02 events are asserted on
     lifespan_csv = repo / "scenarios" / "retire_alice" / "lifespan.csv"
-    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n")
+    lifespan_csv.write_text("person,age_at_death\nalice,61.8333\n", encoding="utf-8")
 
     scheduled_csv = repo / "scenarios" / "retire_alice" / "scheduled.csv"
     _append_scheduled(
@@ -1979,7 +1980,7 @@ def test_year_to_date_csv_posts_balance_neutral_catchup(test_data_dir: Path, tmp
     ytd_csv.write_text(
         "name,from_account,to_account,to_lot,amount,tax_character,description\n"
         "prior_brokerage_growth,Income_CapitalGain,Asset_Brokerage_Joint,default,"
-        "1500.00,ltcg,pre-simulation appreciation\n"
+        "1500.00,ltcg,pre-simulation appreciation\n", encoding="utf-8"
     )
     intent_path = load_scenario(
         repo, "retire_alice",

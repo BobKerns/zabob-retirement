@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import fcntl
 import json
 import os
 import signal
@@ -66,8 +65,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.oscompat import WINDOWS, pid_alive
 from zabob.retirement.resources import CHECKOUT_DIR, INSTALLED, home_checkout, program_home, program_sim, same_home
-from zabob.retirement.sim import builder_log
+from zabob.retirement.sim import builder_log, flock
 from zabob.retirement.sim.lineage import is_pool
 from zabob.retirement.sim.loader import (
     DEFAULT_INTENT_DIR,
@@ -191,6 +191,14 @@ def _sensitivity_options(data_dir: Path, scenario: str) -> list[str]:
     return ["--quantiles", ",".join(repr(float(q)) for q in quantiles)]
 
 
+# Native Windows has no background daemon yet (#748): its process groups,
+# timers and open-file rules each need their own code. The pair is still
+# recorded, and a command about to open a stale run builds it first, in the
+# foreground (:func:`await_fresh`), so results are as current as elsewhere.
+NO_DAEMON = ("background builds aren't available on Windows yet (#748): "
+             "a command builds a stale run before it opens it")
+
+
 def switched_off() -> bool:
     """``ANALYSIS_BUILDER=off`` (or 0/no/false): no daemon, no waiting."""
     return os.environ.get(BUILDER_SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
@@ -276,7 +284,7 @@ class BuilderPaths:
 def read_config(paths: BuilderPaths) -> dict[str, Any] | None:
     """The workspace's opt-in record, or None when it hasn't opted in."""
     try:
-        config = json.loads(paths.config.read_text())
+        config = json.loads(paths.config.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return config if isinstance(config, dict) and config.get("data_dir") else None
@@ -284,7 +292,7 @@ def read_config(paths: BuilderPaths) -> dict[str, Any] | None:
 
 def read_status(paths: BuilderPaths) -> dict[str, Any]:
     try:
-        status = json.loads(paths.status.read_text())
+        status = json.loads(paths.status.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return status if isinstance(status, dict) else {}
@@ -294,7 +302,7 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     """Write ``path`` whole, by rename, so a reader never sees half of it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(value, indent=2, sort_keys=True))
+    tmp.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -305,7 +313,7 @@ def daemon_alive(paths: BuilderPaths) -> bool:
     except FileNotFoundError:
         return False
     try:
-        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        flock.lock(fd, shared=True, block=False)
     except BlockingIOError:
         return True
     finally:
@@ -344,7 +352,7 @@ def installed_pair_problems(data_dir: Path) -> list[str]:
     problems = []
     pointer = data_dir / ".analysis"
     try:
-        named = pointer.read_text().strip()
+        named = pointer.read_text(encoding="utf-8").strip()
     except OSError:
         named = ""
     if not same_home(named, program_home()):
@@ -367,7 +375,7 @@ def pair_problems(code: Path | None, data_dir: Path) -> list[str]:
         problems.append(f"{private} doesn't lead to {data_dir.parent}")
     pointer = data_dir / ".analysis"
     try:
-        named = Path(pointer.read_text().strip()).resolve()
+        named = Path(pointer.read_text(encoding="utf-8").strip()).resolve()
     except OSError:
         named = None
     if named != code:
@@ -518,7 +526,7 @@ def _drain_requests(paths: BuilderPaths) -> list[dict[str, Any]]:
         return out
     for path in sorted(paths.requests.glob("*.json")):
         try:
-            out.append(json.loads(path.read_text()))
+            out.append(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
         path.unlink(missing_ok=True)
@@ -564,6 +572,8 @@ def notify(data_dir: Path, *, start: bool = True) -> str:
     _request(paths, "rescan")
     if daemon_alive(paths):
         return "asked the background builder to look again"
+    if WINDOWS:
+        return NO_DAEMON
     if not start:
         return "background builder isn't running"
     spawn_daemon(paths, data_dir)
@@ -595,16 +605,6 @@ def hold(data_dir: Path, scenarios: Sequence[str]) -> None:
     _write_json(path, {"pid": os.getpid(), "scenarios": sorted(_holding[path])})
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # someone else's, but there
-    return True
-
-
 def held(paths: BuilderPaths) -> dict[str, int]:
     """Each held scenario and the pid of the command holding it. A hold
     whose process has gone (killed, so its exit handler never ran) is
@@ -614,12 +614,12 @@ def held(paths: BuilderPaths) -> dict[str, int]:
         return out
     for path in paths.holds.glob("*.json"):
         try:
-            body = json.loads(path.read_text())
+            body = json.loads(path.read_text(encoding="utf-8"))
             pid = int(body["pid"])
             names = [str(name) for name in body["scenarios"]]
         except (OSError, ValueError, KeyError, TypeError):
             continue  # being written; the next look sees it whole
-        if not _alive(pid):
+        if not pid_alive(pid):
             path.unlink(missing_ok=True)
             continue
         out.update(dict.fromkeys(names, pid))
@@ -1106,7 +1106,7 @@ class _Daemon:
         self.paths.dir.mkdir(parents=True, exist_ok=True)
         lock = os.open(self.paths.daemon_lock, os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock.lock(lock, block=False)
         except BlockingIOError:
             os.close(lock)
             return 0  # one is already running; it has the request
@@ -1274,6 +1274,9 @@ def await_fresh(
         return
     paths, data_dir, jobs = found
     echo = echo or (lambda text: print(text, file=sys.stderr))
+    if WINDOWS:
+        _build_here(data_dir, jobs, echo)
+        return
     # Every step it reads, not only those pending now: one a pending job
     # turns up (a series store a run needs) is then waited on, so no other
     # reader's request preempts it.
@@ -1284,6 +1287,21 @@ def await_fresh(
         _wait(paths, scenario, jobs, made, echo, steps)
     except KeyboardInterrupt:
         echo(f"gave up waiting for {scenario}; opening its latest results, which may be out of date")
+
+
+def _build_here(data_dir: Path, jobs: Sequence[str], echo: Callable[[str], None]) -> None:
+    """Build ``jobs`` now, in this process's terminal, as the daemon would
+    (#748: no daemon on Windows). A failed one is said, and its latest
+    results are opened."""
+    env = {**os.environ, BUILDER_SWITCH_ENV: "off"}
+    for job in jobs:
+        name, step = parse_job(job)
+        echo(f"building {job} first: its data or code changed")
+        done = subprocess.run([*_sim_executable(), *step_command(data_dir, name, step)],
+                              stdin=subprocess.DEVNULL, env=env, check=False)
+        if done.returncode:
+            echo(f"{job} failed (exit {done.returncode}); opening its latest results, which may be out of date")
+            return
 
 
 def build_pending(runs_dir: Path, scenario: str, mode: str | None = "monte_carlo") -> bool:
@@ -1472,7 +1490,7 @@ exit $status
 
 
 def _ours(hook: Path) -> bool:
-    return hook.read_text(errors="replace").split("\n")[1:2] == [HOOK_MARKER]
+    return hook.read_text(encoding="utf-8", errors="replace").split("\n")[1:2] == [HOOK_MARKER]
 
 
 def install(data_dir: Path, branch: str | None = None, prices: bool | None = None,
@@ -1511,8 +1529,12 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     branch = branch or config_branch(before)
     prices = bool(before.get("prices", True)) if prices is None else prices
     roll = bool(before.get("roll", True)) if roll is None else roll
+    if WINDOWS:
+        # The fetch, roll and research timers are the daemon's (#748).
+        prices = roll = research = False
     roll_window = roll_window or str(before.get("roll_window") or roll_schedule.DEFAULT_WINDOW)
-    research = bool(before.get("research", True)) if research is None else research
+    if not WINDOWS:
+        research = bool(before.get("research", True)) if research is None else research
     from zabob.retirement.sim.research import find_claude
 
     # Found on this shell's PATH now, for the hourly timer, whose PATH lacks
@@ -1534,6 +1556,10 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         done.append(f"runs Claude Code at {claude}" if claude else
                     "can't find claude (Claude Code): research will fail until it's installed "
                     "and `sim builder install` is run again")
+    if WINDOWS:
+        # The hooks only poke the daemon; a reader checks for itself.
+        done.append(NO_DAEMON)
+        return done
     hooks.mkdir(parents=True, exist_ok=True)
     for name in HOOK_NAMES:
         hook = hooks / name
@@ -1544,7 +1570,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
             chained = hook.with_name(hook.name + CHAINED_SUFFIX)
             hook.rename(chained)
             done.append(f"moved {hook.name} to {chained.name}; the builder's hook runs it first")
-        hook.write_text(DATA_HOOK)  # ours, or none: (re)write it
+        hook.write_text(DATA_HOOK, encoding="utf-8")  # ours, or none: (re)write it
         hook.chmod(0o755)
         done.append(f"installed {hook}")
     return done

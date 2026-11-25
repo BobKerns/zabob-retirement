@@ -174,6 +174,11 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # state/ (beside sim/) holds runs, rebuilt from the data; the code repo's
     # cspell.json reads .cspell/data-words.txt for the household's words.
     _ignore(root / ".gitignore", "/state/")
+    # Git stores text with LF line endings whatever the machine or the
+    # user's core.autocrlf (#687): a CSV saved by Excel on Windows would
+    # otherwise commit CRLF, which changes the scenario's tree id and makes
+    # every line a change. Kept in the repository, so every clone has it.
+    _ignore(root / ".gitattributes", "* text=auto")
     (root / ".cspell").mkdir(exist_ok=True)
     (root / ".cspell" / "data-words.txt").touch()
     if notebooks:
@@ -210,7 +215,7 @@ def copy_notebooks(folder: Path, *, replace: bool = False) -> tuple[list[Path], 
 
 
 def _ignore(path: Path, pattern: str) -> None:
-    """Add ``pattern`` to the ignore file at ``path`` unless it's there:
+    """Add the line ``pattern`` to ``path`` (an ignore or attributes file) unless it's there:
     ``root`` may be an existing repository with its own."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if pattern in text.splitlines():
@@ -229,7 +234,7 @@ def _commit(root: Path, person: Mapping[str, str]) -> str | None:
         done = _git(root, "init", "-q")
         if done.returncode:
             return done.stderr.strip() or "git init failed"
-    paths = ("sim", ".gitignore", ".cspell")
+    paths = ("sim", ".gitignore", ".gitattributes", ".cspell")
     # A new user often has no git identity, and the commit would fail (#308).
     try:
         ensure_identity(root, person["id"], person.get("display") or "")

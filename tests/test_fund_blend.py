@@ -137,7 +137,7 @@ def test_an_uncovered_fund_keeps_its_account_series_quietly(
 def test_a_zero_weight_class_needs_no_series(
     test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
-    with (test_data_dir / "allocations.csv").open("a") as f:
+    with (test_data_dir / "allocations.csv").open("a", encoding="utf-8") as f:
         f.write("FND,,cash,0%\n")
     result = load_test_copy()
     _, params, _ = _growth_rule(result.intent_path)

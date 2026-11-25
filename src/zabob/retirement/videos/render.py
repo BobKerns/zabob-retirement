@@ -749,7 +749,7 @@ def concat(parts: Sequence[Path], out: Path, cover: Path | None = None) -> None:
     players show as the video's preview.
     """
     ffmpeg = need("ffmpeg", "install ffmpeg")
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as f:
         for p in parts:
             f.write(f"file '{p.resolve()}'\n")
         listing = f.name

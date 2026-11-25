@@ -102,13 +102,13 @@ def test_person_role_none_as_an_option_is_no_role_too(
 def test_person_add_refuses_a_bad_person(
     sim: Callable[..., Result], test_data_dir: Path, args: tuple[str, ...], message: str,
 ) -> None:
-    before = (test_data_dir / "persons.csv").read_text()
+    before = (test_data_dir / "persons.csv").read_text(encoding="utf-8")
 
     result = sim("person", "add", *args)
 
     assert result.exit_code != 0
     assert message in result.output
-    assert (test_data_dir / "persons.csv").read_text() == before
+    assert (test_data_dir / "persons.csv").read_text(encoding="utf-8") == before
 
 
 # ---------- person edit ----------
@@ -142,7 +142,7 @@ def test_person_edit_option_keeps_a_blank_meta_json(
     sim: Callable[..., Result], test_data_dir: Path,
 ) -> None:
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,\n", encoding="utf-8")
 
     result = sim("person", "edit", "carol", "--role", "secondary")
 
@@ -171,8 +171,9 @@ def test_person_edit_refuses_when_persons_csv_changes_meanwhile(
     persons = test_data_dir / "persons.csv"
 
     def role_prompt(*_args: object, **_kwargs: object) -> str:
-        if "carol" not in persons.read_text():
-            persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,,{}\n")
+        if "carol" not in persons.read_text(encoding="utf-8"):
+            persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,,{}\n",
+                               encoding="utf-8")
         return ""
     monkeypatch.setattr("zabob.retirement.sim.cli._prompt_with_completion", role_prompt)
 
@@ -197,16 +198,16 @@ def test_a_persons_change_must_leave_every_scenario_loading(
     """persons.csv is shared, so a scenario outside the preflighted one's
     lineage is checked too."""
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,{}\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,{}\n", encoding="utf-8")
     derive_scenario("other", "base", files={"lifespan.csv": "person,age_at_death\ncarol,65\n"})
     frame = pd.read_csv(persons, dtype=str, keep_default_na=False)
-    before = persons.read_text()
+    before = persons.read_text(encoding="utf-8")
 
     with pytest.raises(EditRejected, match="scenario other: .*carol"), \
             staged_edit(test_data_dir, "retire_alice") as edit:
         frame[frame["id"] != "carol"].to_csv(edit.path(persons), index=False)
 
-    assert persons.read_text() == before
+    assert persons.read_text(encoding="utf-8") == before
 
 
 # ---------- lifespan set|clear ----------

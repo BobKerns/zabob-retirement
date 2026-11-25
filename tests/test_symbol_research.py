@@ -536,7 +536,7 @@ def test_claude_is_found_off_path_where_it_was_recorded_or_installed(
 ) -> None:
     def executable(where: Path) -> Path:
         where.parent.mkdir(parents=True, exist_ok=True)
-        where.write_text("#!/bin/sh\n")
+        where.write_text("#!/bin/sh\n", encoding="utf-8")
         where.chmod(0o755)
         return where
 

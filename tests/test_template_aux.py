@@ -54,7 +54,7 @@ def test_a_data_repo_table_replaces_the_templates_whole(
 
 
 def test_the_templates_leave_the_filing_status_to_the_household() -> None:
-    assert (TEMPLATE_AUX_DIR / "filing_status.csv").read_text() == "effective_date,filing_status\n"
+    assert (TEMPLATE_AUX_DIR / "filing_status.csv").read_text(encoding="utf-8") == "effective_date,filing_status\n"
 
 
 def test_a_tax_without_a_filing_status_fails_the_load(
@@ -108,20 +108,20 @@ _TEMPLATE_TABLES = sorted(p for p in TEMPLATE_AUX_DIR.glob("*.csv") if p.name !=
 @pytest.mark.parametrize("path", _TEMPLATE_TABLES, ids=lambda p: p.name)
 def test_every_template_table_has_rows(path: Path) -> None:
     """Every data repo reads these, so a stub breaks whoever lacks their own."""
-    with path.open(newline="") as fh:
+    with path.open(encoding="utf-8", newline="") as fh:
         assert len(list(csv.DictReader(fh))) > 0
 
 
 @pytest.mark.parametrize("path", [p for p in _TEMPLATE_TABLES if "filing_status" in
-                                  p.read_text().splitlines()[0].split(",")], ids=lambda p: p.name)
+                                  p.read_text(encoding="utf-8").splitlines()[0].split(",")], ids=lambda p: p.name)
 def test_filing_status_tables_cover_every_status(path: Path) -> None:
     """A death makes a joint filer Single, so a table with only MFJ fails mid-run."""
-    with path.open(newline="") as fh:
+    with path.open(encoding="utf-8", newline="") as fh:
         statuses = {row["filing_status"] for row in csv.DictReader(fh)}
     assert statuses >= {"MFJ", "Single", "MFS"}
 
 
 def test_the_rmd_factors_cover_every_age_from_72() -> None:
-    with (TEMPLATE_AUX_DIR / "rmd_factors.csv").open(newline="") as fh:
+    with (TEMPLATE_AUX_DIR / "rmd_factors.csv").open(newline="", encoding="utf-8") as fh:
         ages = sorted(int(row["age"]) for row in csv.DictReader(fh))
     assert ages == list(range(72, 131))

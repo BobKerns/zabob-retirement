@@ -706,7 +706,7 @@ def test_a_year_to_date_row_into_two_home_mortgages_interest_is_refused(
     append_scheduled_row(name="second_pmt", from_account="Asset_Checking", to_account="Liability_Second",
                          amount_rule_kind="mortgage_payment", interest_account="Expense_Interest_Mortgage",
                          rate="6%", amount="1000.00", tax_character="none", start="2026-05-31")
-    with open(retire_alice_csv("year_to_date.csv"), "a") as f:
+    with open(retire_alice_csv("year_to_date.csv"), "a", encoding="utf-8") as f:
         f.write("prior_interest,Asset_Checking,,Expense_Interest_Mortgage,,4000.00,none,,\n")
     with pytest.raises(LoadError, match="interest account of several home mortgages"):
         load_test_copy()

@@ -9,11 +9,12 @@ import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any
 
 import git
 import pytest
 
-from zabob.retirement.sim import builder, freshness, locks, price_schedule, provenance
+from zabob.retirement.sim import builder, flock, freshness, locks, price_schedule, provenance
 from zabob.retirement.sim.builder import BuilderPaths
 
 
@@ -41,7 +42,7 @@ def test_builds_only_from_committed_code_matching_main(
     assert builder.main_check("nope") == (None, "no local nope branch")
 
     code_repo.git.checkout("main")
-    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("dirty\n")
+    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("dirty\n", encoding="utf-8")
     assert builder.main_check() == (None, "uncommitted code in src, templates, pyproject.toml, uv.lock")
 
 
@@ -53,7 +54,7 @@ def pair(tmp_path: Path, data_repo_sim: Path,
     code = tmp_path / "code"
     (code / "data").mkdir(parents=True, exist_ok=True)
     (code / "data" / "private").symlink_to(data_repo)
-    (data_dir / ".analysis").write_text(f"{code}\n")
+    (data_dir / ".analysis").write_text(f"{code}\n", encoding="utf-8")
     monkeypatch.setattr(builder, "code_dir", lambda: code.resolve())
     return code.resolve(), data_dir.resolve()
 
@@ -61,7 +62,7 @@ def pair(tmp_path: Path, data_repo_sim: Path,
 def test_a_pair_must_name_each_other(pair: tuple[Path, Path], tmp_path: Path) -> None:
     code, data_dir = pair
     assert builder.pair_problems(code, data_dir) == []
-    (data_dir / ".analysis").write_text(f"{tmp_path / 'elsewhere'}\n")
+    (data_dir / ".analysis").write_text(f"{tmp_path / 'elsewhere'}\n", encoding="utf-8")
     assert builder.pair_problems(code, data_dir) == [f"{data_dir / '.analysis'} doesn't name {code}"]
 
 
@@ -74,17 +75,17 @@ def test_install_records_the_pair_and_chains_existing_hooks(
     seen = tmp_path / "seen"
     # An early exit: anything appended after it would never run.
     mine = f'#!/bin/sh\necho "$1" > {seen}\nexit 3\necho never\n'
-    (hooks / "post-merge").write_text(mine)
+    (hooks / "post-merge").write_text(mine, encoding="utf-8")
     (hooks / "post-merge").chmod(0o755)
     builder.install(data_dir)
     assert builder.read_config(BuilderPaths.for_data(data_dir)) is not None
-    assert builder.HOOK_MARKER in (hooks / "post-commit").read_text()
-    assert builder.HOOK_MARKER in (hooks / "post-merge").read_text()
-    assert (hooks / "post-merge.before-builder").read_text() == mine
+    assert builder.HOOK_MARKER in (hooks / "post-commit").read_text(encoding="utf-8")
+    assert builder.HOOK_MARKER in (hooks / "post-merge").read_text(encoding="utf-8")
+    assert (hooks / "post-merge.before-builder").read_text(encoding="utf-8") == mine
     builder.install(data_dir)  # again: nothing moved twice
-    assert (hooks / "post-merge.before-builder").read_text() == mine
+    assert (hooks / "post-merge.before-builder").read_text(encoding="utf-8") == mine
     ran = subprocess.run([str(hooks / "post-merge"), "1"], cwd=data_dir, check=False)
-    assert ran.returncode == 3 and seen.read_text() == "1\n"  # theirs ran, status kept
+    assert ran.returncode == 3 and seen.read_text(encoding="utf-8") == "1\n"  # theirs ran, status kept
 
 
 def test_install_refuses_when_a_hook_has_nowhere_to_move(pair: tuple[Path, Path]) -> None:
@@ -92,8 +93,8 @@ def test_install_refuses_when_a_hook_has_nowhere_to_move(pair: tuple[Path, Path]
     _code, data_dir = pair
     hooks = data_dir.parent / ".git" / "hooks"
     hooks.mkdir(exist_ok=True)
-    (hooks / "post-merge").write_text("#!/bin/sh\necho one\n")
-    (hooks / "post-merge.before-builder").write_text("#!/bin/sh\necho two\n")
+    (hooks / "post-merge").write_text("#!/bin/sh\necho one\n", encoding="utf-8")
+    (hooks / "post-merge.before-builder").write_text("#!/bin/sh\necho two\n", encoding="utf-8")
     with pytest.raises(ValueError, match="post-merge.before-builder both exist"):
         builder.install(data_dir)
     assert builder.read_config(BuilderPaths.for_data(data_dir)) is None
@@ -146,6 +147,56 @@ def test_notify_starts_the_builder_only_where_installed(
     assert started == [data_dir]
 
 
+def test_on_windows_install_records_the_pair_without_hooks_or_timers(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#687, #748: no daemon on Windows, so nothing it alone would run."""
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    done = builder.install(data_dir, prices=True, roll=True, research=True)
+    config = builder.read_config(BuilderPaths.for_data(data_dir)) or {}
+    assert (config["prices"], config["roll"], config["research"]) == (False, False, False)
+    assert not (data_dir.parent / ".git" / "hooks" / "post-commit").exists()
+    assert done[-1] == builder.NO_DAEMON
+
+
+def test_on_windows_notify_starts_no_daemon(
+    pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("spawned"))
+    builder.install(data_dir)
+    assert builder.notify(data_dir) == builder.NO_DAEMON
+
+
+def test_on_windows_a_reader_builds_a_stale_run_itself(
+    pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#687: with no daemon to wait for, the reader builds what is pending
+    in the foreground, so its results are as current as elsewhere."""
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    builder.install(data_dir)
+    monkeypatch.setattr(builder, "_pending", lambda *_a: [builder.job_key("base", "run")])
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("spawned"))
+    ran: list[list[str]] = []
+    real_run, sim = subprocess.run, builder._sim_executable()
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if argv[:len(sim)] != sim:
+            return real_run(argv, **kwargs)  # git, finding the trees
+        ran.append(argv)
+        assert kwargs["env"]["ANALYSIS_BUILDER"] == "off"
+        return subprocess.CompletedProcess(argv, 1)
+    monkeypatch.setattr(builder.subprocess, "run", run)
+    lines: list[str] = []
+    builder.await_fresh(BuilderPaths.for_data(data_dir).runs_dir, "base", echo=lines.append)
+    assert ran == [[*builder._sim_executable(), *builder.step_command(data_dir, "base", "run")]]
+    assert lines == ["building base first: its data or code changed",
+                     "base failed (exit 1); opening its latest results, which may be out of date"]
+
+
 @pytest.fixture
 def daemon(
     pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
@@ -185,7 +236,7 @@ def _wait_until_done(d: builder._Daemon) -> None:
 
 
 def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("retire_alice\n")
+    (daemon.data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
     daemon.scan()
     assert daemon.queue[0] == "retire_alice" and "base" in daemon.queue
     assert daemon.state == "building"
@@ -197,9 +248,9 @@ def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
 def test_queue_follows_the_working_set_then_runs_before_ensembles(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("base\n")
+    (daemon.data_dir / ".current_scenario").write_text("base\n", encoding="utf-8")
     daemon.paths.dir.mkdir(parents=True, exist_ok=True)
-    daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n")
+    daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n", encoding="utf-8")
     (daemon.paths.runs_dir / "ens_a").mkdir(parents=True)
     (daemon.paths.runs_dir / "ens_b").mkdir(parents=True)
     queue = ["ens_a", "base", "zed", "retire_alice", "ens_b"]
@@ -312,13 +363,11 @@ def test_readers_dont_wait_where_the_builder_is_off_or_not_installed(
 @pytest.fixture
 def running_daemon(pair: tuple[Path, Path]) -> Generator[BuilderPaths]:
     """The pair, installed, with its daemon lock held as a daemon would."""
-    import fcntl
-
     _code, data_dir = pair
     builder.install(data_dir)
     paths = BuilderPaths.for_data(data_dir)
     fd = os.open(paths.daemon_lock, os.O_RDWR | os.O_CREAT, 0o644)
-    fcntl.flock(fd, fcntl.LOCK_EX)
+    flock.lock(fd)
     yield paths
     os.close(fd)
 
@@ -356,7 +405,7 @@ def test_the_builder_never_queues_a_disabled_scenario(
 
     daemon.scan()
     assert "base" in daemon.queue and "base" not in daemon.cancelled
-    (daemon.data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("")
+    (daemon.data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("", encoding="utf-8")
     daemon.scan()
     assert "base" not in daemon.queue and daemon.queue
     assert daemon.cancelled["base"]["why"] == "it was disabled"  # for a reader waiting on it
@@ -624,7 +673,7 @@ def test_jobs_are_named_for_their_scenario_and_step() -> None:
 def test_the_builder_runs_everything_then_series_stores_then_sensitivities(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("b\n")
+    (daemon.data_dir / ".current_scenario").write_text("b\n", encoding="utf-8")
     queue = ["a:sensitivity", "b:series", "a", "b:sensitivity", "b", "a:series"]
     assert daemon.order(queue) == ["b", "a", "b:series", "a:series", "b:sensitivity", "a:sensitivity"]
 
@@ -748,7 +797,7 @@ def test_a_sensitivity_reader_waits_only_for_the_sensitivity_batch(
 
     def finish() -> None:
         time.sleep(1.0)
-        [request] = [json.loads(p.read_text()) for p in paths.requests.glob("*.json")]
+        [request] = [json.loads(p.read_text(encoding="utf-8")) for p in paths.requests.glob("*.json")]
         assert request["steps"] == ["sensitivity"]
         builder._write_json(paths.status, {"state": "building", "current": {"job": "base"},
                                            "queue": [], "updated": time.time()})
@@ -775,7 +824,7 @@ def _fetched_upstream(commit_files: Callable[..., str], repo: git.Repo, files: d
     commit_files(repo, files, "upstream")
     repo.git.update_ref("refs/remotes/origin/main", "upstream")
     repo.git.checkout("main")
-    (Path(repo.git_dir) / "FETCH_HEAD").write_text("")
+    (Path(repo.git_dir) / "FETCH_HEAD").write_text("", encoding="utf-8")
 
 
 def test_main_behind_counts_only_code_commits(commit_files: Callable[..., str], code_repo: git.Repo) -> None:
@@ -887,7 +936,7 @@ def test_the_daemon_merges_fetched_prices_only_between_builds(
 
     monkeypatch.delenv(price_schedule.SWITCH_ENV)
     builder._write_json(daemon.paths.config, {"data_dir": str(daemon.data_dir), "prices": True})
-    (daemon.data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market\n")
+    (daemon.data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market\n", encoding="utf-8")
     with git.Repo(daemon.data_dir.parent) as repo:
         commit_files(repo, {}, "VTI")
         before = repo.head.commit.hexsha
@@ -917,7 +966,7 @@ def test_notify_forgets_the_repository_of_the_hook_that_ran_it(
 def test_the_builder_hooks_start_notify_without_the_hooks_repository(
     repo_root: Path, hook: str,
 ) -> None:
-    text = (repo_root / ".githooks" / hook).read_text()
+    text = (repo_root / ".githooks" / hook).read_text(encoding="utf-8")
     assert "builder notify" in text
     for name in price_schedule.HOOK_GIT_ENV:
         assert f"-u {name} " in text

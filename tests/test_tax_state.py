@@ -43,7 +43,7 @@ def _residence(scenario_dir: Path) -> list[tuple[str, str, str]]:
 
 
 def test_the_readme_tables_list_the_same_states_and_statuses() -> None:
-    text = _README.read_text()
+    text = _README.read_text(encoding="utf-8")
     section = text[text.index("## State and territory income tax"):]
     section = section[:section.index("\n## ", 1)]
     rows = re.findall(r"^\| ([^|]+?) \| ([A-Z][a-z]+(?: [a-z]+)?) \|", section, re.MULTILINE)
@@ -265,7 +265,7 @@ def test_a_scenario_without_a_state_tax_gets_one_like_its_federal_tax(
     write_aux: Callable[[str, str], Path],
 ) -> None:
     """Less what is the federal tax's own: its tables' bracket_series."""
-    write_aux("federal_brackets__law.csv", (TEMPLATE_AUX_DIR / "federal_brackets.csv").read_text())
+    write_aux("federal_brackets__law.csv", (TEMPLATE_AUX_DIR / "federal_brackets.csv").read_text(encoding="utf-8"))
     add_tax(params_json={"nol_limit_percent": 80, "bracket_series": "law"})
 
     result = _tax(test_data_dir, "state", "DC", "--yes")

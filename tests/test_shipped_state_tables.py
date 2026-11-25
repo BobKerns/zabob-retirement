@@ -21,7 +21,7 @@ _STATES = ["CA", "DC", "ID", "KS", "NC", "NE", "WA", "none"]
 
 
 def _brackets(state: str, effective_date: str, status: str = "MFJ") -> list[tuple[int, int]]:
-    with (TEMPLATE_AUX_DIR / f"state_brackets__{state}.csv").open(newline="") as fh:
+    with (TEMPLATE_AUX_DIR / f"state_brackets__{state}.csv").open(newline="", encoding="utf-8") as fh:
         return sorted(
             (units.dollars_to_cents(r["floor"]), units.percent_to_micros(r["marginal_rate"]))
             for r in csv.DictReader(fh)
@@ -104,7 +104,7 @@ def _filers_from(test_data_dir: Path, age: int) -> Callable[[int], int]:
     """How many of the two prototype filers have reached ``age`` by
     December 31 of a year, from the test data's own birthdates, so the
     tests below follow the data when its years move."""
-    with (test_data_dir / "persons.csv").open(newline="") as fh:
+    with (test_data_dir / "persons.csv").open(newline="", encoding="utf-8") as fh:
         born = [int(r["birthdate"][:4]) for r in csv.DictReader(fh) if r["role"] == "primary"]
     return lambda year: sum(year - b >= age for b in born)
 

@@ -1,0 +1,98 @@
+# Native Windows (#687): the program installed as a Windows user installs it,
+# and a new user's first session run against it (tests/install), with no
+# bash in the way. Native Windows can't be tested anywhere else: nobody
+# working on the code has it at hand, and a Windows runner is free for a
+# public repository.
+#
+# By default it installs a wheel built from the commit. "Run workflow" can
+# instead install a published version from PyPI, as a user would, to see
+# how a release fares (`source: pypi`, `version: 1.0.0b1`).
+#
+# Like Gates, it skips draft pull requests; "Run workflow" on a branch runs
+# it on a draft's commits.
+name: Windows
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "What to install: a wheel built from this commit, or a release from PyPI"
+        type: choice
+        options: [wheel, pypi]
+        default: wheel
+      version:
+        description: "With source pypi: the version (empty for the newest, pre-releases included)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: Installed program on Windows
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      # As a user's terminal would: UTF-8 in and out of Python.
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          # Pinned, as in gates.yml.
+          version: "0.12.23"
+
+      - name: Install the program
+        env:
+          SOURCE: ${{ inputs.source || 'wheel' }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:SOURCE -eq "pypi") {
+              # While every release is a pre-release, uv takes the newest one
+              # unasked, so this is the install line SETUP.md gives.
+              $spec = if ($env:VERSION) { "zabob-retirement==$env:VERSION" } else { "zabob-retirement" }
+              uv tool install --python 3.14 $spec
+          } else {
+              uv build --wheel --out-dir dist
+              $wheel = (Get-ChildItem dist/zabob_retirement-*.whl).FullName
+              uv tool install --python 3.14 $wheel
+          }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $bin = uv tool dir --bin
+          "$bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          & "$bin/sim.exe" --help | Out-Null
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          uv tool list
+
+      - name: Add the test tools
+        # Into the installed program's own Python, at versions that keep
+        # every package it has: the tests must see what a user's machine got.
+        run: |
+          $python = Join-Path (uv tool dir) "zabob-retirement/Scripts/python.exe"
+          "PROGRAM_PYTHON=$python" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          uv pip freeze --python $python | Out-File -Encoding utf8 installed.txt
+          uv run --no-project --python 3.14 python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['dependency-groups']['dev']))" | Out-File -Encoding utf8 test-tools.txt
+          uv pip install --quiet --python $python -r test-tools.txt -c installed.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: A new user's first session
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        # The installed package, not src/, is the one imported.
+        run: |
+          & $env:PROGRAM_PYTHON -m pytest -q -p no:cacheprovider -o pythonpath= tests/install/test_install_native.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

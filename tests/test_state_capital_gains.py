@@ -40,7 +40,7 @@ def state_gains(
         if dividends is not None:
             rows.append(f"dividend,Income_CapitalGain,Asset_Checking,{dividends},qualified_dividend")
         retire_alice_csv("year_to_date.csv").write_text(
-            "name,from_account,to_account,amount,tax_character\n" + "\n".join(rows) + "\n")
+            "name,from_account,to_account,amount,tax_character\n" + "\n".join(rows) + "\n", encoding="utf-8")
         run = run_scenario(load_test_copy().intent_path, runs_dir / f"r{next(runs)}.sqlite3",
                            run_by="test", allow_dirty_data=True, allow_dirty_code=True)
         with closing(sqlite3.connect(run)) as con:
@@ -54,7 +54,7 @@ def state_gains(
 
 
 def _ca_brackets(test_data_dir: Path) -> list[tuple[int, int]]:
-    with (test_data_dir / "aux" / "state_brackets__CA.csv").open() as f:
+    with (test_data_dir / "aux" / "state_brackets__CA.csv").open(encoding="utf-8") as f:
         return sorted(
             (units.dollars_to_cents(r["floor"]), units.percent_to_micros(r["marginal_rate"]))
             for r in csv.DictReader(f)
@@ -147,7 +147,7 @@ def test_the_ordinary_part_of_taxable_income_leaves_out_separately_taxed_short_t
     write_aux("state_stcg_brackets__CA.csv", _BRACKETS_HEADER + "2026-01-31,MFJ,0,0.00,8.5%\n")
     retire_alice_csv("year_to_date.csv").write_text(
         "name,from_account,to_account,amount,tax_character\n"
-        "short,Income_CapitalGain,Asset_Checking,20000.00,stcg\n")
+        "short,Income_CapitalGain,Asset_Checking,20000.00,stcg\n", encoding="utf-8")
     run = runs_dir / "measure.sqlite3"
     run_scenario(load_test_copy().intent_path, run, run_by="test", allow_dirty_data=True)
     con = sqlite3.connect(run)

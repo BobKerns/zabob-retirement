@@ -20,6 +20,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.sim.choose_user import primary_persons
 
 # The subject line stays readable in `git log --oneline` up to about this.
@@ -78,7 +79,7 @@ def operator(data_dir: Path) -> tuple[str, str]:
             person = (data_dir / ".analysis_user").read_text(encoding="utf-8").strip()
         except OSError:
             person = ""
-    person = person or os.environ.get("USER") or "analysis"
+    person = person or login_name("analysis")
     try:
         display = dict(primary_persons(data_dir)).get(person, "")
     except (OSError, KeyError):

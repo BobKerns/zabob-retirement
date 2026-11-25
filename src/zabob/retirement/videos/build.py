@@ -127,7 +127,7 @@ def _cgroup_memory_files(cgroups: str, root: Path) -> list[tuple[Path, Path]]:
 
 def _read(path: Path) -> str | None:
     try:
-        return Path(path).read_text()
+        return Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
 
@@ -343,9 +343,10 @@ class _Builder:
         wav = self.cache / f"narration-{key}.wav"
         meta = wav.with_suffix(".json")
         if wav.is_file() and meta.is_file():
-            return wav, json.loads(meta.read_text())["durations"], "cached", key
+            return wav, json.loads(meta.read_text(encoding="utf-8"))["durations"], "cached", key
         durations = render.synthesize(sentences, voice, self.gap, wav, self.repo, threads=self.threads)
-        meta.write_text(json.dumps({"durations": durations, "sentences": list(sentences)}, ensure_ascii=False))
+        meta.write_text(json.dumps({"durations": durations, "sentences": list(sentences)}, ensure_ascii=False),
+                        encoding="utf-8")
         return wav, durations, "made", key
 
     def tape_data(self) -> Path:

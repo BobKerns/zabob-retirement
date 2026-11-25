@@ -234,7 +234,7 @@ class _Lab:
             # Matplotlib's font cache, built once, outside the demo copy.
             "MPLCONFIGDIR": str(Path(tempfile.gettempdir()) / "analysis-video-mpl"),
         }
-        self.log = (jupyter_dir / "lab.log").open("w")
+        self.log = (jupyter_dir / "lab.log").open("w", encoding="utf-8")
         # Spawned through render, so a failing build elsewhere stops it too.
         self.proc = render.spawn(
             [sys.executable, "-m", "jupyterlab", "--no-browser", f"--port={self.port}",
@@ -258,7 +258,8 @@ class _Lab:
             except OSError:
                 time.sleep(0.3)
         self.close()
-        tail = (self.root / ".jupyter-video" / "lab.log").read_text(errors="replace").splitlines()[-15:]
+        tail = (self.root / ".jupyter-video" / "lab.log").read_text(errors="replace",
+                                                                    encoding="utf-8").splitlines()[-15:]
         raise ScriptError("JupyterLab didn't start:\n" + "\n".join(tail))
 
     def url(self, notebook: str) -> str:
@@ -525,7 +526,7 @@ def _encode(ffmpeg: str, frames: list[tuple[float, bytes]], end: float, folder: 
     from zabob.retirement.videos import render
 
     listing = folder / "frames.txt"
-    with listing.open("w") as f:
+    with listing.open("w", encoding="utf-8") as f:
         for i, (at, jpeg) in enumerate(frames):
             name = folder / f"{i:06d}.jpg"
             name.write_bytes(jpeg)

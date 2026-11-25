@@ -74,7 +74,8 @@ def test_a_tax_file_holds_one_row(
     load_test_copy: Callable[[], LoadResult],
 ) -> None:
     path = add_tax()
-    path.write_text(path.read_text() + path.read_text().splitlines()[1] + "\n")
+    path.write_text(path.read_text(encoding="utf-8") + path.read_text(encoding="utf-8").splitlines()[1] + "\n",
+                    encoding="utf-8")
     with pytest.raises(LoadError, match="a tax file holds one row"):
         load_test_copy()
 
@@ -209,7 +210,7 @@ def test_property_tax_through_a_chain_into_an_income_tax_account_is_refused(
     add_tax()
     (retire_alice_csv("chains/destination") / "county.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence,tax_character\n"
-        f"Expense_Taxes_Federal,,,,,,{step_character}\n")
+        f"Expense_Taxes_Federal,,,,,,{step_character}\n", encoding="utf-8")
     append_scheduled_row(name="county_tax", from_account="Asset_Checking", to_account="county",
                          amount_rule_kind="fixed_amount", amount="100.00", start="2027-01-31",
                          tax_character="none", tags="" if step_character else "tax:property")

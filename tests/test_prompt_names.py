@@ -377,7 +377,7 @@ def test_a_named_batch_is_offered_only_when_it_holds_runs_of_the_mode(tmp_path: 
     for recipe, mode in (("mc_recipe", "monte_carlo"), ("oat_recipe", "sensitivity")):
         batch = batches_dir(tmp_path / recipe, mode) / "b1"
         batch.mkdir(parents=True)
-        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": mode}))
+        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": mode}), encoding="utf-8")
     (tmp_path / "stale_recipe" / "monte-carlo" / "b1").mkdir(parents=True)  # no manifest, no members
     result = CliRunner().invoke(click.Command("ask", callback=lambda: click.echo(
         sim_cli._ask_ensemble_run(tmp_path, "monte_carlo", batch="b1"))), input="mc_recipe\n")
@@ -391,8 +391,8 @@ def test_a_rules_person_may_be_the_household(sim: Callable[..., Result], test_da
     """#368: `joint` is a rule's person even when persons.csv has no row
     for it (as `sim init` writes it): the loader supplies one."""
     persons = test_data_dir / "persons.csv"
-    persons.write_text("".join(line for line in persons.read_text().splitlines(keepends=True)
-                               if not line.startswith("joint,")))
+    persons.write_text("".join(line for line in persons.read_text(encoding="utf-8").splitlines(keepends=True)
+                               if not line.startswith("joint,")), encoding="utf-8")
     result = sim("scheduled", "add", "2027-01-31", "Asset_Checking", "Expense_Living", "100",
                  "--name", "shared", "--person", "joint", "--scenario", "retire_alice")
     assert result.exit_code == 0, result.output
@@ -403,7 +403,7 @@ def _mc_runs(runs: Path, *recipes: str) -> None:
     for recipe in recipes:
         batch = runs / recipe / "monte-carlo" / "b1"
         batch.mkdir(parents=True)
-        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": "monte_carlo"}))
+        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": "monte_carlo"}), encoding="utf-8")
 
 
 def _ask_ensemble(runs: Path, data: Path | None, input: str = "", *,  # noqa: A002

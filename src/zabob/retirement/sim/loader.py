@@ -359,7 +359,7 @@ def batch_mode(batch_dir: Path) -> str:
     (one synthesized by a test)."""
     path = Path(batch_dir) / BATCH_MANIFEST_FILENAME
     if path.is_file():
-        return json.loads(path.read_text()).get("mode", "monte_carlo")
+        return json.loads(path.read_text(encoding="utf-8")).get("mode", "monte_carlo")
     for member in sorted(Path(batch_dir).glob("member_*.sqlite3")):
         try:
             con = connect_sim_file(f"file:{member}?mode=ro", uri=True)

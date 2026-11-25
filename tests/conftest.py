@@ -575,7 +575,7 @@ def new_user_env(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
     home = top / "home"
     home.mkdir()
     (top / "gitconfig").write_text("[user]\n\tname = Alice Example\n\temail = alice@example.com\n"
-                                   "[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+                                   "[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n", encoding="utf-8")
     return {"HOME": str(home), "GIT_CONFIG_GLOBAL": str(top / "gitconfig"),
             "LANG": os.environ.get("LANG", "C.UTF-8")}
 
@@ -643,11 +643,11 @@ def lot_variant_runs(
     (variant_dir / "account_lots.csv").write_text(
         f"{header}\n"
         "Asset_Brokerage_Joint,b,,BBB,2026-01-15,1500,,150000.00,100000.00,\n"
-        "Asset_Brokerage_Joint,c,,CCC,2027-06-30,,,25000.00,20000.00,\n"
+        "Asset_Brokerage_Joint,c,,CCC,2027-06-30,,,25000.00,20000.00,\n", encoding="utf-8"
     )
     (variant_dir / "year_to_date.csv").write_text(
         "name,from_account,from_lot,to_account,to_lot,amount,tax_character,year,description\n"
-        "prior_wages_alice,Income_Salary_Alice,,Asset_Checking,,70000.00,ordinary,,\n"
+        "prior_wages_alice,Income_Salary_Alice,,Asset_Checking,,70000.00,ordinary,,\n", encoding="utf-8"
     )
     loaded = load_scenario(test_data_dir, "variant", intent_dir=intent_dir,
                            scenarios_dir=test_scenarios_dir, allow_dirty_data=True)
@@ -782,7 +782,7 @@ def write_lifespans(retire_alice_csv: Callable[[str], Path]) -> Callable[..., No
         header = _LIFESPAN_HEADER
         if any(r.count(",") == 8 for r in rows):
             header = header.replace("\n", ",life_table\n")
-        retire_alice_csv("lifespan.csv").write_text(header + "".join(f"{r}\n" for r in rows))
+        retire_alice_csv("lifespan.csv").write_text(header + "".join(f"{r}\n" for r in rows), encoding="utf-8")
     return _write
 
 
@@ -794,7 +794,7 @@ def write_life_table(test_data_dir: Path) -> Callable[[str, str], Path]:
     def _write(where: str, rows: str) -> Path:
         path = test_data_dir / where
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("effective_date,age,q_female,q_male\n" + rows)
+        path.write_text("effective_date,age,q_female,q_male\n" + rows, encoding="utf-8")
         return path
     return _write
 
@@ -862,17 +862,17 @@ def guide_chains(
     checking's refill and overflow. Returns the data dir."""
     sources, destinations = retire_alice_csv("chains/source"), retire_alice_csv("chains/destination")
     (sources / "bridge.csv").write_text(
-        _CHAIN_HEADER + "Asset_Savings,,10000.00,,cpi,annual\nAsset_Brokerage_Joint,default,,,,\n")
+        _CHAIN_HEADER + "Asset_Savings,,10000.00,,cpi,annual\nAsset_Brokerage_Joint,default,,,,\n", encoding="utf-8")
     (sources / "retirement_draw.csv").write_text(
-        _CHAIN_HEADER + "bridge,,,50%,,\nAsset_TraditionalIRA_Alice,default,,,,\n")
+        _CHAIN_HEADER + "bridge,,,50%,,\nAsset_TraditionalIRA_Alice,default,,,,\n", encoding="utf-8")
     (destinations / "ss_split.csv").write_text(
-        _CHAIN_HEADER + "Asset_Checking,,,50%,,\nAsset_Savings,,,,,\n")
+        _CHAIN_HEADER + "Asset_Checking,,,50%,,\nAsset_Savings,,,,,\n", encoding="utf-8")
     scheduled = retire_alice_csv("scheduled.csv")
-    text = scheduled.read_text().replace(
+    text = scheduled.read_text(encoding="utf-8").replace(
         "ss_alice,Income_SS_Alice,,Asset_Checking,", "ss_alice,Income_SS_Alice,,ss_split,")
     text += ("monthly_draw,retirement_draw,,Asset_Checking,,monthly,,fixed_amount,,,,,,1000.00,,,"
              "none,,2030-01-31,,200,,,,{},,\n")
-    scheduled.write_text(text)
+    scheduled.write_text(text, encoding="utf-8")
     update_account_value("Asset_Checking", "", maximum_balance="30000.00", refill_target="3000.00",
                          overflow_chain="Asset_Savings")
     return test_data_dir
@@ -1013,7 +1013,7 @@ def strategy_module(strategy_scenarios: Path) -> Callable[[str, str], Path]:
     """Write a module into the private copy's ``strategies/`` folder."""
     def _write(name: str, text: str) -> Path:
         path = strategy_scenarios / "strategies" / f"{name}.py"
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1078,7 +1078,7 @@ def _commit_files(repo: git.Repo, files: Mapping[str, str] | None = None,
     root = Path(str(repo.working_tree_dir))
     for name, text in (files or {}).items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text(text)
+        (root / name).write_text(text, encoding="utf-8")
     repo.git.add(A=True)
     actor = git.Actor("t", "t@t")
     return repo.index.commit(message, author=actor, committer=actor).hexsha
@@ -1102,7 +1102,7 @@ def data_repo_sim(tmp_path: Path, test_data_dir: Path) -> Path:
     data_dir = data_repo / "sim"
     data_repo.mkdir()
     test_data_dir.rename(data_dir)
-    (data_repo / ".gitignore").write_text("sim/.analysis\nstate/\n")
+    (data_repo / ".gitignore").write_text("sim/.analysis\nstate/\n", encoding="utf-8")
     repo = git.Repo.init(data_repo, b="main")
     with repo.config_writer() as cw:
         cw.set_value("commit", "gpgsign", "false")
@@ -1183,7 +1183,7 @@ def write_aux(test_data_dir: Path) -> Callable[[str, str], Path]:
     """Write a file into the private data copy's ``aux/`` directory."""
     def _write(filename: str, text: str) -> Path:
         path = test_data_dir / "aux" / filename
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1207,8 +1207,8 @@ def qqq_prices(test_data_dir: Path) -> Path:
     and ABCDX (which has no prices). Returns the data dir."""
     (test_data_dir / "prices").mkdir(exist_ok=True)
     (test_data_dir / "prices" / "security_price__QQQ.csv").write_text(
-        "effective_date,price\n2025-12-31,400.00\n2026-09-30,580.00\n2026-10-13,609.00\n")
-    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Nasdaq 100\nABCDX,A fund\n")
+        "effective_date,price\n2025-12-31,400.00\n2026-09-30,580.00\n2026-10-13,609.00\n", encoding="utf-8")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Nasdaq 100\nABCDX,A fund\n", encoding="utf-8")
     return test_data_dir
 
 
@@ -1218,7 +1218,7 @@ def scenario_own_prices(retire_alice_csv: Callable[[str], Path], add_account_val
     lacks, and a Roth_Alice lot holding 10 shares of it."""
     own = retire_alice_csv("prices")
     own.mkdir(exist_ok=True)
-    (own / "security_price__QQQX.csv").write_text("effective_date,price\n2026-05-29,10.00\n")
+    (own / "security_price__QQQX.csv").write_text("effective_date,price\n2026-05-29,10.00\n", encoding="utf-8")
     add_account_value("Asset_Roth_Alice", lot="x", symbol="QQQX", quantity="10", opening_balance="1.00")
 
 
@@ -1242,7 +1242,7 @@ def write_series(retire_alice_csv: Callable[[str], Path]) -> Callable[[str, str]
     ``(series name, "effective_date,annual_rate" rows)``, rates in percent."""
     def _write(series: str, rows: str) -> Path:
         path = retire_alice_csv("series") / f"rate__{series}.csv"
-        path.write_text(f"effective_date,annual_rate\n{rows}\n")
+        path.write_text(f"effective_date,annual_rate\n{rows}\n", encoding="utf-8")
         return path
     return _write
 
@@ -1258,10 +1258,10 @@ def blended_fund(test_data_dir: Path, set_brokerage_lots: Callable[[list[dict[st
          "opening_cost_basis": "200000.00"},
     ])
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nFND,,stock_us,60%\nFND,,bond,40%\n")
+        "symbol,as_of,asset_class,weight\nFND,,stock_us,60%\nFND,,bond,40%\n", encoding="utf-8")
     calendar = test_data_dir / "scenarios" / "retire_alice" / "calendar.csv"
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"), encoding="utf-8")
     write_series("stock_us", "2026-01-31,8%")
     write_series("bond", "2026-01-31,4%")
 
@@ -1318,7 +1318,7 @@ def write_itemization(test_data_dir: Path) -> Callable[..., None]:
         folder = test_data_dir / "itemizations"
         folder.mkdir(exist_ok=True)
         rows = "".join(f"item{n},{value}\n" for n, value in enumerate(values, 1))
-        (folder / f"{name}.csv").write_text(f"Item,Value\n{rows}")
+        (folder / f"{name}.csv").write_text(f"Item,Value\n{rows}", encoding="utf-8")
     return _write
 
 
@@ -1455,13 +1455,15 @@ def mistaken_symbol(test_data_dir: Path) -> str:
     allocations.csv (beside VTI's), a shared price file and retire_alice's
     own. For ``sim symbol delete`` (#191); hold it with
     ``set_brokerage_lots``. Returns the symbol."""
-    (test_data_dir / "securities.csv").write_text("symbol,name\nXOLD,A mistake\nVTI,Total market\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nXOLD,A mistake\nVTI,Total market\n", encoding="utf-8")
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nXOLD,,bond,100%\nXOLD,2030-01,cash,100%\nVTI,,stock_us,100%\n")
-    (test_data_dir / "prices" / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,10.00\n")
+        "symbol,as_of,asset_class,weight\nXOLD,,bond,100%\nXOLD,2030-01,cash,100%\nVTI,,stock_us,100%\n",
+            encoding="utf-8")
+    (test_data_dir / "prices" / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,10.00\n",
+                                                                       encoding="utf-8")
     own = test_data_dir / "scenarios" / "retire_alice" / "prices"
     own.mkdir(exist_ok=True)
-    (own / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,11.00\n")
+    (own / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,11.00\n", encoding="utf-8")
     return "XOLD"
 
 
@@ -1501,15 +1503,15 @@ def two_lot_run_file(test_data_dir: Path, retire_alice_csv: Callable[[str], Path
     ])
 
     (test_data_dir / "securities.csv").write_text(
-        "symbol,name\nAAA,Alpha Growth Fund\nBBB,Beta Income Fund\n")
+        "symbol,name\nAAA,Alpha Growth Fund\nBBB,Beta Income Fund\n", encoding="utf-8")
 
     calendar = retire_alice_csv("calendar.csv")
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"), encoding="utf-8")
     (test_data_dir / "aux" / "rate__AAA.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,2%\n")
+        "effective_date,annual_rate\n2026-01-31,2%\n", encoding="utf-8")
     (retire_alice_csv("chains/source") / "lotb.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Brokerage_Joint,b,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Brokerage_Joint,b,,,,\n", encoding="utf-8")
 
     scheduled = pd.read_csv(retire_alice_csv("scheduled.csv"), dtype=str, keep_default_na=False)
     scheduled.loc[len(scheduled)] = {
@@ -1568,8 +1570,8 @@ def tax_module(test_data_dir: Path, test_data: Path) -> Callable[..., Path]:
         path = test_data_dir / "taxes" / f"{name}.py"
         path.parent.mkdir(parents=True, exist_ok=True)
         if text is None:
-            text = (test_data / "sim" / "tax_calculators" / "taxes" / f"{name}.py").read_text()
-        path.write_text(text)
+            text = (test_data / "sim" / "tax_calculators" / "taxes" / f"{name}.py").read_text(encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1850,7 +1852,7 @@ def code_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> git.Repo:
     for name, text in {"src/engine.py": "v1\n", "templates/t.csv": "", "pyproject.toml": "",
                        "uv.lock": "", "docs/guide.md": "one\n"}.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text(text)
+        (root / name).write_text(text, encoding="utf-8")
     repo.git.add(A=True)
     actor = git.Actor("t", "t@t")
     repo.index.commit("init", author=actor, committer=actor)
@@ -1910,15 +1912,15 @@ def installed_program(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     program = tmp_path / "tool" / "bin"
     program.mkdir(parents=True)
-    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n')
-    (program / "python").write_text("#!/bin/sh\nexit 1\n")
+    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n', encoding="utf-8")
+    (program / "python").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     for name in ("sim", "python"):
         (program / name).chmod(0o755)
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     gitconfig = tmp_path / "gitconfig"
-    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
     for who in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{who}_NAME", "t")
@@ -2037,8 +2039,8 @@ def two_lot_ensemble_runs_dir(
         {"lot": "b", "opening_balance": "200000.00", "opening_cost_basis": "140000.00"},
     ])
     calendar = retire_alice_csv("calendar.csv")
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"), encoding="utf-8")
     append_calendar_row(
         date="2027-02-28", kind="set_rate", name="checking_rate_vary",
         series="Asset_Checking", amount="4.5%",
@@ -2247,7 +2249,7 @@ def calibration_rate_csv(tmp_path: Path) -> Path:
     """A ``date,rate`` CSV of three annual rates (3%, 5%, 4% for 2020-2022),
     ``analysis historical``'s input format for a series already in percent."""
     path = tmp_path / "premiums.csv"
-    path.write_text("date,rate\n2020-01-01,3.0\n2021-01-01,5.0\n2022-01-01,4.0\n")
+    path.write_text("date,rate\n2020-01-01,3.0\n2021-01-01,5.0\n2022-01-01,4.0\n", encoding="utf-8")
     return path
 
 

@@ -58,8 +58,8 @@ def test_chart_file_writes_the_chart_and_table_adds_the_table(
     alone = _invoke(*command, "--chart-file", str(chart), run_file=report_run_file)
     assert alone.exit_code == 0, alone.output
     assert alone.output == f"wrote {chart}\n"  # the chart only (#393)
-    assert chart.read_text().lstrip().startswith("<?xml")
-    assert "<svg" in chart.read_text()
+    assert chart.read_text(encoding="utf-8").lstrip().startswith("<?xml")
+    assert "<svg" in chart.read_text(encoding="utf-8")
     both = _invoke(*command, "--chart-file", str(chart), "--table", run_file=report_run_file)
     assert both.exit_code == 0, both.output
     assert both.output.startswith(f"wrote {chart}\n") and table in both.output
@@ -240,7 +240,7 @@ def test_graph_file_is_written_when_there_is_nothing_to_show(
     chart = tmp_path / "chart.svg"
     result = _invoke(*command, "--chart-file", str(chart), run_file=retire_alice_run_file)
     assert result.exit_code == 0, result.output
-    assert "No " in chart.read_text() and "to chart." in chart.read_text()
+    assert "No " in chart.read_text(encoding="utf-8") and "to chart." in chart.read_text(encoding="utf-8")
 
 
 def test_income_figure_draws_every_year_the_table_shows(report_run: RunConnection) -> None:

@@ -29,10 +29,10 @@ BUCKETS = "strategies/buckets.csv"
 def _strategy(strategy_csv: Callable[[str, str], Path], kind: str = "buckets", **params: object) -> None:
     """Make the scenario's one strategy ``kind`` with ``params``."""
     path = strategy_csv(SCENARIO, BUCKETS)
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(kind=kind, params_json=json.dumps(params))
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -48,7 +48,7 @@ def _crash(strategy_csv: Callable[[str, str], Path]) -> None:
     strategy_csv(SCENARIO, "calendar.csv").write_text(
         f"{header}\n"
         "2034-01-31,set_rate,,,,,,stock_us,-30%,,,,a crash,,crash\n"
-        "2035-01-31,set_rate,,,,,,stock_us,7%,,,,recovery,,recovery\n")
+        "2035-01-31,set_rate,,,,,,stock_us,7%,,,,recovery,,recovery\n", encoding="utf-8")
 
 
 def _query(path: Path, sql: str, *args: object) -> list[tuple]:
@@ -104,7 +104,7 @@ def _probe(strategy_module: Callable[[str, str], Path], strategy_csv: Callable[[
            extra: str = "") -> None:
     strategy_module("probe", _PROBE.format(extra=extra))
     path = strategy_csv(SCENARIO, BUCKETS)
-    path.write_text("kind,chain,start,end,enabled,params_json,description\nprobe,,,,,{},probe\n")
+    path.write_text("kind,chain,start,end,enabled,params_json,description\nprobe,,,,,{},probe\n", encoding="utf-8")
 
 
 def _probe_memory(run: Path) -> dict[str, dict]:
@@ -153,7 +153,7 @@ def _down_market(strategy_csv: Callable[[str, str], Path], **params: object) -> 
         "Asset_Brokerage_Joint,default,,,,\n"
         "Asset_Roth_Alice,default,,,,\n"
         "Asset_Roth_Alice,bonds,,,,\n"
-        "Asset_Savings,,,,,\n")
+        "Asset_Savings,,,,,\n", encoding="utf-8")
 
 
 def test_down_market_skips_what_fell_and_leaves_the_rest_to_the_chain(
@@ -296,10 +296,12 @@ def test_buckets_load_checks(
 ) -> None:
     if params.get("portfolio") == "portfolio:stocks_only":
         path = strategy_csv(SCENARIO, "accounts.csv")
-        path.write_text(path.read_text() + (
-            "Asset_Stocks,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:stocks_only\n"))
+        path.write_text(path.read_text(encoding="utf-8") + (
+            "Asset_Stocks,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:stocks_only\n"),
+                encoding="utf-8")
         lots = strategy_csv(SCENARIO, "account_lots.csv")
-        lots.write_text(lots.read_text() + "Asset_Stocks,default,,USSTK,,,,1000.00,1000.00,,,,,,,,,\n")
+        lots.write_text(lots.read_text(encoding="utf-8") + "Asset_Stocks,default,,USSTK,,,,1000.00,1000.00,,,,,,,,,\n",
+                        encoding="utf-8")
     _buckets(strategy_csv, **params)
     with pytest.raises(LoadError, match=message):
         load_scenario(strategy_scenarios, SCENARIO, intent_dir=intent_dir, allow_dirty_data=True,
@@ -312,15 +314,17 @@ def test_buckets_judges_a_blended_fund_by_its_bucket(
     """Cash and a 60/40 fund hold bonds, but no lot is mostly bonds: there
     is no bond bucket to refill or sell."""
     path = strategy_csv(SCENARIO, "accounts.csv")
-    path.write_text(path.read_text() + (
-        "Asset_Balanced,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:balanced\n"))
+    path.write_text(path.read_text(encoding="utf-8") + (
+        "Asset_Balanced,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:balanced\n"),
+            encoding="utf-8")
     lots = strategy_csv(SCENARIO, "account_lots.csv")
-    lots.write_text(lots.read_text() + (
+    lots.write_text(lots.read_text(encoding="utf-8") + (
         "Asset_Balanced,default,,,,,,1000.00,1000.00,,,,,,,,,\n"
-        "Asset_Balanced,cash,,CASH,,,money_market,100.00,100.00,,,,,,,,,\n"))
+        "Asset_Balanced,cash,,CASH,,,money_market,100.00,100.00,,,,,,,,,\n"), encoding="utf-8")
     allocations = strategy_scenarios / "allocations.csv"
-    allocations.write_text(allocations.read_text()
-                           + "Asset_Balanced:default,,stock_us,60%\nAsset_Balanced:default,,bond,40%\n")
+    allocations.write_text(allocations.read_text(encoding="utf-8")
+                           + "Asset_Balanced:default,,stock_us,60%\nAsset_Balanced:default,,bond,40%\n",
+                               encoding="utf-8")
     _strategy(strategy_csv, "buckets", portfolio="portfolio:balanced", need="1000.00")
     with pytest.raises(LoadError, match="no lot mostly bond"):
         load_scenario(strategy_scenarios, SCENARIO, intent_dir=intent_dir, allow_dirty_data=True,
@@ -333,8 +337,9 @@ def test_buckets_never_refills_across_traditional_and_roth_lots(
     """A retirement account can hold traditional and Roth lots; selling a
     traditional stock lot into the Roth cash lot would be a conversion."""
     lots = strategy_csv(SCENARIO, "account_lots.csv")
-    lots.write_text(lots.read_text()
-                    + "Asset_Roth_Alice,rollover,traditional_ira,USSTK,,,,400000.00,,400000.00,,,,,,,,\n")
+    lots.write_text(lots.read_text(encoding="utf-8")
+                    + "Asset_Roth_Alice,rollover,traditional_ira,USSTK,,,,400000.00,,400000.00,,,,,,,,\n",
+                        encoding="utf-8")
     run = run_strategy_scenario(SCENARIO)
     legs = _legs(run, "month_start")
     assert legs
@@ -349,12 +354,12 @@ def test_buckets_says_once_why_nothing_could_refill(
     happen, and the log says why the first time, not every month."""
     lots = strategy_csv(SCENARIO, "account_lots.csv")
     lots.write_text("\n".join(
-        line.replace(",roth_ira,USSTK,", ",roth_ira,BONDX,") for line in lots.read_text().splitlines()
-        if not line.startswith("Asset_Brokerage_Joint,sweep")) + "\n")
+        line.replace(",roth_ira,USSTK,", ",roth_ira,BONDX,") for line in lots.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("Asset_Brokerage_Joint,sweep")) + "\n", encoding="utf-8")
     chain = strategy_csv(SCENARIO, "chains/source/portfolio_draw.csv")
     chain.write_text("\n".join(
-        line for line in chain.read_text().splitlines()
-        if not line.startswith("Asset_Brokerage_Joint,sweep")) + "\n")
+        line for line in chain.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("Asset_Brokerage_Joint,sweep")) + "\n", encoding="utf-8")
     _buckets(strategy_csv, bond_years=0)
     run = run_strategy_scenario(SCENARIO)
     refills = _decisions(run, "month_start")
@@ -368,12 +373,12 @@ def test_buckets_without_bonds_is_fine_with_bond_years_zero(
     strategy_csv: Callable[[str, str], Path], strategy_scenarios: Path, intent_dir: Path,
 ) -> None:
     path = strategy_csv(SCENARIO, "accounts.csv")
-    path.write_text(path.read_text() + (
-        "Asset_Stocks,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:lean\n"))
+    path.write_text(path.read_text(encoding="utf-8") + (
+        "Asset_Stocks,asset,brokerage_taxable,joint,taxable,,gains,2020-01-31,,{},portfolio:lean\n"), encoding="utf-8")
     lots = strategy_csv(SCENARIO, "account_lots.csv")
-    lots.write_text(lots.read_text() + (
+    lots.write_text(lots.read_text(encoding="utf-8") + (
         "Asset_Stocks,default,,USSTK,,,,1000.00,1000.00,,,,,,,,,\n"
-        "Asset_Stocks,cash,,CASH,,,money_market,100.00,100.00,,,,,,,,,\n"))
+        "Asset_Stocks,cash,,CASH,,,money_market,100.00,100.00,,,,,,,,,\n"), encoding="utf-8")
     _strategy(strategy_csv, "buckets", portfolio="portfolio:lean", need="1000.00")
     with pytest.raises(LoadError, match="no lot mostly bond"):
         load_scenario(strategy_scenarios, SCENARIO, intent_dir=intent_dir, allow_dirty_data=True,

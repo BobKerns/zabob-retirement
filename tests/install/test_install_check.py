@@ -19,8 +19,11 @@ import pytest
 from zabob.retirement import resources
 from zabob.retirement.sim import provenance
 
-# Each runs the program in a subprocess, which takes seconds.
-pytestmark = [pytest.mark.installed, pytest.mark.slow]
+# Each runs the program in a subprocess, which takes seconds. Through bash and
+# activate-analysis, so not on native Windows: test_install_native is its
+# shell-free twin (#687).
+pytestmark = [pytest.mark.installed, pytest.mark.slow,
+              pytest.mark.skipif(sys.platform == "win32", reason="bash and activate-analysis")]
 
 BIN = Path(sys.executable).parent
 """The installed program's scripts: `sim`, `analysis`, `jupyter`."""
@@ -60,7 +63,7 @@ def test_the_package_is_installed_with_no_checkout() -> None:
 
 
 def test_init_example_makes_a_data_repo_paired_with_this_install(data_repo: Path) -> None:
-    assert (data_repo / "sim" / ".analysis").read_text() == f"{resources.INSTALLED}{BIN}\n"
+    assert (data_repo / "sim" / ".analysis").read_text(encoding="utf-8") == f"{resources.INSTALLED}{BIN}\n"
     assert (data_repo / "notebooks" / "net_worth.ipynb").is_file()
 
 

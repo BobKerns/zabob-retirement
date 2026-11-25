@@ -114,7 +114,12 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# PLW1514 (#687): text files name their encoding, or Windows reads and
+# writes them in its locale's (cp1252), not UTF-8. It is a preview rule, so
+# only explicitly selected preview rules are on.
+preview = true
+explicit-preview-rules = true
+select = ["E", "F", "I", "UP", "B", "PLW1514"]
 ignore = ["I001", "F541"]
 
 [tool.ruff.lint.per-file-ignores]

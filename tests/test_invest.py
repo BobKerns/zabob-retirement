@@ -204,11 +204,11 @@ def test_invest_refuses(
     invest: Callable[..., Result], retire_alice_csv: Callable[[str], Path],
     args: tuple[str, ...], error: str,
 ) -> None:
-    before = retire_alice_csv("calendar.csv").read_text()
+    before = retire_alice_csv("calendar.csv").read_text(encoding="utf-8")
     result = invest("Asset_Savings", *args, answers=("",))
     assert result.exit_code != 0
     assert error in result.output
-    assert retire_alice_csv("calendar.csv").read_text() == before
+    assert retire_alice_csv("calendar.csv").read_text(encoding="utf-8") == before
 
 
 def test_a_mistyped_series_writes_no_new_symbol(
@@ -254,9 +254,9 @@ def test_invest_stops_when_a_new_symbols_prices_cant_be_fetched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cli, "_fetch_prices", lambda *_args, **_kw: 1)
-    before = retire_alice_csv("calendar.csv").read_text()
+    before = retire_alice_csv("calendar.csv").read_text(encoding="utf-8")
     result = invest("Asset_Savings", BROKERAGE, "vti", "--symbol", "vti", "--amount", "100")
 
     assert result.exit_code != 0
     assert "prices not fetched, so nothing else was written" in result.output
-    assert retire_alice_csv("calendar.csv").read_text() == before
+    assert retire_alice_csv("calendar.csv").read_text(encoding="utf-8") == before
