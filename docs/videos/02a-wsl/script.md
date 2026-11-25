@@ -8,10 +8,10 @@ data = "prototype_data"
 [youtube]
 title = "WSL for Windows"
 summary = """
-For Windows only. Not on Windows? Press Next to skip ahead to video 2. \
-Alice turns on WSL, the Linux built into Windows, and \
-gets the terminal that video 2 starts from. Setup guide: \
-https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-set-up-wsl-first"""
+For Windows only, and optional: the simulator now runs in PowerShell too, \
+so video 2 works without this. Alice turns on WSL, the Linux built into \
+Windows, for working from a clone of the code. Setup guide: \
+https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-wsl"""
 contents = [
   "Why WSL",
   "Turning it on (wsl --install)",
@@ -21,8 +21,9 @@ contents = [
   "VS Code with the WSL extension, and charts in its terminal",
 ]
 tags = ["WSL", "Windows"]
-# A side trip for Windows viewers before video 2: it leads there, and
-# video 2 goes on to video 3 without it.
+# A side trip for Windows viewers, out of the course's flow since the
+# simulator runs on Windows itself (#687): it leads to video 2, but nothing
+# leads to it.
 previous = ""
 next = "02-setup"
 +++

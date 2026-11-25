@@ -101,10 +101,10 @@ Detail in [ADR-004](ADR-004-reproducibility-and-activation.md); summary here:
 
 ### Activation and gating
 
-The data repo provides a sourceable `activate` script (venv-style) that sets:
+Commands find the data repo by `--data-dir`, else `ANALYSIS_DATA_DIR`, else the user's default data repo, which `sim init` records and `sim use` changes ([ADR-004](ADR-004-reproducibility-and-activation.md) §4, [#687](https://github.com/BobKerns/zabob-retirement/issues/687)); with none, they refuse to run. The data repo also provides an optional sourceable `activate-analysis` script (venv-style, bash and zsh) that sets:
 
-- `ANALYSIS_DATA_DIR` — absolute path to the data repo. Engine refuses to run if unset.
-- `ANALYSIS_USER` — short identifier (`alice`, `bill`, …) matching a row `id` in `persons.csv` in the data repo. Refuses to run if unset or unknown. (Persons and operator identities are the same set: every operator is a person, though not every person needs to be an operator.)
+- `ANALYSIS_DATA_DIR` — absolute path to the data repo.
+- `ANALYSIS_USER` — short identifier (`alice`, `bill`, …) matching a row `id` in `persons.csv` in the data repo; without it, the data repo's `.analysis_user`. Refuses to run if unknown. (Persons and operator identities are the same set: every operator is a person, though not every person needs to be an operator.)
 - `ANALYSIS_DATA_REPO_NAME` — display label, defaults to basename of `ANALYSIS_DATA_DIR`.
 
 `PS1` is prefixed `[analysis:$ANALYSIS_DATA_REPO_NAME:$ANALYSIS_USER:<current scenario>]` (the scenario left out when none is current) so the active context is visible in a shared shell. `deactivate` reverses all of it.

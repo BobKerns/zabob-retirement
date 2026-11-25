@@ -10,7 +10,6 @@ import csv
 import dataclasses
 import json
 import math
-import os
 import re
 import socket
 import sqlite3
@@ -70,6 +69,7 @@ from zabob.retirement.sim.readme import readme_description
 from zabob.retirement.sim.runs import insert_run_metadata
 from zabob.retirement.sim.schema import SCHEMA_VERSION, apply_run_schema, inserted_id, connect_sim_file
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS
+from zabob.retirement.user_config import current_user, data_dir_setting
 
 __all__ = [
     "BATCH_MANIFEST_FILENAME", "BATCH_MODE_DIRS",
@@ -225,7 +225,7 @@ def find_state_dir(data_dir: Path | str | None, default: Path | str) -> Path:
     ``$ANALYSIS_DATA_DIR`` and then to ``default`` relative to the cwd.
     """
     if data_dir is None:
-        data_dir = os.environ.get("ANALYSIS_DATA_DIR")
+        data_dir = data_dir_setting()
         if not data_dir:
             return Path(default).resolve()
     return (Path(data_dir).resolve().parent / default).resolve()
@@ -1539,7 +1539,7 @@ def load_scenario(
             scenario_name=scenario_name,
             data_dir=data_dir,
             data_repo_name=data_repo_name or data_dir.name,
-            loaded_by=loaded_by or os.environ.get("ANALYSIS_USER", "unknown"),
+            loaded_by=loaded_by or current_user(data_dir) or "unknown",
             code=cs,
             data=ds,
         )

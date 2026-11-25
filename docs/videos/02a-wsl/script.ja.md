@@ -7,10 +7,10 @@ subtitle = "シミュレーターのための、ウィンドウズ上のリナ�
 [youtube]
 title = "WindowsでWSL"
 summary = """
-Windowsの人向けです。Windows以外の人は、「次へ」で第2回へ進んでください。\
-アリスが、Windowsに組み込まれたLinuxであるWSLをオンにして、\
-第2回の出発点になるターミナルを用意します。セットアップガイド(英語): \
-https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-set-up-wsl-first"""
+Windowsの人向けで、任意です。シミュレーターは PowerShell でも動くようになったので、\
+第2回はこれなしで進められます。アリスが、Windowsに組み込まれたLinuxであるWSLを\
+オンにして、コードのクローンから使う準備をします。セットアップガイド(英語): \
+https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-wsl"""
 contents = [
   "なぜWSLか",
   "オンにする(wsl --install)",

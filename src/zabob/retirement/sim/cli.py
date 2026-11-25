@@ -33,6 +33,7 @@ import click
 import pandas as pd
 
 from zabob.retirement.oscompat import WINDOWS, login_name, utf8_stdio
+from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -653,10 +654,11 @@ def _note_use(data_dir: Path | None, *names: str | None) -> None:
 def _resolve_data_dir(data_dir: Path | None) -> Path:
     if data_dir is not None:
         return data_dir.resolve()
-    env = os.environ.get("ANALYSIS_DATA_DIR")
+    env = data_dir_setting()
     if not env:
         raise click.ClickException(
-            "ANALYSIS_DATA_DIR not set; pass --data-dir or source the data repo's activate"
+            "no data repo: make one with `sim init`, choose one with `sim use DIR`, "
+            "or pass --data-dir"
         )
     return Path(env).resolve()
 
@@ -765,7 +767,7 @@ def run(
         sensitivity=sensitivity, ensemble_size=ensemble_size, only=only,
         quantiles_text=quantiles_text, jobs=jobs,
     )
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     if resolved_data_dir is not None or scenario_name is None:
         resolved_data_dir = resolved_data_dir or _resolve_data_dir(data_dir)
@@ -2334,7 +2336,7 @@ def _current_data_dir(data_dir: Path | None) -> Path | None:
 
 
 def _resolve_runs_dir(runs_dir: Path | None, data_dir: Path | None) -> Path:
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     return _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
 
@@ -3191,7 +3193,7 @@ def ensemble_sensitivity(
     # One row's views need a sensitivity batch, so that's the one to find.
     if mode is None and (row is not None or attribute is not None):
         mode = "sensitivity"
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
     if scenario_name is None:
@@ -3335,7 +3337,7 @@ def ensemble_draws(
         raise click.UsageError(f"--{output.current()} prints the data alone; "
                                "ask for --csv-file separately")
     pair_names = _parse_pair(pair) if pair is not None else None
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
     if scenario_name is None:
@@ -5667,7 +5669,7 @@ def init_command(
             raise click.ClickException(
                 f"{_shown(private, resolve=False)} is already there"
                 + (f", leading to {_shown(private.resolve())}" if private.is_symlink() else "")
-                + f". To use it: source {_shown(private / 'sim' / 'activate-analysis', resolve=False)}. For a new data "
+                + f". To use it: sim use {_shown(private, resolve=False)}. For a new data "
                 "repo elsewhere, give its DIR; to start over here, remove it first.")
         directory = private
     root = directory.expanduser().resolve()
@@ -5695,7 +5697,7 @@ def init_command(
         _init_builder(sim)
     activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
         else _shown(sim / "activate-analysis")
-    _next_steps(activate)
+    _next_steps(sim, activate)
 
 
 def _init_installed(
@@ -5712,25 +5714,75 @@ def _init_installed(
     click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: analysis jupyter")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    _next_steps(_shown(sim / "activate-analysis"))
+    _next_steps(sim, _shown(sim / "activate-analysis"))
 
 
-def _next_steps(activate: str) -> None:
-    # Set apart and in bold: without it no later command finds the data
-    # repo, and after the lines above it was easy to miss.
+@sim_group_command.command("use")
+@click.argument("directory", required=False, metavar="DIR",
+                type=click.Path(file_okay=False, exists=True, path_type=Path))
+def use_command(directory: Path | None) -> None:
+    """Make DIR, a data repo (or its sim/ folder), your default (#687): the
+    one every command uses when neither --data-dir nor $ANALYSIS_DATA_DIR
+    names another. `sim init` makes the data repo it creates the default.
+
+    With no DIR, says which data repo the commands use, and why.
+    """
+    from zabob.retirement import user_config
+
+    if directory is None:
+        default = user_config.default_data_dir()
+        env = os.environ.get("ANALYSIS_DATA_DIR")
+        if env:
+            click.echo(f"{_shown_repo(Path(env))} (this shell's ANALYSIS_DATA_DIR)")
+            if default is not None:
+                click.echo(f"your default otherwise: {_shown_repo(default)}")
+        elif default is not None:
+            click.echo(f"{_shown_repo(default)} (your default)")
+        else:
+            raise click.ClickException("no data repo: make one with `sim init`, or choose one with `sim use DIR`")
+        return
+    root = directory.expanduser().resolve()
+    data_dir = root if (root / "persons.csv").is_file() else root / "sim"
+    if not (data_dir / "persons.csv").is_file():
+        raise click.ClickException(f"{_shown(root)} isn't a data repo (no sim/persons.csv)")
+    _remember_default(data_dir)
+
+
+def _next_steps(data_dir: Path, activate: str) -> None:
+    # No activation step (#687): the commands find the data repo through
+    # the user's default, in any shell, PowerShell included.
+    _remember_default(data_dir)
     click.echo()
-    click.secho("Next, activate the data repo in this shell (the sim commands find it that way):", bold=True)
-    click.echo()
-    if WINDOWS:
-        # activate-analysis is bash or zsh; in PowerShell, its one essential
-        # line by hand (#687).
-        data_dir = str(Path(activate).expanduser().parent.resolve())
-        click.secho(f'    $env:ANALYSIS_DATA_DIR = "{data_dir}"', bold=True)
-    else:
-        click.secho(f"    source {activate}", bold=True)
-    click.echo()
-    click.echo("Then add the rest of the household with `sim person add` and accounts to the base "
+    click.echo("Next, add the rest of the household with `sim person add` and accounts to the base "
                "scenario with `sim account add`.")
+    if not WINDOWS:
+        click.echo(f"Optional: `source {activate}` in bash or zsh shows the data repo and you in the "
+                   "prompt and turns on TAB completion.")
+
+
+def _shown_repo(data_dir: Path) -> str:
+    """The data repo a data dir belongs to, as typed: its sim/ folder's
+    parent, or the data dir itself when it isn't named sim."""
+    return _shown(data_dir.parent if data_dir.name == "sim" else data_dir)
+
+
+def _remember_default(data_dir: Path) -> None:
+    """Make ``data_dir`` the user's default data repo and say so, warning
+    when this shell's $ANALYSIS_DATA_DIR still names another."""
+    from zabob.retirement import user_config
+
+    was = user_config.default_data_dir()
+    user_config.set_default_data_dir(data_dir)
+    if was is not None and was.resolve() != data_dir.resolve():
+        click.echo(f"made {_shown_repo(data_dir)} your default data repo, in place of "
+                   f"{_shown_repo(was)} (`sim use DIR` switches)")
+    else:
+        click.echo(f"made {_shown_repo(data_dir)} your default data repo: the sim commands use it "
+                   "from any folder (`sim use DIR` switches)")
+    env = os.environ.get("ANALYSIS_DATA_DIR")
+    if env and Path(env).resolve() != data_dir.resolve():
+        click.echo(f"  warning: this shell's ANALYSIS_DATA_DIR names {_shown(Path(env))}, which comes "
+                   "first; `deactivate-analysis` or a new shell uses the default", err=True)
 
 
 def _create_data_repo(
@@ -9344,7 +9396,7 @@ def import_sources(files: tuple[Path, ...], data_dir: Path | None) -> None:
     """
     # The built-in sources need no data repo, so the list works without one.
     imports = None
-    if data_dir is not None or os.environ.get("ANALYSIS_DATA_DIR"):
+    if data_dir is not None or data_dir_setting():
         imports = import_mapping.imports_dir(_resolve_data_dir(data_dir))
     try:
         known = import_sources_.table(imports)

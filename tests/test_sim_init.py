@@ -288,7 +288,7 @@ def test_init_with_no_dir_refuses_a_data_private_that_is_there(
     assert result.exit_code != 0
     assert "code/data/private is already there" in result.output
     assert ("leading to elsewhere" in result.output) == linked
-    assert "source code/data/private/sim/activate-analysis" in result.output
+    assert "To use it: sim use code/data/private." in result.output
     assert not (private / "sim").exists()
 
 
@@ -422,10 +422,10 @@ def test_init_shows_paths_as_typed(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     assert here.exit_code == 0 and there.exit_code == 0, here.output + there.output
     assert "created a data repo in retirement; its data dir is retirement/sim" in here.output
-    # The one step nothing works without stands apart from the rest.
-    assert "\n\nNext, activate the data repo in this shell" in here.output
-    assert "\n\n    source retirement/sim/activate-analysis\n\n" in here.output
+    assert "made retirement your default data repo" in here.output
+    assert "`source retirement/sim/activate-analysis` in bash or zsh" in here.output
     assert "created a data repo in ~/other; its data dir is ~/other/sim" in there.output
+    assert "made ~/other your default data repo, in place of retirement" in there.output
     assert str(tmp_path) not in here.output + there.output
 
 

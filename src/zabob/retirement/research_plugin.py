@@ -28,7 +28,6 @@ See docs/guides/finance-research.md.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import zipfile
@@ -40,6 +39,7 @@ import click
 import yaml
 
 from zabob.retirement.resources import CHECKOUT_DIR, data_home, shipped
+from zabob.retirement.user_config import data_dir_setting
 
 PLUGIN_NAME = "finance-research"
 # A checkout's own plugins/, or the copy shipped in an installed wheel (#676).
@@ -350,7 +350,7 @@ def _resolve_config(data_dir: Path | None, config_file: Path | None) -> tuple[Re
         path = config_file
     else:
         if data_dir is None:
-            env = os.environ.get("ANALYSIS_DATA_DIR")
+            env = data_dir_setting()
             data_dir = Path(env) if env else None
         if data_dir is None:
             return NEUTRAL, "no data repo (neutral settings)"
