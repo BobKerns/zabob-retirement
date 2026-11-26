@@ -460,7 +460,12 @@ def test_a_run_renders_the_plugin_runs_claude_and_imports(test_data_dir: Path, f
     # Each allowed command is spelled out in the prompt exactly as the rule has it.
     assert all(f"`{a.removeprefix('Bash(').removesuffix(' *)')}`" in args[1] for a in bash)
     edits = [a for a in allowed if a.startswith(("Edit", "Write"))]
-    assert len(edits) == 1 and edits[0].startswith("Edit(//") and edits[0].endswith("/work/**)")
+    # One per spelling of the work folder (#800), the resolved one among them
+    # (on macOS the temporary folder is behind a symlink), each once.
+    work = plugin.resolve().parent.parent / "work"  # beside the folder the plugin is rendered into
+    assert f"Edit({research._rule_path(work.as_posix())}/**)" in edits
+    assert all(e.startswith("Edit(//") and e.endswith("/work/**)") for e in edits)
+    assert len(edits) == len(set(edits))
     assert all(str(s) in args[1] for s in scripts)  # the prompt says where the scripts are
     assert symbols.latest_set(test_data_dir, "ABCDX") is not None
 
@@ -493,7 +498,106 @@ def test_a_run_that_writes_nothing_points_at_the_plugin(
     result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
     assert result.exit_code != 0
     assert "--plugin-dir" in result.output
+    output = " ".join(result.output.split())
+    # #800: its last words and its (empty) folder, whatever the cause.
+    assert "it ended saying: Wrote the tear sheet.; its folder is empty" in output
     assert not (test_data_dir / "research").exists()
+
+
+def test_a_run_whose_writes_were_refused_says_so(
+    test_data_dir: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: on Windows a mis-spelled Edit rule refused every write; the
+    error now names what Claude Code refused."""
+    monkeypatch.setenv("FAKE_CLAUDE_BUNDLE", "")
+    # Long enough that a progress line would cut off the file name.
+    refused = "C:/Users/Alice Example/AppData/Local/Temp/research-ABCDX-abcd1234/work/ABCDX-allocation-export.csv"
+    monkeypatch.setenv("FAKE_CLAUDE_DENIED", refused)
+    result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
+    assert result.exit_code != 0
+    assert f"Claude Code refused Write {refused}" in " ".join(result.output.split())
+    assert "--plugin-dir" not in result.output
+
+
+def test_a_run_whose_writes_failed_says_how(
+    test_data_dir: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: a write can fail with no refusal; its error and the run's last
+    words say why."""
+    monkeypatch.setenv("FAKE_CLAUDE_BUNDLE", "")
+    monkeypatch.setenv("FAKE_CLAUDE_TOOL_ERROR", "Path is outside the allowed working directories")
+    result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
+    assert result.exit_code != 0
+    output = " ".join(result.output.split())
+    assert "! Path is outside the allowed working directories" in output  # as it happens
+    assert "its last tool errors: Path is outside the allowed working directories" in output
+    assert "it ended saying: Wrote the tear sheet." in output
+    assert re.search(r"\bin \S*research-ABCDX-\S*work\b", output)  # the folder it was given
+
+
+def test_spellings_differing_only_in_drive_case_give_one_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C:/x (absolute) and c:/x (%TEMP%) are one rule, //c/x, given once."""
+    monkeypatch.setattr(research, "WINDOWS", True)
+    monkeypatch.setattr(research, "_short_path", lambda p: p)
+    monkeypatch.setattr(research.Path, "absolute", lambda self: research.Path("C:/x"))
+    monkeypatch.setattr(research.Path, "resolve", lambda self: research.Path("c:/x"))
+    assert research._path_rules("Edit", Path("x")) == ["Edit(//c/x/**)"]
+
+
+def test_a_failed_run_names_what_was_refused() -> None:
+    """#800: a run whose writes keep being refused may end on its turn limit."""
+    assert research.failed_because("error_max_turns", ("Write C:/w/a.md",)) == (
+        "error_max_turns; Claude Code refused Write C:/w/a.md")
+    assert research.failed_because("error_max_turns", ()) == "error_max_turns"
+
+
+@pytest.mark.parametrize(("windows", "path", "rule"), [
+    (True, "C:/Users/First Last/AppData/Local/Temp/work", "//c/Users/First Last/AppData/Local/Temp/work"),
+    (True, "d:/work", "//d/work"),
+    (False, "/home/alice/work", "//home/alice/work"),
+])
+def test_a_rule_spells_an_absolute_path_as_claude_code_matches_it(
+    windows: bool, path: str, rule: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: Claude Code matches C:/Users/x as /c/Users/x, so a rule naming
+    //C:/... refused every write of a Windows run."""
+    monkeypatch.setattr(research, "WINDOWS", windows)
+    assert research._rule_path(path) == rule
+
+
+def test_the_work_folder_is_writable_under_its_short_name_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: Windows sets %TEMP% to the 8.3 form of a profile folder with a
+    space, so a run wrote under C:/Users/FIRSTL~1/... as well as the long
+    name; a rule for only one refused the other."""
+    monkeypatch.setattr(research, "_short_path", lambda p: p.replace("First Last", "FIRSTL~1"))
+    work = tmp_path / "First Last" / "work"
+    rules = research._path_rules("Edit", work)
+    long = work.resolve().as_posix()
+    assert f"Edit({research._rule_path(long)}/**)" in rules
+    assert f"Edit({research._rule_path(long.replace('First Last', 'FIRSTL~1'))}/**)" in rules
+    assert len(rules) == len(set(rules))
+
+
+def test_a_run_is_given_each_folder_by_its_long_name(
+    tmp_path: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: given %TEMP%'s 8.3 spelling, the run read and wrote under it,
+    and Claude Code's confinement, by the long name, refused it all. A
+    symlink stands in for the second spelling here."""
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "work").mkdir()
+    (tmp_path / "real" / "plugin").mkdir()
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    outcome = research.run_skill("ABCDX", "ABCDX", tmp_path / "alias" / "work", tmp_path / "alias" / "plugin",
+                                 progress=lambda _: None)
+    assert outcome.ok, outcome.message
+    args = fake_claude.read_text(encoding="utf-8").splitlines()
+    real = (tmp_path / "real").resolve()
+    assert args[args.index("--plugin-dir") + 1] == str(real / "plugin")
+    assert all("alias" not in a for a in args)
+    assert any((real / "work").iterdir())  # it ran in the folder itself
 
 
 def test_run_skill_stops_at_the_timeout(

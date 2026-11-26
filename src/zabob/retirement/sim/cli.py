@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
-from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import BIN_DIR, WINDOWS, is_link, link_dir, login_name, program, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
@@ -343,7 +342,6 @@ class _SimGroup(click.Group):
 def sim_group_command(ctx: click.Context) -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
     utf8_stdio()
-    check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
     if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
@@ -17255,15 +17253,21 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         click.echo(f"Finished in {outcome.seconds / 60:.1f} minutes{cost}.")
         has_files = any(p.is_file() and p.suffix.lower() in research.KEPT_SUFFIXES for p in work.iterdir())
         if not has_files:
-            why = outcome.message if not outcome.ok else (
-                "the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
-                "in the plugin (--plugin-dir)?")
+            if not outcome.ok:
+                why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
+            else:
+                # Its final words, and what its folder does hold, say why (#800).
+                found = sorted(p.relative_to(work).as_posix() for p in work.rglob("*") if p.is_file())
+                why = (research.nothing_written(outcome.denied, outcome.tool_errors, outcome.message)
+                       + (f"; its folder holds {', '.join(found[:10])}" if found else "; its folder is empty")
+                       + ("" if outcome.denied or outcome.tool_errors else
+                          "; are the fund-tear-sheet and public-tear-sheet skills in the plugin (--plugin-dir)?"))
             raise click.ClickException(f"the research failed: {why}")
         bundle = research.bundle_dir(data, key)
         research.keep_bundle(work, bundle)
         if not outcome.ok:
-            raise click.ClickException(f"the research failed: {outcome.message}\n"
-                                       f"What it wrote is kept at {bundle}")
+            why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
+            raise click.ClickException(f"the research failed: {why}\nWhat it wrote is kept at {bundle}")
     return bundle
 
 

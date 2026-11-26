@@ -620,9 +620,25 @@ def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None
     )
 
 
-def _path_rule(tool: str, folder: Path) -> str:
-    # Permission rules take an absolute path as //path.
-    return f"{tool}(/{folder.resolve().as_posix()}/**)"
+def _rule_path(posix: str) -> str:
+    """An absolute path as a permission rule spells it: ``//path``. Claude
+    Code matches a Windows path in POSIX form, ``C:/Users/x`` as
+    ``/c/Users/x`` (#800), so a rule naming ``/C:/...`` never matches."""
+    if WINDOWS and len(posix) > 2 and posix[1] == ":" and posix[0].isalpha():
+        posix = f"/{posix[0].lower()}{posix[2:]}"
+    return f"/{posix}"
+
+
+def _path_rules(tool: str, folder: Path) -> list[str]:
+    """``tool``'s rules for ``folder`` under each spelling a run may use for
+    it (#800): as given, resolved, and on Windows its 8.3 short name. A
+    run's folder comes from %TEMP%, which Windows sets to the short form
+    (``C:/Users/FIRST~1/...``) when the profile folder has a space, while
+    resolving gives the long one, and the model writes under either."""
+    resolved = folder.resolve()
+    spellings = [folder.absolute().as_posix(), resolved.as_posix(), Path(_short_path(str(resolved))).as_posix()]
+    # Unique after mapping: C:/x and c:/x are both //c/x.
+    return [f"{tool}({rule}/**)" for rule in dict.fromkeys(_rule_path(s) for s in spellings)]
 
 
 def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, claude: str = "claude",
@@ -645,7 +661,7 @@ def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, cla
         "Skill", "WebSearch", "WebFetch", "Read", "Glob", "Grep",
         # An Edit rule covers Write as well; Claude Code ignores a Write(path)
         # rule and warns on stderr, which a failed run would report as its reason.
-        _path_rule("Edit", work_dir),
+        *_path_rules("Edit", work_dir),
         *(f"Bash({script_command(script)} *)" for script in scripts),
     ]
     return [
@@ -686,6 +702,67 @@ class RunResult:
     """The final ``result`` text, or why the run failed."""
     cost_usd: float | None = None
     seconds: float = 0.0
+    denied: tuple[str, ...] = ()
+    """The tool calls Claude Code refused (``permission_denials``), described."""
+    tool_errors: tuple[str, ...] = ()
+    """What the tool calls that failed got back, in order."""
+
+
+def tool_errors(event: dict[str, Any]) -> list[str]:
+    """The errors one ``stream-json`` event's tool results carry (#800): a
+    write that fails without a refusal, such as one outside the run's
+    folders, says why only here."""
+    if event.get("type") != "user":
+        return []
+    out = []
+    for block in (event.get("message") or {}).get("content") or []:
+        if not isinstance(block, dict) or block.get("type") != "tool_result" or not block.get("is_error"):
+            continue
+        content = block.get("content")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        text = " ".join(str(content or "").split())
+        out.append(text if len(text) <= 300 else text[:297] + "...")
+    return out
+
+
+def refusals(denied: tuple[str, ...]) -> str:
+    """``denied`` for a message: the first five, and how many more."""
+    more = f" and {len(denied) - 5} more" if len(denied) > 5 else ""
+    return f"Claude Code refused {'; '.join(denied[:5])}{more}"
+
+
+def failed_because(message: str, denied: tuple[str, ...], errors: tuple[str, ...] = ()) -> str:
+    """Why a run failed, with what it was refused and its last tool errors:
+    a run whose writes keep failing may end on its turn limit, those
+    failures its real cause."""
+    parts = [message]
+    if denied:
+        parts.append(refusals(denied))
+    if errors:
+        parts.append("its last tool errors: " + " | ".join(errors[-3:]))
+    return "; ".join(parts)
+
+
+def nothing_written(denied: tuple[str, ...] = (), errors: tuple[str, ...] = (), last: str = "") -> str:
+    """Why a run that ended without error left no files: with what it was
+    refused, which is usually the reason (#800)."""
+    said = " ".join(last.split())
+    said = f"; it ended saying: {said if len(said) <= 300 else said[:297] + '...'}" if said else ""
+    return failed_because("the run wrote no files", denied, errors) + said
+
+
+def _denials(result: dict[str, Any]) -> tuple[str, ...]:
+    # Whole, unlike describe_event's progress lines: a long Windows temp path
+    # cut at 90 characters would lose the file name, the part that matters.
+    out = []
+    for denial in result.get("permission_denials") or []:
+        if isinstance(denial, dict):
+            args = denial.get("tool_input")
+            args = args if isinstance(args, dict) else {}
+            detail = args.get("file_path") or args.get("command") or args.get("url") or ""
+            out.append(f"{denial.get('tool_name') or '?'} {' '.join(str(detail).split())}".rstrip())
+    return tuple(out)
 
 
 # Where Claude Code's installers put ``claude``. The builder's hourly timer
@@ -725,7 +802,15 @@ def run_skill(
         raise ResearchError("'claude' isn't on PATH or in Claude Code's usual places; install Claude "
                             "Code (docs/guides/finance-research.md). For the background builder, run "
                             "`sim builder install` again from a shell where `claude` works.")
+    # One spelling of each folder, the long one, for everything the run is
+    # given (#800). %TEMP% is the 8.3 form (C:/Users/FIRST~1/...) when the
+    # profile folder has a space; a run started there reads and writes under
+    # it, and Claude Code's --restricted confinement, which goes by the long
+    # name, refuses each of those as outside the run's folders.
+    work_dir, plugin_dir = work_dir.resolve(), plugin_dir.resolve()
     command = claude_command(subject, key, plugin_dir, work_dir, executable, kind)
+    progress(f"  in {work_dir}")
+    errors_seen: list[str] = []
     start = time.monotonic()
     # stderr goes to a file: a pipe nobody reads until the end could fill and
     # stall the run.
@@ -760,7 +845,9 @@ def run_skill(
                 continue
             if event.get("type") == "result":
                 result = event
-            for text in describe_event(event):
+            failed = tool_errors(event)
+            errors_seen.extend(failed)
+            for text in [*describe_event(event), *(f"! {error}" for error in failed)]:
                 elapsed = int(time.monotonic() - start)
                 progress(f"  [{elapsed // 60:2d}:{elapsed % 60:02d}] {text}")
         proc.wait()
@@ -787,7 +874,8 @@ def run_skill(
     cost = result.get("total_cost_usd")
     ok = not result.get("is_error") and proc.returncode == 0
     return RunResult(ok, str(result.get("result") or result.get("subtype") or ""),
-                     cost_usd=float(cost) if isinstance(cost, (int, float)) else None, seconds=seconds)
+                     cost_usd=float(cost) if isinstance(cost, (int, float)) else None, seconds=seconds,
+                     denied=_denials(result), tool_errors=tuple(errors_seen))
 
 
 def compare_lines(proposed: Allocation, latest: tuple[str, list[tuple[str, str]]] | None) -> list[str]:
