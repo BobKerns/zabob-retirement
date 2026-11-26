@@ -1,7 +1,7 @@
 """Test-wide safety net: never let a forgotten override touch real user data.
 
 Without this, a test that omits ``--data-dir`` (or a matching ``monkeypatch``)
-silently falls back to whatever ``$ANALYSIS_DATA_DIR`` happens to be set to in
+silently falls back to whatever ``$ZABOB_DATA_DIR`` happens to be set to in
 the *ambient* shell — which, on a dev machine with the data repo activated,
 is the developer's real, personal data directory. That happened: a test run
 overwrote the real data repo's ``.current_scenario`` with a prototype
@@ -74,7 +74,7 @@ import git
 import pandas as pd
 import pytest
 
-from zabob.retirement import user_config
+from zabob.retirement import env_names, user_config
 from zabob.retirement.oscompat import login_name
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
@@ -102,19 +102,23 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.skip(reason=why))
 
 
-_ANALYSIS_ENV_VARS = (
-    "ANALYSIS_DATA_DIR",
-    "ANALYSIS_SCENARIO",
+_AMBIENT_ENV_VARS = (
+    "ZABOB_DATA_DIR",
+    "ZABOB_SCENARIO",
     "ZABOB_HUB_DIR",  # the hub's folder (#766): under the test's user config instead
 )
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_analysis_env(
+def _no_ambient_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
-    for name in _ANALYSIS_ENV_VARS:
+    for name in _AMBIENT_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Nor the old names (#782), which would stop every command, from a shell
+    # activated before the rename.
+    for name in [name for name in os.environ if name.startswith(env_names.OLD_PREFIX)]:
+        monkeypatch.delenv(name)
     # Nor the developer's default data repo (#687): `sim init` in a test
     # records its own there.
     config = tmp_path_factory.mktemp("user-config")
@@ -135,7 +139,7 @@ def _no_ambient_analysis_env(
         here = (start or Path.cwd()).resolve()
         return real_local(here) if here.is_relative_to(base.resolve()) else None
     monkeypatch.setattr(user_config, "local_data_dir", _local_under_tmp)
-    # Without $ANALYSIS_DATA_DIR the notebook widgets fall back to the
+    # Without $ZABOB_DATA_DIR the notebook widgets fall back to the
     # checkout's data/private/sim: on a dev machine, the real data repo,
     # whose disabled scenarios once hid a test's recipe (#401).
     monkeypatch.setattr(
@@ -143,15 +147,15 @@ def _no_ambient_analysis_env(
         lambda: tmp_path_factory.getbasetemp() / "no-checkout-data" / "sim")
     # No test starts or waits on a background builder (#300) unless it
     # turns the builder back on itself.
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
-    monkeypatch.delenv("ANALYSIS_BUILDER_CHILD", raising=False)
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
+    monkeypatch.delenv("ZABOB_BUILDER_CHILD", raising=False)
     # Nor fetches prices or installs a timer (#560), even with the builder on:
     # a test that does turns this off and passes a fake provider.
-    monkeypatch.setenv("ANALYSIS_PRICE_FETCH", "off")
+    monkeypatch.setenv("ZABOB_PRICE_FETCH", "off")
     # Nor rolls scenarios forward at night (#564).
-    monkeypatch.setenv("ANALYSIS_ROLL", "off")
+    monkeypatch.setenv("ZABOB_ROLL", "off")
     # Nor researches symbols with Claude each morning (#640).
-    monkeypatch.setenv("ANALYSIS_RESEARCH", "off")
+    monkeypatch.setenv("ZABOB_RESEARCH", "off")
 
 
 _STABLE_CODE_STAMPS = CodeStamps(version="0" * 40, dirty=False, repo_path="CODE_REPO")
@@ -2041,7 +2045,7 @@ def installed_program(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for who in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{who}_NAME", "t")
         monkeypatch.setenv(f"GIT_{who}_EMAIL", "t@t")
-    monkeypatch.delenv("ANALYSIS_NO_BUILDER", raising=False)
+    monkeypatch.delenv("ZABOB_NO_BUILDER", raising=False)
     named = resources.INSTALLED + str(program)
     monkeypatch.setattr(resources, "CHECKOUT_DIR", None)
     monkeypatch.setattr(data_repo, "CODE_REPO_DIR", None)

@@ -16,7 +16,7 @@ the machine's ``core.autocrlf``.
 
 Usage: scripts/migrate_687.py [DATA_DIR] [--write]
 
-DATA_DIR defaults to $ANALYSIS_DATA_DIR. Without --write it only reports what
+DATA_DIR defaults to $ZABOB_DATA_DIR. Without --write it only reports what
 it would rename. Run it on a Mac or Linux checkout, or WSL: a Windows
 checkout of the old layout can't be made. Delete this script once every
 data repo is migrated.
@@ -87,11 +87,11 @@ def _add_text_auto(attributes: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("data_dir", nargs="?", type=Path,
-                        default=os.environ.get("ANALYSIS_DATA_DIR"))
+                        default=os.environ.get("ZABOB_DATA_DIR"))
     parser.add_argument("--write", action="store_true", help="rename (default: only report)")
     args = parser.parse_args(argv)
     if args.data_dir is None:
-        parser.error("give DATA_DIR or set ANALYSIS_DATA_DIR")
+        parser.error("give DATA_DIR or set ZABOB_DATA_DIR")
     data_dir: Path = args.data_dir.resolve()
 
     folders = old_folders(data_dir)

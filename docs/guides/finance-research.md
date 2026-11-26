@@ -63,7 +63,7 @@ upload in claude.ai's skill settings.
 ## Settings: `research.yaml`
 
 The settings are a household's choice, so they live in the data repo, as
-`research.yaml` beside `allocations.csv` (`$ANALYSIS_DATA_DIR/research.yaml`):
+`research.yaml` beside `allocations.csv` (`$ZABOB_DATA_DIR/research.yaml`):
 
 ```yaml
 languages: [en, ja]   # tab languages; en first. Each other language adds a

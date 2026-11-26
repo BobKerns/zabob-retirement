@@ -101,12 +101,12 @@ Detail in [ADR-004](ADR-004-reproducibility-and-activation.md); summary here:
 
 ### Activation and gating
 
-Commands find the data repo by `--data-dir`, else `ANALYSIS_DATA_DIR`, else the data repo the working folder is in, else the user's own, which `sim init` records and `sim switch --data` changes ([ADR-004](ADR-004-reproducibility-and-activation.md) §4, [#687](https://github.com/BobKerns/zabob-retirement/issues/687)); with none, they refuse to run. Who the user is, `sim login` records, in the user's own settings with their current scenario in each data repo ([#773](https://github.com/BobKerns/zabob-retirement/issues/773)). The data repo also provides an optional sourceable `activate-analysis` script (venv-style, bash and zsh) that sets:
+Commands find the data repo by `--data-dir`, else `ZABOB_DATA_DIR`, else the data repo the working folder is in, else the user's own, which `sim init` records and `sim switch --data` changes ([ADR-004](ADR-004-reproducibility-and-activation.md) §4, [#687](https://github.com/BobKerns/zabob-retirement/issues/687)); with none, they refuse to run. Who the user is, `sim login` records, in the user's own settings with their current scenario in each data repo ([#773](https://github.com/BobKerns/zabob-retirement/issues/773)). The data repo also provides an optional sourceable `activate-retirement` script (venv-style, bash and zsh) that sets:
 
-- `ANALYSIS_DATA_DIR` — absolute path to the data repo.
-- `ANALYSIS_DATA_REPO_NAME` — display label, defaults to basename of `ANALYSIS_DATA_DIR`.
+- `ZABOB_DATA_DIR` — absolute path to the data repo.
+- `ZABOB_DATA_REPO_NAME` — display label, defaults to basename of `ZABOB_DATA_DIR`.
 
-`PS1` is prefixed `[analysis:$ANALYSIS_DATA_REPO_NAME:<user>:<current scenario>]` (the scenario left out when none is current) so the active context is visible in a shared shell. `deactivate` reverses all of it.
+`PS1` is prefixed `[retirement:$ZABOB_DATA_REPO_NAME:<user>:<current scenario>]` (the scenario left out when none is current) so the active context is visible in a shared shell. `deactivate` reverses all of it.
 
 ### Prototype data
 

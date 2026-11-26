@@ -25,9 +25,9 @@ from zabob.retirement.sim.scenario import ensemble_settings
 
 
 def main(names: list[str]) -> int:
-    data = os.environ.get("ANALYSIS_DATA_DIR")
+    data = os.environ.get("ZABOB_DATA_DIR")
     if not data:
-        print("pending: no data repo activated ($ANALYSIS_DATA_DIR)", file=sys.stderr)
+        print("pending: no data repo activated ($ZABOB_DATA_DIR)", file=sys.stderr)
         return 2
     data_dir = Path(data)
     runs = _resolve_runs_dir(None, None)

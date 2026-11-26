@@ -1,7 +1,7 @@
 """No activation step (#687, #773): `sim init` makes the data repo it creates
 the user's, the commands use it from any folder and shell, `sim switch --data`
 or a command run in another data repo switches it, `sim login` says who the
-user is, and $ANALYSIS_DATA_DIR and --data-dir still come first."""
+user is, and $ZABOB_DATA_DIR and --data-dir still come first."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -52,7 +52,7 @@ def test_sim_init_leaves_the_user_to_log_in(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.chdir(tmp_path)
     made = _sim("init", "household", *_ALICE, "--no-builder")
     assert made.exit_code == 0, made.output
-    assert "Then `sim login` says who you are." in made.output
+    assert "Next: `sim login` says who you are. Then add" in made.output
     assert user_config.user_name() is None
     assert user_config.read_scenario(tmp_path / "household" / "sim") == (True, "base")
 
@@ -75,11 +75,11 @@ def test_sim_login_records_a_name_the_same_in_every_data_repo(
     # Not one of the household's people: any name will do.
     assert _sim("login", "the accountant").exit_code == 0
     assert user_config.current_user() == "the accountant"
-    # $ANALYSIS_USER, for scripts, comes first.
-    monkeypatch.setenv("ANALYSIS_USER", "script")
+    # $ZABOB_USER, for scripts, comes first.
+    monkeypatch.setenv("ZABOB_USER", "script")
     assert user_config.current_user() == "script"
     warned = _sim("login", "bill")
-    assert "this shell's ANALYSIS_USER, script, comes first" in warned.stderr
+    assert "this shell's ZABOB_USER, script, comes first" in warned.stderr
 
 
 def test_sim_login_with_no_name_takes_the_login_name(made: Path) -> None:  # noqa: ARG001 - a data repo to show
@@ -106,7 +106,7 @@ def test_sim_login_can_name_the_data_repo_and_scenario_too(made: Path, test_data
 def test_analysis_data_dir_comes_before_the_default(
     made: Path, test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     assert user_config.data_dir_setting() == str(test_data_dir)
     assert _lines(_sim("switch"))["Data repo"] == str(test_data_dir)
     assert user_config.default_data_dir() == made.resolve()  # not recorded
@@ -241,7 +241,7 @@ def test_a_checkouts_data_private_is_used_there_but_not_recorded(
 def test_a_lookup_never_moves_the_data_repo(
     made: Path, other_data_repo: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_KEEP_SCENARIO", "1")
+    monkeypatch.setenv("ZABOB_KEEP_SCENARIO", "1")
     monkeypatch.chdir(other_data_repo)
     result = _sim("switch")
     assert result.exit_code == 0, result.output
@@ -256,7 +256,7 @@ def test_settings_that_cant_be_written_only_warn(
     blocked.write_text("", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked))
     monkeypatch.setenv("APPDATA", str(blocked))
-    monkeypatch.setenv("ANALYSIS_USER", "alice")
+    monkeypatch.setenv("ZABOB_USER", "alice")
     monkeypatch.chdir(other_data_repo)
     result = _sim("account", "list", "--scenario", "retire_alice")
     assert result.exit_code == 0, result.output
@@ -285,12 +285,12 @@ def test_switch_login_before_logging_in_has_no_note(made: Path) -> None:  # noqa
 def test_a_data_repo_given_for_one_command_or_shell_is_not_recorded(
     given: str, made: Path, test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """--data-dir and $ANALYSIS_DATA_DIR are for scripts: neither the one they
+    """--data-dir and $ZABOB_DATA_DIR are for scripts: neither the one they
     name nor the working folder's becomes the user's."""
     monkeypatch.chdir(test_data_dir)
     args = ["switch"]
     if given == "env":
-        monkeypatch.setenv("ANALYSIS_DATA_DIR", str(made))
+        monkeypatch.setenv("ZABOB_DATA_DIR", str(made))
     else:
         args += ["--data-dir", str(made)]
     result = _sim(*args)

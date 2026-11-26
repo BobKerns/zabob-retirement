@@ -6,12 +6,12 @@
 # chain (checking goes negative), after it, and after the calendar events,
 # so `sim list` shows three runs and the oldest still has its shortfall.
 
-export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
+export HOME="$(dirname "$ZABOB_DATA_DIR")/home"
 mkdir -p "$HOME"
-unset ANALYSIS_DATA_DIR
+unset ZABOB_DATA_DIR
 sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/zabob-retirement/sim/activate-analysis > /dev/null
+source ~/zabob-retirement/sim/activate-retirement > /dev/null
 cd ~/zabob-retirement
 
 # Commit, run, and give the run a fixed time (its file name and its record),

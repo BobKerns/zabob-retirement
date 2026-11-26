@@ -39,7 +39,7 @@ def test_scenario_copy_makes_a_sibling(
     test_data_dir: Path, test_scenarios_dir: Path, loads: Callable[[str], None],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_USER", "bill")
+    monkeypatch.setenv("ZABOB_USER", "bill")
     old = test_scenarios_dir / "retire_alice"
     readme = old / "README.md"
     readme.write_text("# retire_alice\n\nSee [lots](../retire_alice/account_lots.csv) and "

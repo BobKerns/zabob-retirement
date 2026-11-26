@@ -114,7 +114,7 @@ def test_sixel_reply(reply: bytes, sixel: bool) -> None:
 def at_a_terminal(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
-    for name in ("TMUX", "ANALYSIS_IMAGE_PROTOCOL", "TERM_PROGRAM", "WT_SESSION", "SSH_CONNECTION", "SSH_TTY"):
+    for name in ("TMUX", "ZABOB_IMAGE_PROTOCOL", "TERM_PROGRAM", "WT_SESSION", "SSH_CONNECTION", "SSH_TTY"):
         monkeypatch.delenv(name, raising=False)
     return monkeypatch
 
@@ -149,7 +149,7 @@ def test_no_sixel_when_the_console_cant_be_asked(at_a_terminal: pytest.MonkeyPat
 def test_sixel_and_the_fallbacks_can_be_forced(
     at_a_terminal: pytest.MonkeyPatch, forced: str, expected: str | None,
 ) -> None:
-    at_a_terminal.setenv("ANALYSIS_IMAGE_PROTOCOL", forced)
+    at_a_terminal.setenv("ZABOB_IMAGE_PROTOCOL", forced)
     at_a_terminal.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b_Gi=31;OK\x1b\\")
     assert chain_graph.terminal_protocol() == expected
 
@@ -165,9 +165,9 @@ def test_asked_cell_size(at_a_terminal: pytest.MonkeyPatch) -> None:
     ({}, True, True),
     ({}, False, False),  # a pipe: nobody is watching
     ({"SSH_CONNECTION": "10.0.0.2 50000 10.0.0.1 22"}, True, False),  # the viewer would open elsewhere
-    ({"SSH_CONNECTION": "10.0.0.2 50000 10.0.0.1 22", "ANALYSIS_IMAGE_PROTOCOL": "open"}, True, True),
-    ({"ANALYSIS_IMAGE_PROTOCOL": "file"}, True, False),
-    ({"ANALYSIS_IMAGE_PROTOCOL": "none"}, True, False),
+    ({"SSH_CONNECTION": "10.0.0.2 50000 10.0.0.1 22", "ZABOB_IMAGE_PROTOCOL": "open"}, True, True),
+    ({"ZABOB_IMAGE_PROTOCOL": "file"}, True, False),
+    ({"ZABOB_IMAGE_PROTOCOL": "none"}, True, False),
 ])
 def test_open_fallback(
     at_a_terminal: pytest.MonkeyPatch, env: dict[str, str], tty: bool, expected: bool,
