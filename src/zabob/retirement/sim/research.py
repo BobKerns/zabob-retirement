@@ -36,7 +36,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from zabob.retirement.oscompat import kill_tree, start_tree
+from zabob.retirement.oscompat import WINDOWS, kill_tree, start_tree
 from zabob.retirement.sim import registries, units
 from zabob.retirement.sim.dates import month_end_iso
 
@@ -651,8 +651,10 @@ class RunResult:
 # Where Claude Code's installers put ``claude``. The builder's hourly timer
 # runs with launchd's or cron's bare PATH (/usr/bin:/bin:/usr/sbin:/sbin),
 # which has none of them (#644).
-CLAUDE_PLACES = ("~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude",
-                 "/usr/local/bin/claude")
+CLAUDE_PLACES = ("~/.local/bin/claude.exe", "~/AppData/Roaming/npm/claude.cmd") if WINDOWS else (
+    "~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude")
+"""Where Claude Code's installers put ``claude``: on Windows (#748) the
+native installer's and npm's."""
 
 
 def find_claude(recorded: str | None = None, *, path: bool = True) -> str | None:

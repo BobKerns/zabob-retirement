@@ -121,10 +121,14 @@ Open a new terminal, so it finds both, and go on with
 [Install the program](#install-the-program): `uv tool install
 zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 
-- There are no background builds yet
-  ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)): a command
-  that shows a run whose data or code changed builds it first, so it may
-  take a moment the first time.
+- The background builder's hourly wake is a task in Task Scheduler's
+  **Zabob Retirement** folder
+  ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
+  runs only while you are logged in; nothing asks for a password or an
+  administrator.
+- The builder doesn't research symbols each morning unless you ask for it
+  with `sim builder install --research`, since it hasn't been tried on
+  Windows yet ([#795](https://github.com/BobKerns/zabob-retirement/issues/795)).
 - TAB completion works in PowerShell, both Windows' own and PowerShell 7:
   `sim completion install` adds it to your profile. If it says the execution
   policy is `Restricted`, Windows PowerShell won't read a profile at all
@@ -260,7 +264,7 @@ and `sim builder log` what it did in the last hour (`-v` adds build output).
 The builder also fetches prices after each weekday's US market close, so a lot
 held by shares stays current without `sim prices fetch`. `sim builder install`
 adds an hourly timer that runs `sim builder tick` (a launchd agent on macOS,
-a crontab line elsewhere; `uninstall` removes it). A timer installed before
+a scheduled task on Windows, a crontab line elsewhere; `uninstall` removes it). A timer installed before
 nightly rolls (below) runs `sim builder prices --if-due`; run
 `sim builder install` again to replace it. The fetch never
 touches your checkout: it commits on the data repo's `builder/prices` branch,
