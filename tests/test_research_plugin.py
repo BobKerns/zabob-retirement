@@ -28,7 +28,7 @@ def _skill_text(plugin: Path) -> str:
 
 @pytest.mark.parametrize("skill", rp.skill_names())
 def test_committed_defaults_are_a_neutral_render(skill):
-    # Fails after a defaults template edit: run `analysis research-plugin render --neutral`.
+    # Fails after a defaults template edit: run `sim symbol research-plugin render --neutral`.
     text = (rp.SOURCE_DIR / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
     assert rp.current_defaults(text) == rp.render_defaults(rp.NEUTRAL, skill)
 
@@ -245,3 +245,14 @@ def test_a_relative_xdg_data_home_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", "relative/data")
     assert rp.default_out_dir() == tmp_path / ".local" / "share" / "zabob-retirement" / rp.PLUGIN_NAME
+
+
+def test_the_plugin_commands_are_under_sim_symbol():
+    import click
+
+    from zabob.retirement.cli import main
+    from zabob.retirement.sim.cli import symbol_group_command
+
+    ctx = click.Context(symbol_group_command)
+    assert symbol_group_command.get_command(ctx, "research-plugin") is rp.research_plugin_command
+    assert main.get_command(click.Context(main), "research-plugin") is None  # moved from `analysis` (#763)

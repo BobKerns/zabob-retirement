@@ -7,7 +7,7 @@ description: Build an investment research tear sheet (one-pager, company profile
 
 Build a company tear sheet from public sources, and show where every number came from. The default reader is an investor. For a public company that means the stock. For a private company it means what the company tells you about the public market: who it takes share from, whose revenue it is, and what its valuation implies. A paid terminal hands you clean, pre-computed fields. Here you assemble them yourself from filings and web pages that sometimes disagree, go stale or fail to load. The skill's value lies in that discipline: clear sources, dates and arithmetic, and visible gaps.
 
-<!-- defaults:start (rendered from defaults/public-tear-sheet.md.j2; edit the template, then run: analysis research-plugin render --neutral) -->
+<!-- defaults:start (rendered from defaults/public-tear-sheet.md.j2; edit the template, then run: sim symbol research-plugin render --neutral) -->
 ## Defaults for this installation
 - **Tabs:** Overview, Tear sheet, Price chart, Detail, Glossary.
 - **Translated tabs:** none.

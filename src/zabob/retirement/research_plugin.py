@@ -242,7 +242,7 @@ def defaults_context(config: ResearchConfig, skill: str, source: Path = SOURCE_D
 
 def render_defaults(config: ResearchConfig, skill: str, source: Path = SOURCE_DIR) -> str:
     """The "Defaults for this installation" section for ``skill``."""
-    import jinja2  # only when rendering: this module loads with every `analysis` command
+    import jinja2  # only when rendering: this module loads with every `sim` command
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(source / "defaults"),

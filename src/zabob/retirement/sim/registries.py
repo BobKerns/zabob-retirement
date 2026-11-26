@@ -1254,11 +1254,11 @@ ENSEMBLE_DISTRIBUTIONS: set[str] = {"uniform", "truncated_normal", "triangular",
 # its new one, not aliased, so a file is converted once (a clean break).
 # #31: `vary_mean` became `vary_median`, the truncated distribution's median,
 # and its meaning changed for asymmetric bounds. #284: `vary_innovation_sd`
-# became `vary_shock_sd`, the name `analysis historical` gives it.
+# became `vary_shock_sd`, the name `sim historical` gives it.
 RENAMED_CALENDAR_COLUMNS: dict[str, tuple[str, str]] = {
     "vary_mean": ("vary_median", "now the median of the truncated distribution, so the "
                                  "base case is exactly the authored value"),
-    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `analysis historical` "
+    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `sim historical` "
                                             "calls it Shock SD"),
 }
 

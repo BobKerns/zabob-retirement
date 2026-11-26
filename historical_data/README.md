@@ -8,7 +8,7 @@ The public data behind
 [the historical calibration guide](../docs/guides/historical-calibration.md),
 as retrieved on 2026-10-05. Each file has a `.retrieved` stamp beside it
 giving its retrieval date. This is the default download cache of
-`analysis historical`, so the guide's tables are recomputed from these files
+`sim historical`, so the guide's tables are recomputed from these files
 without downloading anything, and a series not here yet is downloaded into
 it.
 

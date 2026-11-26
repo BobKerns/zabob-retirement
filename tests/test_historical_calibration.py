@@ -1,4 +1,4 @@
-"""zabob.retirement.historical (``analysis historical``): parsing each source and the statistics,
+"""zabob.retirement.historical (``sim historical``): parsing each source and the statistics,
 all offline (downloads are stubbed)."""
 
 from __future__ import annotations
@@ -576,9 +576,11 @@ def test_main_reports_source_errors_without_a_traceback(calibration_cache_dir):
     assert "unknown source" in result.stderr
 
 
-def test_historical_is_an_analysis_subcommand():
+def test_historical_is_a_sim_subcommand():
     from zabob.retirement.cli import main
-    assert main.get_command(click.Context(main), "historical") is historical_command
+    from zabob.retirement.sim.cli import sim_group_command
+    assert sim_group_command.get_command(click.Context(sim_group_command), "historical") is historical_command
+    assert main.get_command(click.Context(main), "historical") is None  # moved from `analysis` (#763)
 
 
 def test_a_missing_committed_cache_asks_for_one(hc, calibration_rate_csv, tmp_path, monkeypatch):
