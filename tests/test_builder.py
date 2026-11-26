@@ -1002,3 +1002,76 @@ def test_the_builder_hooks_start_notify_without_the_hooks_repository(
     assert "builder notify" in text
     for name in price_schedule.HOOK_GIT_ENV:
         assert f"-u {name} " in text
+
+
+def test_the_daemon_looks_to_catch_up_with_origin_between_builds(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#785: so what another clone's builder pushed arrives here. The hour
+    is ``catch_up_if_due``'s, shared with the timer; the daemon looks at
+    most once a minute."""
+    from zabob.retirement.sim import price_schedule
+
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", lambda d: calls.append(d) or ["caught up"])
+    daemon.build = object()  # ty: ignore[invalid-assignment]  # building: not now
+    daemon.catch_up_tick()
+    assert calls == []
+    daemon.build = None
+    daemon.catch_up_tick()
+    daemon.catch_up_tick()  # within the minute: not again
+    assert calls == [daemon.data_dir]
+    daemon.caught_up -= 60
+    daemon.catch_up_tick()
+    assert calls == [daemon.data_dir] * 2
+
+
+def test_a_failed_catch_up_is_logged_and_the_daemon_goes_on(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zabob.retirement.sim import price_schedule
+
+    def broken(_d: Path) -> list[str]:
+        raise price_schedule.PriceScheduleError("git rev-parse failed")
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", broken)
+    logged: list[str] = []
+    monkeypatch.setattr(daemon, "log", logged.append)
+    daemon.catch_up_tick()
+    assert logged == ["not caught up with origin: git rev-parse failed"]
+
+
+def test_a_clone_that_no_longer_writes_still_merges_what_it_fetched(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#785: a fetch committed here before another machine became the
+    writer is merged, but no new one starts."""
+    from zabob.retirement.sim import price_schedule, shared_writer
+
+    builder.install(daemon.data_dir)
+    monkeypatch.setattr(shared_writer, "elsewhere", lambda *_a: "bill@desk")
+    monkeypatch.setattr(price_schedule, "switched_off", lambda: False)
+    merged: list[Path] = []
+    monkeypatch.setattr(price_schedule, "merge_pending", lambda d, _w: merged.append(d) or [])
+    monkeypatch.setattr(price_schedule, "due", lambda *_a: pytest.fail("looked for a due fetch"))
+    daemon.prices_tick(True)
+    assert merged == [daemon.data_dir] and daemon.fetcher is None
+
+
+def test_the_timer_catches_up_when_no_daemon_runs(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from click.testing import CliRunner
+
+    from zabob.retirement.sim import price_schedule
+    from zabob.retirement.sim.cli import sim_group_command
+
+    _code, data_dir = pair
+    builder.install(data_dir)
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", lambda d: calls.append(d) or ["caught up"])
+    out = CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert out.exit_code == 0, out.output
+    assert calls == [data_dir] and "caught up" in out.output
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert calls == [data_dir]  # the daemon does it

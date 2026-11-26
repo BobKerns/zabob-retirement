@@ -703,6 +703,7 @@ class _Daemon:
         self.researcher: subprocess.Popen[bytes] | None = None
         self.research_reader: threading.Thread | None = None
         self.research_looked = float("-inf")
+        self.caught_up = float("-inf")
         self.research_ended = float("-inf")
 
     # The key a build is good for: the code trees and the scenario's data tree.
@@ -932,6 +933,25 @@ class _Daemon:
         self.cancelled.pop(job, None)
         self.state = "building"
 
+    def catch_up_tick(self) -> None:
+        """#785: once an hour, between builds, fetch ``main``'s upstream and
+        fast-forward ``main`` to it (``price_schedule.catch_up``), so prices,
+        rolls and weights another clone's builder pushed arrive here."""
+        from zabob.retirement.sim import price_schedule
+
+        # The hour itself is shared with the timer's tick and with the
+        # next daemon (this one exits when idle); this only keeps the loop
+        # from reading it every pass.
+        if self.build is not None or self.held or time.monotonic() - self.caught_up < 60:
+            return
+        self.caught_up = time.monotonic()
+        try:
+            lines = price_schedule.catch_up_if_due(self.data_dir)
+        except (price_schedule.PriceScheduleError, OSError) as exc:
+            lines = [f"not caught up with origin: {exc}"]
+        for line in lines:
+            self.log(line)
+
     def prices_tick(self, now: bool) -> None:
         """#560: note a price fetch that ended; merge fetched prices that
         wait for main, between builds; start a fetch when one is due. Looks on a rescan, or
@@ -951,7 +971,9 @@ class _Daemon:
         if not now and time.monotonic() - self.prices_looked < 60:
             return
         self.prices_looked = time.monotonic()
-        if not price_schedule.enabled(read_config(self.paths)):
+        config = read_config(self.paths)
+        # What it fetched is merged even once another clone writes (#785).
+        if not price_schedule.configured(config):
             return
         # Between builds only: a merge rewrites price files a build may be
         # reading, and changes the data version it records.
@@ -963,6 +985,8 @@ class _Daemon:
                 return
             for line in merged:
                 self.log(line)
+        if not price_schedule.enabled(config):
+            return
         if time.monotonic() - self.fetch_ended < price_schedule.RETRY_SECONDS:
             return
         if not price_schedule.due(price_schedule.read_state(self.data_dir), datetime.now(UTC)):
@@ -999,7 +1023,7 @@ class _Daemon:
             return
         self.roll_looked = time.monotonic()
         config = read_config(self.paths)
-        if not roll_schedule.enabled(config):
+        if not roll_schedule.configured(config):
             return
         if self.build is None and not self.held:
             try:
@@ -1012,7 +1036,7 @@ class _Daemon:
                 self.log(line)
         # One that crashed before recording its night isn't started again
         # every minute: an hour later, as a failed fetch is.
-        if self.fetcher is not None or time.monotonic() - self.roll_ended < 3600 \
+        if not roll_schedule.enabled(config) or self.fetcher is not None or time.monotonic() - self.roll_ended < 3600 \
                 or not roll_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("rolling scenarios forward")
@@ -1047,7 +1071,7 @@ class _Daemon:
             return
         self.research_looked = time.monotonic()
         config = read_config(self.paths)
-        if not research_schedule.enabled(config):
+        if not research_schedule.configured(config):
             return
         if self.build is None and not self.held:
             try:
@@ -1060,7 +1084,7 @@ class _Daemon:
                 self.log(line)
         # One that crashed before recording its day isn't started again
         # every minute: an hour later, as a failed fetch is.
-        if time.monotonic() - self.research_ended < 3600 \
+        if not research_schedule.enabled(config) or time.monotonic() - self.research_ended < 3600 \
                 or not research_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("researching a symbol")
@@ -1157,6 +1181,7 @@ class _Daemon:
                 if self.build is None and self.queue and self.started_trees is not None:
                     self.start_next(self.started_trees)
                     self.write_status()
+                self.catch_up_tick()
                 self.prices_tick(looked_again)
                 self.roll_tick(looked_again)
                 self.research_tick(looked_again)
@@ -1559,7 +1584,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     else as recorded, else yes: #640), install the data repo's hooks (the code repo's are
     in ``.githooks/``). Returns what it did. The timer is the CLI's
     (``price_schedule.install_timer``)."""
-    from zabob.retirement.sim import roll_schedule
+    from zabob.retirement.sim import roll_schedule, shared_writer
 
     if roll_window is not None:
         start, end = roll_schedule.parse_window(roll_window)  # ValueError: the CLI says why
@@ -1598,6 +1623,9 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         "data_dir": str(data_dir), "code_dir": this_home(), "branch": branch,
         "prices": prices, "roll": roll, "roll_window": roll_window, "research": research,
         "claude": claude, "installed": time.time(),
+        # The name sim/.builder.toml knows this clone by (#785), kept as first
+        # found, so a host name that changes later still matches it.
+        "machine": before.get("machine") or shared_writer.this_machine(),
     })
     done = [f"recorded the pair in {paths.config}",
             f"builds only from code matching the local {branch} branch",

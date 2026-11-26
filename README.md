@@ -220,40 +220,28 @@ categories, mapping = load_categorization_state("state")
 
 ### Shell Autocomplete (Click)
 
-This CLI uses Click shell completion. Completions are available for all three scripts.
-
-One-time for current shell session:
-
-```sh
-eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"   # zsh
-eval "$(_AMAZON_COMPLETE=zsh_source amazon)"        # zsh
-eval "$(_SIM_COMPLETE=zsh_source sim)"              # zsh
-```
-
-If the scripts are not on your `PATH`, use `uv run`:
+For `sim`, set it up once (bash, zsh, fish or PowerShell; with no shell named,
+yours):
 
 ```sh
-eval "$(_ANALYSIS_COMPLETE=zsh_source uv run analysis)"   # zsh
-eval "$(_AMAZON_COMPLETE=zsh_source uv run amazon)"        # zsh
-eval "$(_SIM_COMPLETE=zsh_source uv run sim)"              # zsh
+sim completion install
 ```
 
-Persist in your shell config:
+It saves the completion script and adds a line reading it to your shell's
+startup file; `sim completion show SHELL` prints the script instead. See
+[SETUP.md](docs/SETUP.md#install-the-program).
+
+`analysis` and `amazon`, the developer's tools, use Click's own lines, for
+the current shell or in `~/.zshrc` (`bash_source` for bash, `fish_source`
+for fish):
 
 ```sh
-# zsh
-echo 'eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"' >> ~/.zshrc
-echo 'eval "$(_AMAZON_COMPLETE=zsh_source amazon)"' >> ~/.zshrc
-echo 'eval "$(_SIM_COMPLETE=zsh_source sim)"' >> ~/.zshrc
-
-# bash — replace zsh_source with bash_source above
+eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"
+eval "$(_AMAZON_COMPLETE=zsh_source amazon)"
 ```
 
-Reload your shell after adding it:
-
-```sh
-exec zsh   # or: exec bash
-```
+With the scripts not on your `PATH`, put `uv run` before `analysis` or
+`amazon`. Sourcing the data repo's `activate-retirement` turns on all three.
 
 In `sim`, TAB also completes the names a scenario defines: scenarios,
 ensembles, accounts, lots, chains, scheduled rules, calendar rows, persons,
@@ -262,8 +250,9 @@ the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
 before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
 `$ZABOB_DATA_DIR` (which the data repo's `activate-retirement` sets), or
-the data repo `sim switch` shows. TAB completion needs bash or zsh with
-`activate-retirement` sourced.
+the data repo `sim switch` shows. `sim completion install` turns TAB
+completion on in bash, zsh, fish or PowerShell (see
+[SETUP.md](docs/SETUP.md#install-the-program)).
 
 A command run without a name it needs asks for it, listing the choices,
 with the same completion at the prompt.
