@@ -296,6 +296,16 @@ def test_data_dir(tmp_path, prototype_data: Path) -> Path:
     return data_dir
 
 @pytest.fixture(scope="function")
+def other_data_repo(tmp_path: Path, prototype_data: Path) -> Path:
+    """A second private copy of the prototype data, as a data repo of its own
+    (``other/sim``, beside ``test_data_dir``): for what differs between data
+    repos, such as each one's current scenario (#773). Returns its data dir."""
+    data_dir = tmp_path / "other" / "sim"
+    shutil.copytree(prototype_data, data_dir)
+    return data_dir
+
+
+@pytest.fixture(scope="function")
 def old_aux_layout(test_data_dir: Path) -> list[Path]:
     """The private data copy in the layout before #687: its lookup tables in
     ``aux/`` folders, the shared one and a scenario's own (retire_alice's).
