@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -63,16 +62,6 @@ def test_analysis_jupyter_is_gone() -> None:
     assert "jupyter" not in main.commands  # it is `sim jupyter` now (#762)
 
 
-@pytest.fixture
-def notebooks_root(tmp_path: Path) -> Iterator[Path]:
-    """A root with a notebooks/ holding one notebook, which the commands
-    take for the checkout's or data repo's."""
-    (tmp_path / "notebooks").mkdir()
-    (tmp_path / "notebooks" / "net_worth.ipynb").write_text("{}", encoding="utf-8")
-    with patch.object(srv, "root", return_value=tmp_path):
-        yield tmp_path
-
-
 def _server(root: Path, pid: int = 4321, port: int = 8888) -> srv.Server:
     return srv.Server(url=f"http://localhost:{port}/", token="t0k", root_dir=(root / "notebooks").resolve(),
                       pid=pid, port=port)
@@ -85,8 +74,8 @@ def _sim(*args: str) -> Any:
 def test_start_runs_lab_in_the_background_and_opens_the_notebook(notebooks_root: Path) -> None:
     started: dict[str, Any] = {}
 
-    def fake_start(argv: list[str], log: Path, cwd: Path) -> srv.Server:
-        started.update(argv=argv, log=log, cwd=cwd)
+    def fake_start(argv: list[str], log: Path, cwd: Path, root_dir: Path) -> srv.Server:
+        started.update(argv=argv, log=log, cwd=cwd, root_dir=root_dir)
         return _server(notebooks_root)
 
     with (
@@ -119,6 +108,55 @@ def test_start_takes_an_option_for_jupyter_without_a_notebook(notebooks_root: Pa
     assert "lab?token=t0k" in result.output
 
 
+def test_a_notebook_after_an_option_for_jupyter_is_still_the_notebook(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root)) as start,
+    ):
+        result = _sim("start", "--no-browser", "--ServerApp.answer=42", "net_worth")
+
+    assert result.exit_code == 0, result.output
+    assert start.call_args.args[0][-1] == "--ServerApp.answer=42"
+    assert "lab/tree/net_worth.ipynb?token=t0k" in result.output
+
+
+def test_a_port_given_for_jupyter_is_no_busy_port(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root, port=9999)),
+    ):
+        result = _sim("start", "--no-browser", "--", "--port=9999")
+
+    assert result.exit_code == 0, result.output
+    assert "busy" not in result.output
+
+
+def test_a_notebook_url_is_quoted(tmp_path: Path) -> None:
+    assert _server(tmp_path).lab_url("my plan#2.ipynb") == "http://localhost:8888/lab/tree/my%20plan%232.ipynb?token=t0k"
+
+
+def test_a_server_found_by_its_folder_counts_as_started(notebooks_root: Path, tmp_path: Path) -> None:
+    # On Windows a venv's python.exe starts the real interpreter as a child,
+    # whose pid the runtime file holds.
+    folder = (notebooks_root / "notebooks").resolve()
+    with patch.object(srv, "running", return_value=[_server(notebooks_root, pid=1)]):
+        started = srv.start([sys.executable, "-c", "import time; time.sleep(1)"], tmp_path / "log", tmp_path, folder)
+    assert started.root_dir == folder
+
+
+def test_a_server_file_vanishing_mid_listing_is_read_again() -> None:
+    calls = iter([FileNotFoundError("a runtime file"), []])
+
+    def listing() -> list[dict]:
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    with patch.object(srv, "_runtime_servers", side_effect=listing):
+        assert srv.running() == []
+
+
 def test_start_reuses_a_running_server(notebooks_root: Path) -> None:
     with (
         patch.object(srv, "running", return_value=[_server(notebooks_root)]),
@@ -142,7 +180,7 @@ def test_start_names_the_notebooks_for_an_unknown_one(notebooks_root: Path) -> N
 def test_start_shows_the_log_when_lab_exits(notebooks_root: Path) -> None:
     log = notebooks_root / "state" / "jupyter.log"
 
-    def fail(argv: list[str], log_path: Path, cwd: Path) -> srv.Server:  # noqa: ARG001
+    def fail(argv: list[str], log_path: Path, cwd: Path, root_dir: Path) -> srv.Server:  # noqa: ARG001
         log_path.parent.mkdir(parents=True)
         log_path.write_text("--- earlier starting JupyterLab ---\nold\n--- now starting JupyterLab ---\nport in use\n",
                             encoding="utf-8")
@@ -176,7 +214,8 @@ def test_foreground_runs_lab_in_this_terminal(notebooks_root: Path) -> None:
     assert result.exit_code == 0, result.output
     argv = run.call_args.args[0]
     assert argv[1:3] == ["-m", "jupyterlab"]
-    assert argv[-2:] == ["--no-browser", "net_worth.ipynb"]
+    # In full: jupyter lab reads a file argument against the working folder.
+    assert argv[-2:] == ["--no-browser", str((notebooks_root / "notebooks" / "net_worth.ipynb").resolve())]
 
 
 def test_stop_stops_only_this_folders_server(notebooks_root: Path, tmp_path: Path) -> None:

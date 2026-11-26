@@ -9,6 +9,7 @@ which works the same on Windows, where there are no signals to send.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -17,6 +18,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from zabob.retirement.jupyter.config import JupyterMcpSettings, find_repo_root
 from zabob.retirement.oscompat import WINDOWS, pid_alive
@@ -37,7 +39,7 @@ class Server:
 
     def lab_url(self, notebook: str | None = None) -> str:
         """The page to open: JupyterLab, or ``notebook`` in it, with the token."""
-        path = f"lab/tree/{notebook}" if notebook else "lab"
+        path = f"lab/tree/{quote(notebook)}" if notebook else "lab"
         return f"{self.url}{path}?token={self.token}" if self.token else f"{self.url}{path}"
 
     def info(self) -> dict[str, object]:
@@ -77,6 +79,17 @@ def _runtime_servers() -> Iterator[dict]:
 
 def running() -> list[Server]:
     """Every Jupyter server this user runs."""
+    for _ in range(3):
+        try:
+            return _read_servers()
+        except OSError:
+            # list_running_servers lists the runtime folder, then opens each
+            # file: one whose server exits in between is gone. Read again.
+            continue
+    return _read_servers()
+
+
+def _read_servers() -> list[Server]:
     found = []
     for info in _runtime_servers():
         try:
@@ -116,9 +129,11 @@ class StartError(Exception):
     """The server exited, or didn't answer in time."""
 
 
-def start(argv: list[str], log: Path, cwd: Path, *, timeout: float = START_TIMEOUT) -> Server:
-    """Start ``argv`` in the background, its output appended to ``log``,
-    and return the server once its runtime file appears."""
+def start(argv: list[str], log: Path, cwd: Path, root_dir: Path, *, timeout: float = START_TIMEOUT) -> Server:
+    """Start ``argv``, a server for ``root_dir``, in the background, its
+    output appended to ``log``, and return the server once its runtime file
+    appears."""
+    root_dir = root_dir.resolve()
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "ab") as out:
         # A header per start, so the tail an error shows begins at this one.
@@ -132,7 +147,13 @@ def start(argv: list[str], log: Path, cwd: Path, *, timeout: float = START_TIMEO
         )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if (server := next((s for s in running() if s.pid == proc.pid), None)) is not None:
+        # By pid, or by the folder it serves: on Windows a venv's python.exe
+        # is a launcher that runs the real interpreter as its child, so the
+        # runtime file holds the child's pid, not proc.pid.
+        found = running()
+        server = next((s for s in found if s.pid == proc.pid), None) or next(
+            (s for s in found if s.root_dir == root_dir), None)
+        if server is not None:
             # Left running on purpose and never waited for: a return code
             # keeps Popen from warning, when collected, that it still runs.
             proc.returncode = 0
@@ -157,7 +178,8 @@ def stop(server: Server, *, timeout: int = 5) -> bool:
         pass
     if pid_alive(server.pid):
         # On Windows, os.kill with SIGTERM is TerminateProcess.
-        os.kill(server.pid, signal.SIGTERM)
+        with contextlib.suppress(OSError):  # it may exit on its own meanwhile
+            os.kill(server.pid, signal.SIGTERM)
         for _ in range(timeout * 10):
             if not pid_alive(server.pid):
                 break

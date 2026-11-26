@@ -25,12 +25,16 @@ def _notebook_dir(notebook_dir: Path | None) -> tuple[Path, Path]:
     return root, (notebook_dir if notebook_dir is not None else root / "notebooks").resolve()
 
 
+def _is_notebook(notebook_dir: Path, notebook: str) -> bool:
+    name = notebook if notebook.endswith(".ipynb") else f"{notebook}.ipynb"
+    return (notebook_dir / name).is_file()
+
+
 def _notebook_path(notebook_dir: Path, notebook: str) -> str:
     """``notebook`` as a path under ``notebook_dir``, ``.ipynb`` optional;
     a usage error naming the notebooks there when it isn't one."""
-    name = notebook if notebook.endswith(".ipynb") else f"{notebook}.ipynb"
-    if (notebook_dir / name).is_file():
-        return Path(name).as_posix()
+    if _is_notebook(notebook_dir, notebook):
+        return Path(notebook if notebook.endswith(".ipynb") else f"{notebook}.ipynb").as_posix()
     names = ", ".join(n.removesuffix(".ipynb") for n in srv.notebook_names(notebook_dir)) or "none"
     raise click.UsageError(f"no notebook {notebook!r} in {notebook_dir} (there: {names})")
 
@@ -77,9 +81,17 @@ def jupyter_start_command(notebook: str | None, jupyter_args: tuple[str, ...], n
     """
     from zabob.retirement.jupyter.config import McpConfigError, ensure_jupyter_mcp_config
 
+    root, folder = _notebook_dir(notebook_dir)
     if notebook is not None and notebook.startswith("-"):  # an unknown option, for jupyter lab
         jupyter_args, notebook = (notebook, *jupyter_args), None
-    root, folder = _notebook_dir(notebook_dir)
+        # A notebook after such an option lands among jupyter's arguments;
+        # take the first word there that names one back out.
+        rest = list(jupyter_args)
+        for i, arg in enumerate(rest):
+            if not arg.startswith("-") and _is_notebook(folder, arg):
+                notebook = rest.pop(i)
+                jupyter_args = tuple(rest)
+                break
     if not folder.is_dir():
         raise click.ClickException(
             f"{folder} doesn't exist; `sim notebooks copy` puts the notebooks there")
@@ -104,17 +116,20 @@ def jupyter_start_command(notebook: str | None, jupyter_args: tuple[str, ...], n
 
     if foreground:
         click.echo(f"Starting JupyterLab for {folder} on port {settings.port}; Ctrl+C stops it.")
+        # In full: jupyter lab takes a file to open relative to the working
+        # folder, not to --notebook-dir.
         _exec_foreground([*argv, *(["--no-browser"] if no_browser else []), *jupyter_args,
-                          *([path] if path else [])])
+                          *([str(folder / path)] if path else [])])
         return
 
     log = root / "state" / "jupyter.log"
     click.echo(f"Starting JupyterLab for {folder} (log: {log})...")
     try:
-        started = srv.start([*argv, "--no-browser", *jupyter_args], log, root)
+        started = srv.start([*argv, "--no-browser", *jupyter_args], log, root, folder)
     except srv.StartError as exc:
         raise click.ClickException(f"{exc}. The end of {log}:\n{srv.log_tail(log)}") from exc
-    if started.port != settings.port:
+    port_given = any(a.split("=")[0] in ("--port", "--ServerApp.port") for a in jupyter_args)
+    if started.port != settings.port and not port_given:
         click.echo(f"WARN: port {settings.port} was busy, so it took {started.port}; the Jupyter MCP "
                    f"server in {root / '.mcp.json'} still looks on {settings.port}.", err=True)
     click.echo("JupyterLab is running; `sim jupyter stop` stops it.")
