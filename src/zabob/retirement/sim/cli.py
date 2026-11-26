@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
-from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import BIN_DIR, WINDOWS, is_link, link_dir, login_name, program, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
@@ -343,7 +342,6 @@ class _SimGroup(click.Group):
 def sim_group_command(ctx: click.Context) -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
     utf8_stdio()
-    check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
     if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
