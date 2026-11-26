@@ -96,7 +96,7 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 - There is no TAB completion of names, since `activate-analysis` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
-- Windows Terminal doesn't take the image protocols `--graph` and `--chart`
+- Windows Terminal doesn't take the image protocols `--graph`
   use, so it saves the chart as a PNG and prints its path. VS Code's
   terminal shows them (below).
 
@@ -129,12 +129,12 @@ To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
 extension, and open a folder from Ubuntu with `code .` (in a clone of the
 code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
-Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
+Terminal doesn't take the image protocols `--graph` uses, so there it saves
 the chart as a PNG and prints its path (see
 [Drawing chain flowcharts](#drawing-chain-flowcharts-in-the-terminal)).
 `sim jupyter start` works too: if no browser opens, Ctrl+click the link it
@@ -391,7 +391,7 @@ other SSH apps, but everything this project needs works. Termius has just
 added the same library, but in testing (October 2026) it did not work yet: one
 try gave a blank screen, another hung.
 
-iTerm2 gets its own image protocol. Elsewhere `--graph` (or `--chart`) asks the terminal
+iTerm2 gets its own image protocol. Elsewhere `--graph` asks the terminal
 whether it takes the kitty graphics protocol, and falls back to iTerm2's
 protocol for older VS Code and WezTerm. In any other terminal, including macOS
 Terminal and inside tmux, it writes the chart to a PNG file and prints its

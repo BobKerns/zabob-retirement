@@ -2,7 +2,7 @@
 scenario's values over time above each variant's difference from the
 baseline (#188), gross Social Security by scenario (#335) and total tax by
 year (#336).
-``scenario_compare.ipynb`` shows them inline and ``sim compare --chart`` in
+``scenario_compare.ipynb`` shows them inline and ``sim compare --graph`` in
 the terminal. No pyplot, as in ``ensemble_plots``: the CLI must
 not pick a GUI backend."""
 

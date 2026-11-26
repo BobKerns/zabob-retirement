@@ -429,18 +429,18 @@ def test_spending_report_chart_file(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     run_strategy_scenario: Callable[[str], Path], tmp_path: Path,
 ) -> None:
-    """#430: --chart-file writes the notebook's chart; the table only with --table."""
+    """#430: --graph-file writes the notebook's chart; the table only with --table."""
     _strategy(strategy_csv, "threshold", minimum="900000.00")
     run = str(run_strategy_scenario(SCENARIO))
     chart = tmp_path / "spending.svg"
     result = _cli(strategy_scenarios, "report", "spending", "--runfile", run,
-                  "--by", "tag:category", "--chart-file", str(chart))
+                  "--by", "tag:category", "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
     assert "Spending against plan by category" in chart.read_text(encoding="utf-8")
     assert "redirected" not in result.output
     chart.unlink()
     result = _cli(strategy_scenarios, "report", "spending", "--runfile", run,
-                  "--chart-file", str(chart), "--table")
+                  "--graph-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
     assert chart.stat().st_size > 0
     assert "spending against plan by category" in result.output
@@ -453,7 +453,7 @@ def test_spending_report_chart_without_strategies(
     """The plan alone is still drawn when no strategy changed it."""
     run = str(run_strategy_scenario("alice_rebalance"))
     chart = tmp_path / "spending.png"
-    result = _cli(strategy_scenarios, "report", "spending", "--runfile", run, "--chart-file", str(chart))
+    result = _cli(strategy_scenarios, "report", "spending", "--runfile", run, "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
     assert chart.stat().st_size > 0
 

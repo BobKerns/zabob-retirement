@@ -97,7 +97,7 @@ def test_sim_compare_sections_account_and_graph_file(
     chart = tmp_path / "checking.svg"
     result = compare_runs("retire_alice", "higher_pay", "--section", "account",
                           "--account", "Asset_Checking", "--dollars", "nominal",
-                          "--chart-file", str(chart), "--table")
+                          "--graph-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
     assert lines[0] == f"wrote {chart}"  # the chart comes first (#393)
@@ -123,8 +123,8 @@ def test_sim_compare_asks_for_a_variant_with_a_run(
 @pytest.mark.parametrize("args, message", [
     (["--lot", "a"], "--lot needs --account"),
     (["--section", "account"], "--section account needs --account"),
-    (["--chart", "--chart-file", "x.png"], "use one of --chart and --chart-file"),
-    (["--chart-file", "x.gif"], "must end in .png or .svg"),
+    (["--graph", "--graph-file", "x.png"], "use one of --graph and --graph-file"),
+    (["--graph-file", "x.gif"], "must end in .png or .svg"),
 ])
 def test_sim_compare_checks_its_options_first(
     test_data_dir: Path, args: list[str], message: str,
@@ -157,7 +157,7 @@ def test_sim_compare_graph_draws_at_most_four_variants(
 ) -> None:
     for i in range(4):
         derive_scenario(f"v{i}", "retire_alice")
-    result = compare_runs("retire_alice", "higher_pay", "v0", "v1", "v2", "v3", "--chart")
+    result = compare_runs("retire_alice", "higher_pay", "v0", "v1", "v2", "v3", "--graph")
     assert result.exit_code == 2 and "at most 4 variants" in result.output
 
 
@@ -480,7 +480,7 @@ def test_sim_compare_social_security_by_year_and_over_the_run(
             "--runs-dir", str(runs_dir), "--allow-dirty-data")
     chart = tmp_path / "ss.svg"
     result = compare_runs("retire_alice", "bigger_ss", "--section", "social-security",
-                          "--dollars", "nominal", "--chart-file", str(chart), "--table")
+                          "--dollars", "nominal", "--graph-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
     assert "Gross Social Security, nominal" in chart.read_text(encoding="utf-8")
     yearly = _section(result.output, "Gross Social Security by year (nominal):")
@@ -532,8 +532,8 @@ def test_sim_compare_tax_matches_sim_report_tax(
 def test_sim_compare_chart_file_draws_one_chart(test_data_dir: Path) -> None:
     result = CliRunner().invoke(main, [
         "sim", "compare", "retire_alice", "base", "--section", "social-security",
-        "--section", "tax", "--chart-file", "x.png", "--data-dir", str(test_data_dir)])
-    assert result.exit_code == 2 and "--chart-file writes one chart" in result.output, result.output
+        "--section", "tax", "--graph-file", "x.png", "--data-dir", str(test_data_dir)])
+    assert result.exit_code == 2 and "--graph-file writes one chart" in result.output, result.output
 
 
 def test_compare_charts_for_the_sections_asked() -> None:

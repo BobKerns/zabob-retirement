@@ -172,7 +172,7 @@ def test_every_report_takes_json(report_run_file: Path, args: tuple[str, ...]) -
 
 
 def test_a_chart_with_json_is_refused(report_run_file: Path) -> None:
-    result = _sim("report", "gains", "--json", "--chart", "--runfile", str(report_run_file))
+    result = _sim("report", "gains", "--json", "--graph", "--runfile", str(report_run_file))
     assert result.exit_code == 2
     assert "--json prints the data alone" in result.output
 

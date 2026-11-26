@@ -2172,28 +2172,32 @@ def _years_text(years: tuple[int, int]) -> str:
 
 
 def _graph_options(
-    drawn: str, *, after: str | None = None, written: str = "the chart", how: str = "",
+    drawn: str, *, after: str, written: str = "the chart", how: str = "",
     file_note: str = "",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """``--graph`` and ``--graph-file``, the same on every command that
-    draws; only the help's words differ: what is ``drawn`` (and ``written``
-    to a file). A command that prints ``after`` (its table or tables) gets
-    ``--chart``, ``--chart-file`` and ``--table`` instead (#393): the table
-    alone by default, the chart alone with either chart option, and both,
-    chart first, with ``--table`` too."""
+    """``--graph``, ``--graph-file`` and ``--table``, the same on every
+    command that draws; only the help's words differ: what is ``drawn`` (and
+    ``written`` to a file) instead of what it prints, ``after`` (its table or
+    tables). The table alone by default, the chart alone with either graph
+    option, and both, chart first, with ``--table`` too (#393).
+
+    ``--chart`` and ``--chart-file`` are the same options under other names
+    (#779): commands once split between the two spellings, and either is
+    what someone tries first."""
 
     def capital(text: str) -> str:
         return text[:1].upper() + text[1:]
 
-    flag, file_flag = ("--chart", "--chart-file") if after else ("--graph", "--graph-file")
-    instead = f" instead of {after} (add --table for both, the chart first)" if after else ""
+    flag, file_flag = "--graph", "--graph-file"
+    instead = f" instead of {after} (add --table for both, the chart first)"
     graph = click.option(
-        flag, "as_graph", is_flag=True,
+        flag, "--chart", "as_graph", is_flag=True,
         help=capital(f"draw {drawn} in the terminal (kitty or iTerm2 image protocol){how}, "
                      f"or write a PNG file when the terminal can't show images{instead}."),
     )
     graph_file = click.option(
-        file_flag, "graph_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
+        file_flag, "--chart-file", "graph_file",
+        type=click.Path(dir_okay=False, path_type=Path), default=None,
         help=capital(f"write {written} to this .png or .svg file{file_note}{instead}."),
     )
     table = click.option(
@@ -2213,7 +2217,7 @@ def _graph_options(
             # With a chart, what the body prints after _hold_tables() (once
             # it has asked for any names) waits until the chart is drawn, and
             # is dropped unless --table asks for it too.
-            state = _ChartFirst(table=with_table) if after is not None and charted else None
+            state = _ChartFirst(table=with_table) if charted else None
             token = _CHART_FIRST.set(state)
             try:
                 result = fn(*args, **kwargs)
@@ -2226,19 +2230,18 @@ def _graph_options(
             if state is not None:
                 state.release(draw=True)
             return result
-        options = graph(graph_file(checked))
-        return table(options) if after is not None else options
+        return table(graph(graph_file(checked)))
     return decorate
 
 
 class _ChartFirst:
-    """With --chart or --chart-file on a command that prints tables: what it
+    """With --graph or --graph-file on a command that prints tables: what it
     prints after ``_hold_tables()``, and the charts it draws, held back until
     it's done, then the chart, and the tables only with --table."""
 
     def __init__(self, *, table: bool) -> None:
         self.table = table
-        self.charts: list[tuple[Any, ...]] = []
+        self.charts: list[Callable[[], None]] = []
         self.printed: _HeldOutput | None = None
         self._redirect = ExitStack()
 
@@ -2252,7 +2255,7 @@ class _ChartFirst:
         printed, self.printed = self.printed, None
         if draw:
             for chart in self.charts:
-                _draw_figure(*chart)
+                chart()
         # After an error, what led up to it is shown whatever the options;
         # so is a command's say-so when it had no chart to draw.
         if printed is not None and (self.table or not draw or not self.charts):
@@ -2290,7 +2293,7 @@ _DEFAULT_TOP = 10
 _ENSEMBLE_GRAPH_OPTIONS = _graph_options("them as the notebook's chart", after="the tables")
 _LOG_OPTION = click.option(
     "--log", "log_scale", is_flag=True,
-    help="With --chart: dollars on a log scale, as the notebook's Scale toggle; "
+    help="With --graph: dollars on a log scale, as the notebook's Scale toggle; "
          "deltas, which run both ways, on a symmetric log scale. A fan that "
          "reaches zero or below is drawn linear, with a warning.",
 )
@@ -2447,7 +2450,7 @@ def ensemble_summary(
     """Mean/median/SD, 5th/20th/.../95th percentiles and the mean of the
     worst 5% and 20% (CVaR) of year-end net worth (or --account's balance,
     or one --lot of it) across SCENARIO_NAME's members, and the share below
-    the reserve when one is set. --chart draws the members' fan chart.
+    the reserve when one is set. --graph draws the members' fan chart.
 
     --start and --end limit the years shown; the share ever below the
     reserve still looks back to the start of the run.
@@ -2533,7 +2536,7 @@ def ensemble_summary(
 
 def _check_log(log_scale: bool, as_graph: bool, graph_file: Path | None) -> None:
     if log_scale and not as_graph and graph_file is None:
-        raise click.UsageError("--log needs --chart or --chart-file")
+        raise click.UsageError("--log needs --graph or --graph-file")
 
 
 def _fan_can_log(monthly_summary: pd.DataFrame, subject: str) -> bool:
@@ -2584,7 +2587,7 @@ def ensemble_compare(
     VARIANTS (#328), each table has a row per (year, recipe), as the
     notebook's ensemble table does.
 
-    --chart draws the notebook's comparison panels: the paired futures'
+    --graph draws the notebook's comparison panels: the paired futures'
     deltas when the recipes pair, the CVaR deltas and, with a reserve, the
     change in the shares below it; with several
     VARIANTS (at most four), a column of panels each. When only one of a
@@ -2603,8 +2606,8 @@ def ensemble_compare(
     years = _year_range(first_year, last_year)
     if (as_graph or graph_file is not None) and len(variants) > _COMPARE_MAX_GRAPHED:
         raise click.UsageError(
-            f"--chart draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
-            "or leave --chart off for the tables")
+            f"--graph draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
+            "or leave --graph off for the tables")
     resolved_runs_dir = _resolve_runs_dir(runs_dir, data_dir)
     if baseline is None or not variants:
         if baseline is None:
@@ -2730,7 +2733,7 @@ def _ensemble_compare_chart(
     clip: Callable[[pd.DataFrame], pd.DataFrame], log_scale: bool = False,
     size: tuple[float, float] | None = None,
 ) -> Figure:
-    """``sim ensemble compare --chart``'s figure: the comparison panels for
+    """``sim ensemble compare --graph``'s figure: the comparison panels for
     each variant with the account, or, when only one of a baseline and one
     variant has it, that recipe's fan chart. ``size`` is the comparison's
     (width, height) in inches; ``None`` is 16:9."""
@@ -2860,7 +2863,7 @@ def ensemble_guard_rails(
     overdrawn) and the RMS over every member-year.
 
     The rails are the recipe's guard_rails.csv as it is now, read from the
-    data repo: editing one reruns nothing. --chart draws the shares and RMS.
+    data repo: editing one reruns nothing. --graph draws the shares and RMS.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
     that has been run, else one that has is asked for."""
@@ -2954,7 +2957,7 @@ def ensemble_drift(
     less its target, in percentage points), and, where a strategy steers to
     the set with a band, the share of members past the band then and the
     share past it at some month so far. --asset-class follows one class
-    instead (signed: above zero is overweight). --chart draws the spread
+    instead (signed: above zero is overweight). --graph draws the spread
     over every month.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
@@ -3032,7 +3035,7 @@ def ensemble_spending(
     whose spending strategies cut that year. Below it, over the whole run:
     each member's worst year (median and CVaR across members), its share of
     plan delivered, the years cut on average and the members ever cut.
-    --chart draws the spread of spending by year against the plan.
+    --graph draws the spread of spending by year against the plan.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
     that has been run, else one that has is asked for."""
@@ -3171,7 +3174,7 @@ def _echo_ensemble_rail_deltas(
 @click.option(
     "--top", "top", type=click.IntRange(min=0), is_flag=False, flag_value=0, default=None,
     metavar="[N]",
-    help="With --chart or --chart-file: draw only the N most important rows. "
+    help="With --graph or --graph-file: draw only the N most important rows. "
          f"Without N (or 0), as many as fill the terminal at its text size (else {_DEFAULT_TOP}); "
          "give N, or put --top after SCENARIO_NAME, so the name isn't read as N.",
 )
@@ -3196,7 +3199,7 @@ def ensemble_sensitivity(
     --row NAME shows one varying row of a sensitivity batch instead: its delta
     by year and quantile. --attribute NAME breaks its net-worth delta down.
 
-    --chart draws what the notebook draws (#329). A sensitivity batch: the
+    --graph draws what the notebook draws (#329). A sensitivity batch: the
     share of each year's impact by row and year, and the tornado at the last
     reporting year; with --row, the row's delta over time and, for a quantile
     ladder, its response across its range at that year; with --attribute, where
@@ -3212,7 +3215,7 @@ def ensemble_sensitivity(
         raise click.UsageError("use one of --row and --attribute")
     if top is not None:
         if not as_graph and graph_file is None:
-            raise click.UsageError("--top needs --chart or --chart-file")
+            raise click.UsageError("--top needs --graph or --graph-file")
         if row is not None or attribute is not None:
             raise click.UsageError("--top picks rows of the overview chart; "
                                    "--row and --attribute show one row")
@@ -3335,7 +3338,7 @@ def ensemble_draws(
     then each correlated pair's implied and achieved rho. A batch run before
     the database existed gets one gathered from what its member files hold.
 
-    --node lists one node's draws and --pair one correlated pair's; --chart
+    --node lists one node's draws and --pair one correlated pair's; --graph
     draws them as the notebook does (#330): the node's values and u
     histograms, the pair's scores against each other.
 
@@ -3355,10 +3358,10 @@ def ensemble_draws(
         mode = "monte_carlo"
     charted = as_graph or graph_file is not None
     if charted and node is None and pair is None:
-        raise click.UsageError("--chart and --chart-file draw --node's draws or --pair's scores; "
+        raise click.UsageError("--graph and --graph-file draw --node's draws or --pair's scores; "
                                "name one")
     if graph_file is not None and node is not None and pair is not None:
-        raise click.UsageError("--chart-file writes one chart: --node or --pair, not both")
+        raise click.UsageError("--graph-file writes one chart: --node or --pair, not both")
     if csv_file is not None and output.machine():
         raise click.UsageError(f"--{output.current()} prints the data alone; "
                                "ask for --csv-file separately")
@@ -3376,9 +3379,9 @@ def ensemble_draws(
         # the rest at their base case, so a histogram or scatter of its draws
         # shows those few percentiles, not the distribution (#369).
         raise click.UsageError(
-            "--chart draws a Monte Carlo batch: a sensitivity batch's members each pin one row "
+            "--graph draws a Monte Carlo batch: a sensitivity batch's members each pin one row "
             "at a chosen percentile, so its charts would show only those few points. "
-            "Its tables (--node, --pair without --chart) still list what each member used")
+            "Its tables (--node, --pair without --graph) still list what each member used")
     path = draws_db_path(batch_dir)
     if rebuild or not draws_db_current(batch_dir):
         resolved_intent_dir = _resolve_state_dir(intent_dir, DEFAULT_INTENT_DIR, resolved_data_dir)
@@ -3428,7 +3431,7 @@ def ensemble_factors(
 
     Each factor shows its ρ to its parent and how many varying rows hang
     from it; --varying lists those rows too, each with the ρ the tree gives
-    it to its factor, and the rows that vary on their own. --chart draws the
+    it to its factor, and the rows that vary on their own. --graph draws the
     tree left to right, each link labeled with the child's ρ, and with
     --varying, each row as a box on a dotted link from its factor; --mermaid
     prints the factors as a Mermaid flowchart, for a README.
@@ -3440,7 +3443,7 @@ def ensemble_factors(
     from zabob.retirement.sim import factor_tree as ft
 
     if as_mermaid and (as_graph or graph_file is not None):
-        raise click.UsageError("use one of --mermaid, --chart and --chart-file")
+        raise click.UsageError("use one of --mermaid, --graph and --graph-file")
     if as_mermaid and with_varying:
         raise click.UsageError("--varying lists rows in a table; --mermaid prints only the tree")
     if as_mermaid and output.machine():
@@ -3863,7 +3866,7 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
 
 
 # Draws one of `sim ensemble sensitivity`'s figures (``_draw_figure``, bound
-# to the command's --chart or --chart-file).
+# to the command's --graph or --graph-file).
 # Draws a figure; given ``fit``, the figure ``fit`` draws at the terminal's size instead.
 _Draw = Callable[..., None]
 
@@ -4867,7 +4870,7 @@ def networth_command(
     current scenario's by default), or --runfile. As in net_worth.ipynb.
     It is after the tax still owed on it (#251) unless --pre-tax.
 
-    --chart draws it month by month, after tax with the pre-tax net worth
+    --graph draws it month by month, after tax with the pre-tax net worth
     dashed beside it (the gap is the tax still owed), or pre-tax alone.
     --start and --end limit the years shown."""
     years = _year_range(first_year, last_year)
@@ -5005,7 +5008,7 @@ COMPARE_SECTIONS = (
 """``sim compare``'s sections, in the order it prints them (#188)."""
 
 _COMPARE_MAX_GRAPHED = 4
-"""The most variants ``sim compare --chart`` draws: more lines than that,
+"""The most variants ``sim compare --graph`` draws: more lines than that,
 and the chart can't be read (the notebook stops at four too)."""
 
 
@@ -5094,7 +5097,7 @@ def compare_command(
     Social Security and final net worth (#336), when it differs, and with
     --account, that account's balance.
 
-    --chart draws net worth (or --account's balance); --section
+    --graph draws net worth (or --account's balance); --section
     social-security and --section tax draw their own charts instead, unless
     net-worth, break-even or account is asked for too, when it draws each.
 
@@ -5121,13 +5124,13 @@ def compare_command(
     working_set.use(data, baseline, *variants)
     if (as_graph or graph_file is not None) and len(variants) > _COMPARE_MAX_GRAPHED:
         raise click.UsageError(
-            f"--chart draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
-            "or leave --chart off for the tables")
+            f"--graph draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
+            "or leave --graph off for the tables")
     charts = _compare_charts(sections, account) if as_graph or graph_file is not None else []
     if graph_file is not None and len(charts) > 1:
         raise click.UsageError(
-            f"--chart-file writes one chart, and these sections draw {len(charts)} "
-            f"({', '.join(charts)}); ask for fewer, or use --chart")
+            f"--graph-file writes one chart, and these sections draw {len(charts)} "
+            f"({', '.join(charts)}); ask for fewer, or use --graph")
     _hold_tables()
     after_tax = not pre_tax
     shown = set(sections) or {*COMPARE_SECTIONS[:-1], *(["account"] if account else [])}
@@ -5317,7 +5320,7 @@ def compare_command(
 
 
 def _compare_charts(sections: Sequence[str], account: str | None) -> list[str]:
-    """The charts ``sim compare --chart`` draws, in order: net worth, or
+    """The charts ``sim compare --graph`` draws, in order: net worth, or
     --account's balance; Social Security's and tax's (#335, #336) instead
     when those sections are asked for and no section of the first is."""
     first = "account" if account is not None else "net-worth"
@@ -12506,7 +12509,7 @@ def allocation_command(
     With --drift, shows how far the run's portfolio strays from its target
     allocation (targets.csv) at each year-end instead.
 
-    --chart draws the asset classes as a pie; with --by, a bar per class
+    --graph draws the asset classes as a pie; with --by, a bar per class
     split by the group; with --drift, a line per class by year.
     """
     if drift:
@@ -12683,7 +12686,7 @@ def account_history_command(
     flow. With --lot, an asset lot also shows its cost basis, unrealized gain
     and quantity where the run tracks them.
 
-    Without ACCOUNT, it is asked for. --chart draws the balance (and a lot's
+    Without ACCOUNT, it is asked for. --graph draws the balance (and a lot's
     cost basis) over the rows shown.
     """
     # A bare year, as every other report's --start/--end takes (#331).
@@ -12725,9 +12728,9 @@ def _year_month(text: str, month: int) -> str:
 
 
 def _graph_nothing(graph_file: Path | None, what: str, prefix: str) -> None:
-    """On a report's nothing-to-show path, still write --chart-file: a chart
+    """On a report's nothing-to-show path, still write --graph-file: a chart
     saying there's no ``what`` to chart, so a script that asked for the file
-    finds one. (--chart draws nothing, so the message is shown even
+    finds one. (--graph draws nothing, so the message is shown even
     without --table.)"""
     if graph_file is not None:
         from zabob.retirement.sim.run_charts import nothing_figure
@@ -12743,7 +12746,7 @@ def _chart_deaths(rc: RunConnection, as_graph: bool, graph_file: Path | None) ->
 
 def _draw_report(as_graph: bool, graph_file: Path | None, figure: Callable[[], Any],
                  prefix: str) -> None:
-    """Draw a report's chart when --chart or --chart-file asks for one."""
+    """Draw a report's chart when --graph or --graph-file asks for one."""
     if as_graph or graph_file is not None:
         _draw_figure(figure(), graph_file, prefix)
 
@@ -12869,7 +12872,7 @@ def report_income_command(
 
     A column that is zero in every year is left out.
 
-    --chart draws the groups stacked by year, over economic income carried
+    --graph draws the groups stacked by year, over economic income carried
     down to the change in net worth; with --year, a bar per group.
     """
     _flow_report("income", year, by, untagged, dollars, runfile, scenario, data_dir,
@@ -12898,7 +12901,7 @@ def report_expenses_command(
     By tag, expenses with no tag in the role are left out unless --untagged
     is given. A column that is zero in every year is left out.
 
-    --chart draws the groups stacked by year; with --year, a bar per group.
+    --graph draws the groups stacked by year; with --year, a bar per group.
     """
     _flow_report("expenses", year, by, untagged, dollars, runfile, scenario, data_dir,
                  years=_year_range(first_year, last_year),
@@ -12933,7 +12936,7 @@ def report_spending_command(
     --start and --end limit the years in the table; the lines below it
     still cover the whole run.
 
-    --chart draws delivered spending as a bar per year against the plan as
+    --graph draws delivered spending as a bar per year against the plan as
     a line, over the years in the table, as the notebook's spending widget
     does.
     """
@@ -12998,7 +13001,7 @@ def report_gains_command(
     exempt but perhaps taxed by the state); unrealized is growth that stayed
     invested. distribution_coverage is the cash part of realized_total
     (less the reinvested payouts) minus expenses: a negative year spent
-    principal. --chart draws the gains stacked by
+    principal. --graph draws the gains stacked by
     year, with the expenses as a line.
     """
     years = _year_range(first_year, last_year)
@@ -13043,7 +13046,7 @@ def report_tax_command(
     year the income was earned in; its balance due or refund settles the
     April after (see --reconciliation).
 
-    --chart draws federal, state and local tax stacked by year with the
+    --graph draws federal, state and local tax stacked by year with the
     effective rate; with --reconciliation, each April's balance due and refund.
 
     --return JURISDICTION shows every line its calculator wrote, a household
@@ -13194,7 +13197,7 @@ def report_guard_rails_command(
     Rails are read from the scenario's guard_rails.csv now, not from the
     run, so a run file needs the data repo too.
 
-    --chart draws, per measure, the year's measure against each rail above
+    --graph draws, per measure, the year's measure against each rail above
     its cumulative margin, as net_worth.ipynb does (with --carried, the
     carried line dotted).
 
@@ -15654,7 +15657,8 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.argument("names", type=completion.ENDPOINT, nargs=-1)
 @click.option("--mermaid", "as_mermaid", is_flag=True,
               help="Print the flowchart's Mermaid source (to paste into markdown) instead of a tree.")
-@_graph_options("the flowchart", written="the flowchart", file_note=" instead of showing it")
+@_graph_options("the flowchart", written="the flowchart", file_note=" instead of showing it",
+                after="the trees")
 @click.option("--rules", "with_rules", is_flag=True,
               help="With --mermaid, --graph or --graph-file, also draw the rules and calendar "
                    "transfers that use each chain.")
@@ -15720,9 +15724,9 @@ def chain_show_command(
     if as_mermaid:
         click.echo(chain_map.mermaid(cmap, roots, rules=with_rules, depth=depth or "all"))
         return
+    _hold_tables()
     if as_graph or graph_file is not None:
         _draw_chain_graph(chain_map.mermaid(cmap, roots, rules=with_rules, depth=depth or "all"), graph_file)
-        return
     console = Console()
     for i, root in enumerate(roots):
         if i:
@@ -15778,6 +15782,11 @@ def _draw_chain_graph(source: str, graph_file: Path | None) -> None:
     and a pointer to one that can."""
     from zabob.retirement.sim import chain_graph
 
+    held = _CHART_FIRST.get()
+    if held is not None and held.printed is not None:
+        held.charts.append(lambda: _draw_chain_graph(source, graph_file))
+        return
+
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
     # Draw for the terminal's own cells, so the chart's text matches the
     # terminal's on a Retina screen and off it.
@@ -15810,7 +15819,7 @@ def _draw_figure(
 
     held = _CHART_FIRST.get()
     if held is not None and held.printed is not None:
-        held.charts.append((fig, graph_file, prefix, fit))
+        held.charts.append(lambda: _draw_figure(fig, graph_file, prefix, fit))
         return
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
     cell = chain_graph.cell_size() if protocol else None
@@ -20125,7 +20134,8 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
 
 @person_group_command.command("show")
 @click.argument("person", required=False, type=completion.PERSON)
-@_graph_options("the chart", how=", filling it less three lines for the prompt")
+@_graph_options("the chart", how=", filling it less three lines for the prompt",
+                after="the tables")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
 @output.output_options
@@ -20146,7 +20156,7 @@ def person_show(
     chance that at least one is still alive each year, taking the lifespans
     as independent. --graph and --graph-file draw each person's chance of
     dying at each age and of having died by it, shaded like the ensemble
-    fan chart, and the household's curve.
+    fan chart, and the household's curve, instead of the tables.
     """
     from rich.table import Table
 
@@ -20177,6 +20187,7 @@ def person_show(
     if output.machine():
         _emit_person_lifespans(persons, quantiles, name)
         return
+    _hold_tables()
     for p in persons:
         table = f"{p.table} " if p.table else ""  # a named table (#315)
         if p.centered:
