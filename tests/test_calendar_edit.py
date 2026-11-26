@@ -465,7 +465,7 @@ def test_edit_refuses_to_write_when_the_file_changed_under_it(
     # Someone removes row 1 while the prompts are open: index 2 is now another row.
     frame = pd.read_csv(path, dtype=str, keep_default_na=False)
     frame.drop(index=0).to_csv(path, index=False)
-    changed = path.read_text()
+    changed = path.read_text(encoding="utf-8")
 
     with click.Context(calendar_edit_command) as context:
         context.meta[_CALENDAR_REPLACE_ROW] = (2, chosen)
@@ -475,7 +475,7 @@ def test_edit_refuses_to_write_when_the_file_changed_under_it(
                 data_dir=test_data_dir, scenario_name="retire_alice",
             )
 
-    assert path.read_text() == changed
+    assert path.read_text(encoding="utf-8") == changed
 
 
 def test_edit_says_which_scenario_before_asking_anything(

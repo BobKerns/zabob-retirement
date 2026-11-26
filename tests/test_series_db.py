@@ -123,6 +123,7 @@ def test_store_says_what_it_lacks_like_the_member_files(
         store.frame(None, lot="x")
 
 
+@pytest.mark.slow
 def test_members_pair_only_on_one_seed(
     seeded_ensemble_batch: Callable[[str, int], Path],
 ) -> None:
@@ -168,7 +169,7 @@ def test_controls_read_the_last_finished_batch_while_one_builds(
     finished = seeded_ensemble_batch("child", 1)
     building = runs_dir / "child" / "monte-carlo" / "2026-01-02T000000Z"
     building.mkdir()
-    (building / "batch_manifest.json").write_text('{"mode": "monte_carlo"}')
+    (building / "batch_manifest.json").write_text('{"mode": "monte_carlo"}', encoding="utf-8")
     (building / "member_0000.sqlite3").touch()
     assert member_run_statuses(building) == {"member_0000": "running"}
     assert settled_batch(runs_dir, "child") == (finished, [0, 1, 2])

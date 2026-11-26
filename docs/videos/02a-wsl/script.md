@@ -8,10 +8,10 @@ data = "prototype_data"
 [youtube]
 title = "WSL for Windows"
 summary = """
-For Windows only. Not on Windows? Press Next to skip ahead to video 2. \
-Alice turns on WSL, the Linux built into Windows, and \
-gets the terminal that video 2 starts from. Setup guide: \
-https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-set-up-wsl-first"""
+For Windows only, and optional: the simulator now runs in PowerShell too, \
+so video 2 works without this. Alice turns on WSL, the Linux built into \
+Windows, for working from a clone of the code. Setup guide: \
+https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-wsl"""
 contents = [
   "Why WSL",
   "Turning it on (wsl --install)",
@@ -21,8 +21,9 @@ contents = [
   "VS Code with the WSL extension, and charts in its terminal",
 ]
 tags = ["WSL", "Windows"]
-# A side trip for Windows viewers before video 2: it leads there, and
-# video 2 goes on to video 3 without it.
+# A side trip for Windows viewers, out of the course's flow since the
+# simulator runs on Windows itself (#687): it leads to video 2, but nothing
+# leads to it.
 previous = ""
 next = "02-setup"
 +++
@@ -86,7 +87,7 @@ speaker = "alice"
 WSL stands for the Windows Subsystem for Linux. It runs a real Linux,
 called Ubuntu, inside Windows, side by side with your Windows programs. It's
 free, it comes from Microsoft, and it's part of Windows 11, and of Windows
-10 from its 2020 updates on. The simulator, its installer and its tools all
+10 from its 2020 updates on. The simulator, and the tools that install it, all
 run in that Linux, exactly as they would on a Linux computer. And your
 Windows files and programs stay just as they are.
 
@@ -160,8 +161,7 @@ note = "Nothing appears as you type the password. That's normal."
 
 As you type the password, nothing appears: no dots, no stars. That's normal.
 Type it, press Enter, and type it again. Pick one you'll remember. Linux
-asks for it before it installs software, and the simulator's installer will
-ask for it once, to install the tools it needs. Then you see a prompt, with
+asks for it before it installs software. Then you see a prompt, with
 your name, and a dollar sign. That's a Linux terminal, ready for commands.
 
 ## Scene `open-again`: Opening it again
@@ -190,14 +190,14 @@ template = "window"
 heading = "Your Linux files, from Windows"
 title = "File Explorer"
 look = "files"
-address = "\\\\wsl$\\Ubuntu\\home\\alice\\retirement"
-lines = ["analysis", "data"]
+address = "\\\\wsl$\\Ubuntu\\home\\alice"
+lines = ["zabob-retirement"]
 note = "Or click Linux, at the bottom of File Explorer's left side"
 ```
 
-Linux keeps its own files, in your Linux home folder. That's where the
-installer puts the simulator, and your data: in a folder called retirement,
-with analysis, the code, and data, your household. Windows can reach them.
+Linux keeps its own files, in your Linux home folder. That's where your
+data goes: your household, in a folder called
+{zabob-retirement|zabob retirement}, which video two makes. Windows can reach it.
 In File Explorer, click Linux, at the bottom of the left side. Or type
 {\\wsl$|two backslashes, w s l, dollar} in the address bar. Then Ubuntu, home, and your
 Linux name.
@@ -212,16 +212,16 @@ template = "window"
 heading = "From Linux: open the folder in Windows"
 title = "Ubuntu"
 lines = [
-  { prompt = "alice@home:~$", typed = "cd ~/retirement" },
-  { prompt = "alice@home:~/retirement$", typed = "explorer.exe ." },
+  { prompt = "alice@home:~$", typed = "cd ~/zabob-retirement" },
+  { prompt = "alice@home:~/zabob-retirement$", typed = "explorer.exe ." },
 ]
 note = "Keep the simulator and its data in Linux, not on C:"
 ```
 
 From the Linux side, {explorer.exe .|explorer dot exe, space, dot} opens
 the folder you're in, in File Explorer. Going the other way, your Windows C
-drive is in Linux at {/mnt/c|slash m n t slash c}. But keep the simulator and its data
-in your Linux home, where the installer puts them. It's much faster there,
+drive is in Linux at {/mnt/c|slash m n t slash c}. But keep your data in your Linux
+home, where the simulator puts it. It's much faster there,
 and Linux's tools, like git, behave as they should.
 
 ## Scene `vscode`: VS Code
@@ -232,54 +232,54 @@ heading = "VS Code, working in Linux"
 body = [
   "Install VS Code in Windows",
   "Add the WSL extension",
-  "In Ubuntu: code ~/retirement/analysis",
+  "In Ubuntu: code .",
 ]
 speaker = "alice"
 ```
 
-To use the notebooks, and a terminal that can show pictures, get VS Code:
-Microsoft's free editor. Install it in Windows, as usual, not inside
-Ubuntu. In VS Code's Extensions, add the one called WSL. Then, in Ubuntu,
-type code, then the code folder: {~/retirement/analysis|retirement slash analysis}. VS
-Code opens it, running its side of things in Linux. The first time, that
-takes a minute.
+For a terminal that can show pictures, get VS Code: Microsoft's free
+editor. Install it in Windows, as usual, not inside Ubuntu. In VS Code's
+Extensions, add the one called WSL. Then, in Ubuntu, type
+{code .|code, space, dot}. VS Code opens your Linux home folder, running its side of
+things in Linux. The first time, that takes a minute.
 
 ## Scene `vscode-window`: Pictures in VS Code's terminal
 
 ```slide
 template = "window"
-title = "analysis [WSL: Ubuntu] - Visual Studio Code"
+title = "alice [WSL: Ubuntu] - Visual Studio Code"
 look = "editor"
 status = "WSL: Ubuntu"
 lines = [
   "Settings: Terminal › Integrated: Enable Images",
   "",
-  { prompt = "alice@home:~/retirement/analysis$", typed = "sim chain show spending --graph" },
+  { prompt = "alice@home:~$", typed = "sim chain show spending --graph" },
 ]
 note = "Windows Terminal saves the chart as a picture file instead, and says where"
 ```
 
-The corner of the window says WSL, Ubuntu: VS Code is working in Linux. Its
-notebooks run there, and so does its terminal. To see charts right in that
+The corner of the window says WSL, Ubuntu: VS Code is working in Linux, and
+so is its terminal. To see charts right in that
 terminal, open Settings, search for enable images, and turn on the one under
 Terminal, Integrated. Windows Terminal can't draw them; the same commands
-save the chart as a picture file there, and say where to find it.
+save the chart as a picture file there, and say where to find it. The
+notebooks open in your Windows web browser, as video two shows.
 
 ## Scene `ready`: Ready for video two
 
 ```tape
-Set FontSize 27
+Set FontSize 30
 Sleep 500ms
-Type "curl -fsSL https://raw.githubusercontent.com/BobKerns/zabob-retirement/main/scripts/install.sh | sh"
+Type "curl -LsSf https://astral.sh/uv/install.sh | sh"
 Sleep 12s
 ```
 
 That's all Windows needs. From here on, everything happens in the Ubuntu
 terminal, and works just as on a Mac or Linux computer. Video two starts
-right here: open Ubuntu, and paste the install line from the setup guide.
-In Windows Terminal, Control V pastes.
+right here: open Ubuntu, and paste the first line from the setup guide, which
+installs {uv|U V}. In Windows Terminal, Control V pastes.
 
-> Production note: as in video 2's install scene, the tape stops short of
+> Production note: as in video 2's `uv` scene, the tape stops short of
 > Enter.
 
 ## Scene `end`: Next
@@ -287,7 +287,7 @@ In Windows Terminal, Control V pastes.
 ```slide
 template = "card"
 heading = "Next: video 2, setup and install"
-body = "Paste the install line in Ubuntu, and video 2 takes it from there."
+body = "Install uv and the simulator in Ubuntu: video 2 takes it from there."
 speaker = "alice"
 ```
 

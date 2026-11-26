@@ -83,7 +83,7 @@ def test_an_old_subkind_or_lots_file_is_refused(
 ) -> None:
     _set_account(retire_alice_csv("accounts.csv"), "Asset_Roth_Bill", subkind="roth_ira")
     lots = retire_alice_csv("account_lots.csv")
-    (lots.parent / "account_values.csv").write_text(lots.read_text())
+    (lots.parent / "account_values.csv").write_text(lots.read_text(encoding="utf-8"), encoding="utf-8")
     issues = _issues(load_test_copy)
     assert "subkind 'roth_ira' is now account subkind 'retirement'" in issues
     assert "account_values.csv: renamed to account_lots.csv (#217)" in issues
@@ -146,7 +146,7 @@ def test_blank_traditional_money_is_taxed_by_where_each_leg_lands(
     checking or through a chain into a Roth lot alike (#217)."""
     (retire_alice_csv("chains/destination") / "convert.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
-        "Asset_Roth_Alice,default,5000.00,,,\nAsset_Checking,,,,,\n")
+        "Asset_Roth_Alice,default,5000.00,,,\nAsset_Checking,,,,,\n", encoding="utf-8")
     append_calendar_row(date="2029-01-31", kind="one_off_transfer", account_1=IRA,
                         lot_1="default", account_2="convert", amount="20000.00")
     append_calendar_row(date="2029-02-28", kind="one_off_transfer", account_1=IRA,
@@ -185,7 +185,7 @@ def test_an_rmd_counts_and_draws_only_traditional_lots(
     scheduled.loc[row, "params_json"] = json.dumps({"subject_account": IRA})
     scheduled.to_csv(scheduled_path, index=False)
     (retire_alice_csv("chains/source") / "ira_rmd.csv").write_text(
-        f"account_name,lot,maximum,percent,series,cadence\n{IRA},default,,,,\n")
+        f"account_name,lot,maximum,percent,series,cadence\n{IRA},default,,,,\n", encoding="utf-8")
     with closing(sqlite3.connect(_run(load_test_copy, runs_dir))) as con:
         amounts = [amount for (amount,) in con.execute(
             "SELECT te.amount FROM transfer_event te "
@@ -195,7 +195,7 @@ def test_an_rmd_counts_and_draws_only_traditional_lots(
     assert amounts == [681_542, 558_190, 454_889]  # as with no Roth lot (test_rmd_chain)
 
     (retire_alice_csv("chains/source") / "ira_rmd.csv").write_text(
-        f"account_name,lot,maximum,percent,series,cadence\n{IRA},default,,,,\n{IRA},roth,,,,\n")
+        f"account_name,lot,maximum,percent,series,cadence\n{IRA},default,,,,\n{IRA},roth,,,,\n", encoding="utf-8")
     assert "an rmd may not draw from a Roth lot" in _issues(load_test_copy)
 
 
@@ -254,7 +254,7 @@ def test_account_sync_leaves_a_retirement_account_to_lot_add(
     added = {column: "" for column in accounts.columns}
     added |= {"name": "Asset_Roth401k_Bill", "kind": "asset", "subkind": "retirement", "owner": "bill"}
     pd.concat([accounts, pd.DataFrame([added])], ignore_index=True).to_csv(path, index=False)
-    before = retire_alice_csv("account_lots.csv").read_text()
+    before = retire_alice_csv("account_lots.csv").read_text(encoding="utf-8")
 
     result = CliRunner().invoke(main, [
         "sim", "account", "sync", "--scenario", "retire_alice", "--data-dir", str(test_data_dir),
@@ -262,7 +262,7 @@ def test_account_sync_leaves_a_retirement_account_to_lot_add(
     # The scenario fails to load until the lot is added, so nothing else is
     # written either; the message says what to run.
     assert "skipped Asset_Roth401k_Bill: a retirement account's lot needs a subkind" in result.output
-    assert retire_alice_csv("account_lots.csv").read_text() == before
+    assert retire_alice_csv("account_lots.csv").read_text(encoding="utf-8") == before
 
 
 @pytest.mark.parametrize(("account", "subkind"), [
@@ -272,11 +272,11 @@ def test_account_sync_leaves_a_retirement_account_to_lot_add(
 def test_account_edit_refuses_a_change_to_or_from_retirement(
     test_data_dir: Path, retire_alice_csv: Callable[[str], Path], account: str, subkind: str,
 ) -> None:
-    before = retire_alice_csv("accounts.csv").read_text()
+    before = retire_alice_csv("accounts.csv").read_text(encoding="utf-8")
     result = CliRunner().invoke(main, [
         "sim", "account", "edit", account, "--subkind", subkind,
         "--scenario", "retire_alice", "--data-dir", str(test_data_dir),
     ])
     assert result.exit_code != 0
     assert "can't change to or from subkind 'retirement'" in result.output
-    assert retire_alice_csv("accounts.csv").read_text() == before
+    assert retire_alice_csv("accounts.csv").read_text(encoding="utf-8") == before

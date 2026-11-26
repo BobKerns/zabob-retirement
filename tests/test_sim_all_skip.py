@@ -70,10 +70,11 @@ def test_uncommitted_code_always_reruns(
 ) -> None:
     sim_all()
     stamp_runs(runs_dir)
-    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("edited\n")
+    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("edited\n", encoding="utf-8")
     assert _skipped(sim_all()) == []
 
 
+@pytest.mark.slow
 def test_installed_from_a_wheel_an_upgrade_reruns(
     sim_all: Callable[..., str], installed_build: Callable[[str | None], Callable[[Path], None]],
     runs_dir: Path,
@@ -99,7 +100,7 @@ def test_a_data_change_reruns_only_the_scenarios_that_read_it(
     stamp_runs(runs_dir)
     data = git.Repo(test_data_dir)
     readme = test_data_dir / "scenarios" / "retire_alice" / "notes.txt"
-    readme.write_text("a note\n")
+    readme.write_text("a note\n", encoding="utf-8")
     assert _skipped(sim_all()) == ["base"]  # retire_alice's data is dirty
 
     commit_files(data, {}, "a note")
@@ -154,7 +155,7 @@ def test_a_batch_with_unreadable_state_reruns(
     batch = runs_dir / "recipe" / "2000-01-01T000000Z"
     batch.mkdir(parents=True)
     (batch / "member_0000.sqlite3").write_bytes(b"not a database, cut off")
-    (batch / "batch_manifest.json").write_text('{"member_count": ')
+    (batch / "batch_manifest.json").write_text('{"member_count": ', encoding="utf-8")
     code = freshness.code_tree_of(code_repo)
     assert freshness.unchanged_run(test_data_dir, runs_dir, "recipe", code) is None
 

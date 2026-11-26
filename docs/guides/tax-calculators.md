@@ -16,7 +16,7 @@ long-term care premiums), first see whether a row of the state's
 income, up to a cap (less Social Security, if the state says so), for
 filers from an age, below an income, as a subtraction, deduction or
 credit, refundable or not (the code repository's
-`templates/aux/README.md` lists the columns). Most renter's, 529 and
+`templates/tables/README.md` lists the columns). Most renter's, 529 and
 premium rules fit. When one doesn't (a circuit breaker, figured from
 property tax above a share of income, say), you can write a calculator of your own, a small
 Python class in your data repo, and have a scenario use it. A calculator
@@ -150,7 +150,7 @@ What it does:
   (`fill_bracket` steps, the after-tax drawdown). It overrides
   `refundable_credits`, run for each return, one of the steps a
   state year goes through (`additions`, `subtractions`, `deductions`,
-  `itemized_lines`, `other_deductions`, `tax`, `credits`, `credit_lines`,
+  `itemized_lines`, `other_deductions`, `tax`, `tax_lines`, `credits`, `credit_lines`,
   `separate`, `excise`, `refundable_credits`). Each line it returns is a line of the return,
   written to the run as `state_<line>`. A refundable credit comes off
   last and can take the tax below zero; the April settlement pays it

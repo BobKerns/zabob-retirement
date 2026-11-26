@@ -82,7 +82,7 @@ def main():
     weights_asof = set()
     und_w, look = {}, defaultdict(dict)
     asofs, srcs, sector_unit = set(), set(), ""
-    with open(a.data, newline="") as f:
+    with open(a.data, encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             s = (r.get("section") or "").strip().lower()
             m = (r.get("metric") or "").strip().lower()
@@ -118,7 +118,7 @@ def main():
 
     def from_holdings(path):
         h = {c: 0.0 for c in CATS}
-        with open(path, newline="") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             for r in csv.DictReader(f):
                 w = num(r.get("weight_pct"))
                 if w is None:
@@ -199,7 +199,7 @@ def main():
     rows = [{"ticker": a.ticker, "as_of": as_of, "category": c, "pct": round(alloc[c], 2), "method": method,
              "source": "; ".join(sorted(srcs))} for c in CATS]
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, f"{a.ticker}-allocation.csv"), "w", newline="") as f:
+    with open(os.path.join(out_dir, f"{a.ticker}-allocation.csv"), "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
@@ -236,14 +236,14 @@ def main():
             doc["sim_export"] = "not written: weights exceed 100%"
         else:
             month = (as_of or "")[:7]
-            with open(sim_path, "w", newline="") as f:
+            with open(sim_path, "w", encoding="utf-8", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(["symbol", "as_of", "asset_class", "weight"])
                 for c in SIM_CLASSES:
                     if units[c]:
                         w.writerow([a.ticker.upper(), month, c, f"{units[c] / 10_000:.4f}".rstrip("0").rstrip(".") + "%"])
             doc["sim_export"] = os.path.basename(sim_path)
-    with open(os.path.join(out_dir, f"{a.ticker}-allocation.json"), "w") as f:
+    with open(os.path.join(out_dir, f"{a.ticker}-allocation.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2)
 
     print(f"{a.ticker} allocation ({method}, as of {as_of or '?'})")

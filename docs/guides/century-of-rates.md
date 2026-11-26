@@ -150,5 +150,5 @@ uv run analysis historical-charts OUT_DIR
 ```
 
 The charts are drawn from the committed `historical_data/`, so nothing is
-downloaded. After `analysis historical --refresh` records a new vintage of
+downloaded. After `sim historical --refresh` records a new vintage of
 the data, run it again and commit the redrawn charts.

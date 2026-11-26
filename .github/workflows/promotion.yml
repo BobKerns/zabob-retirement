@@ -1,0 +1,78 @@
+# Keep the dev-to-main promotion open (#731). Every push to dev (a merge, a
+# revert, main merged back in) runs scripts/promote_dev.py, which opens the
+# draft promotion when none is open and otherwise refreshes its body: the
+# pull requests it carries and the issues it closes. Right after a promotion
+# merges, dev has nothing main lacks, and the script does nothing.
+#
+# A second step (--labels) then gives the issues the promotion closes the
+# "on dev" label and takes it off the rest (#783). It also runs on a push to
+# main, so the label leaves the issues a promotion closed as it merges.
+#
+# `/promote` and running the script by hand are the fallback when a run here
+# fails; "Run workflow" reruns it.
+#
+# It acts with the PROMOTION_TOKEN secret, a fine-grained personal access
+# token for this repository (Pull requests: read and write, Contents: read),
+# so the promotion is the maintainer's own and its events run Gates as
+# usual. Without the secret it falls back to the workflow's GITHUB_TOKEN:
+# then the promotion is authored by github-actions[bot], opening one needs
+# the repository setting "Allow GitHub Actions to create and approve pull
+# requests", and GitHub holds the Gates runs that bot's events start until
+# someone approves them. A GITHUB_TOKEN refresh of a ready promotion's body
+# starts no Gates run either; the push to dev that caused it does
+# (synchronize), and the script checks the body itself.
+name: Promotion
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  # The label step, which uses GITHUB_TOKEN: PROMOTION_TOKEN needn't reach issues.
+  issues: write
+
+# The script rebuilds the body from dev's whole history since main, so only
+# the newest run matters: a burst of merges ends in one refresh.
+concurrency:
+  group: promotion
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    name: Open or refresh the promotion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # origin/main..origin/dev, and every commit message in it.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+
+      # The script checks the exact title and body it is about to write for
+      # blocked keywords, and writes nothing on a hit: with the GITHUB_TOKEN
+      # fallback, its edit starts no Gates run to check them.
+      - name: Open or refresh
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN || github.token }}
+          # gh fills in {owner}/{repo} from this.
+          GH_REPO: ${{ github.repository }}
+          # The private keyword list (docs/SETUP.md). The check never prints it.
+          BLOCKED_KEYWORDS_PRIVATE: ${{ secrets.BLOCKED_KEYWORDS_PRIVATE }}
+        run: |
+          if [ -z "$BLOCKED_KEYWORDS_PRIVATE" ]; then
+              echo "::warning::The BLOCKED_KEYWORDS_PRIVATE secret is not set; only the public keyword list is checked."
+          fi
+          # The script needs only the standard library.
+          uv run --no-project python scripts/promote_dev.py
+
+      # With GITHUB_TOKEN, whatever opened the promotion: labeling starts no
+      # workflow, so nothing is lost by its being the bot's.
+      - name: Label the issues fixed on dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: uv run --no-project python scripts/promote_dev.py --labels

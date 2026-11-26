@@ -1,4 +1,4 @@
-"""The states whose tables ship in templates/aux/ (#483), and a state tax
+"""The states whose tables ship in templates/tables/ (#483), and a state tax
 reading those of the state the household lives in (residence.csv, #509)."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _STATES = ["CA", "DC", "ID", "KS", "NC", "NE", "WA", "none"]
 
 
 def _brackets(state: str, effective_date: str, status: str = "MFJ") -> list[tuple[int, int]]:
-    with (TEMPLATE_AUX_DIR / f"state_brackets__{state}.csv").open(newline="") as fh:
+    with (TEMPLATE_AUX_DIR / f"state_brackets__{state}.csv").open(newline="", encoding="utf-8") as fh:
         return sorted(
             (units.dollars_to_cents(r["floor"]), units.percent_to_micros(r["marginal_rate"]))
             for r in csv.DictReader(fh)
@@ -104,7 +104,7 @@ def _filers_from(test_data_dir: Path, age: int) -> Callable[[int], int]:
     """How many of the two prototype filers have reached ``age`` by
     December 31 of a year, from the test data's own birthdates, so the
     tests below follow the data when its years move."""
-    with (test_data_dir / "persons.csv").open(newline="") as fh:
+    with (test_data_dir / "persons.csv").open(newline="", encoding="utf-8") as fh:
         born = [int(r["birthdate"][:4]) for r in csv.DictReader(fh) if r["role"] == "primary"]
     return lambda year: sum(year - b >= age for b in born)
 
@@ -125,7 +125,8 @@ def test_kansas_adds_its_exemption_and_extra_deduction_at_65_to_the_deduction(
     add_state_tax: Callable[..., None], run_test_copy: Callable[[], Path], test_data_dir: Path,
 ) -> None:
     """Kansas's personal exemption is its own `filers` row, $9,160 each, so
-    a household that itemizes keeps it; from 65 each spouse adds $700."""
+    a household that itemizes keeps it; from 65 each spouse adds $700 to the
+    standard deduction (#610)."""
     lines = _run_in("KS", add_state_tax, run_test_copy)
     over_65 = _filers_from(test_data_dir, 65)
     years = sorted(lines["state_agi"])
@@ -133,9 +134,10 @@ def test_kansas_adds_its_exemption_and_extra_deduction_at_65_to_the_deduction(
     for year in years:
         assert lines["state_personal_exemption"][year] == 2 * 9160_00
         assert lines["state_age_65_deduction"][year] == over_65(year) * 700_00
+        # The extra at 65 is part of the standard deduction (#610), which
+        # state_deduction takes; the exemption comes off beside it.
         assert lines["state_taxable_income"][year] == max(0, (
-            lines["state_agi"][year] - lines["state_deduction"][year]
-            - 2 * 9160_00 - over_65(year) * 700_00))
+            lines["state_agi"][year] - lines["state_deduction"][year] - 2 * 9160_00))
 
 
 @pytest.mark.slow
@@ -154,7 +156,9 @@ def test_dc_adds_the_federal_extra_deduction_at_65_indexed_like_its_standard_ded
             continue
         per_filer = amount // over_65(year)
         assert amount == per_filer * over_65(year) and per_filer % 100 == 0
-        expected = 1650_00 * lines["state_standard_deduction"][year] / 32200_00
+        # state_standard_deduction includes the extra (#610).
+        base = lines["state_standard_deduction"][year] - amount
+        expected = 1650_00 * base / 32200_00
         # The standard deduction rounds to $50, the extra to the dollar.
         assert abs(per_filer - expected) <= 5_00
 

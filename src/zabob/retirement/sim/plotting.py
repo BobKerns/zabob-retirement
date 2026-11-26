@@ -103,14 +103,14 @@ def mark_deaths(
 
 
 def _new_axes() -> Axes:
-    """Axes on a new pyplot figure, so a notebook shows it inline. pyplot is
-    imported only here: importing it picks a GUI backend, which the CLI's
-    charts (``ensemble_plots``, which takes ``FRAME_ALPHA`` from here) must
-    not do."""
-    import matplotlib.pyplot as plt
+    """Axes on a new plain ``Figure``, not a pyplot one. Show it in a notebook
+    with ``notebook_ui.styled.show_figure(ax.figure)``. A figure on pyplot's
+    open-figure list can be rendered by matplotlib-inline's ``flush_figures``
+    on another thread while a widget is still drawing it (#119, #123), and
+    importing pyplot would pick a GUI backend under the CLI."""
+    from matplotlib.figure import Figure
 
-    _, ax = plt.subplots(figsize=(10, 5))
-    return ax
+    return Figure(figsize=(10, 5)).subplots()
 
 
 def _finish(ax: Axes, title: str, ylabel: str) -> None:
@@ -154,7 +154,24 @@ def plot_stacked_bar(
     """Stacked bar chart of ``columns`` from a year-indexed DataFrame."""
     if ax is None:
         ax = _new_axes()
-    df[list(columns)].plot(kind="bar", stacked=True, ax=ax, color=list(colors))
+    # Stacked by hand, not with DataFrame.plot: pandas' plotting imports
+    # pyplot on first use, even onto axes of a plain Figure. Positive and
+    # negative values stack away from zero separately, as pandas stacks them.
+    data = df[list(columns)].fillna(0.0).astype(float)
+    x = range(len(data))
+    above = [0.0] * len(data)
+    below = [0.0] * len(data)
+    # Every column is drawn; a short palette repeats, as pandas' does, and
+    # an empty one falls back to the axes' own color cycle.
+    palette: list[str | None] = list(colors) or [None]
+    for i, column in enumerate(columns):
+        color = palette[i % len(palette)]
+        values = data[column].tolist()
+        bottom = [a if v >= 0 else b for v, a, b in zip(values, above, below, strict=True)]
+        ax.bar(x, values, width=0.5, bottom=bottom, color=color, label=str(column))
+        above = [a + max(v, 0.0) for v, a in zip(values, above, strict=True)]
+        below = [b + min(v, 0.0) for v, b in zip(values, below, strict=True)]
+    ax.set_xticks(list(x), [str(label) for label in data.index], rotation=90)
     _finish(ax, title, ylabel)
     ax.set_xlabel(xlabel)
     ax.grid(True, axis="y", alpha=0.3)

@@ -78,7 +78,7 @@ def main():
     guide = defaultdict(dict)
     ebitda_label = ["EBITDA"]
     priv = {}
-    with open(a.data, newline="") as f:
+    with open(a.data, encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             s, m, p, v = (r.get("section") or "").strip().lower(), (r.get("metric") or "").strip(), (r.get("period") or "").strip(), num(r.get("value"))
             if v is None:
@@ -286,7 +286,7 @@ def main():
     if len({lbl for lbl, _ in ratios} - {"price"}) > 1:
         warns.append("peers mix EV-based and market-cap-based multiples; compare like with like")
 
-    with open(out_path, "w", newline="") as f:
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["metric", "value", "formula", "components"])
         w.writeheader()
         w.writerows(rows)

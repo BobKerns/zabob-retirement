@@ -17,6 +17,7 @@ from zabob.retirement.frames import named_rows
 from zabob.retirement.sim import compare, roll
 from zabob.retirement.sim.connection import RunConnection
 from zabob.retirement.sim.dates import month_before
+from zabob.retirement.sim.loader import read_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None) -> Result:  # noqa: A002 -- CliRunner's name
@@ -80,7 +81,7 @@ def test_roll_takes_the_projection_keeps_the_old_plan_and_pins_last_years_rows(
     # The old plan is kept as it stood, and the rolled one stays current.
     kept = test_scenarios_dir / "retire_alice-2026"
     assert (kept / "account_lots.csv").read_bytes() == before
-    assert (test_data_dir / ".current_scenario").read_text().strip() == "retire_alice"
+    assert read_current_scenario(test_data_dir) == "retire_alice"
 
 
 def test_roll_asks_for_each_lot_offering_the_current_value_without_a_run(
@@ -365,6 +366,37 @@ def test_a_roll_keeps_the_skipped_months_in_their_tax_year(
     # MAGI too: the 2028 IRMAA tier reads 2026's from the rolled run.
     assert (2026, "federal_magi") in before
     assert before and taxes(new) == before
+
+
+@pytest.mark.slow
+@pytest.mark.uses_current_scenario_write
+def test_a_roll_keeps_an_hsa_withdrawals_gain_in_its_states_tax_year(
+    test_data_dir: Path, latest_test_run: Callable[[str], Path],
+    add_hsa: Callable[[str], str], retire_alice_csv: Callable[[str], Path],
+) -> None:
+    """#605: an HSA withdrawal in the skipped months has a gain over basis
+    that only California taxes; it projects as a row from the HSA lot to
+    itself, which the rolled run records as that gain again."""
+    hsa = add_hsa("2026-07-31")
+    old = latest_test_run("retire_alice")
+
+    result = _sim(test_data_dir, "scenario", "roll", "retire_alice", "2026-09", "--no-keep", "--yes")
+    assert result.exit_code == 0, result.output
+    new = latest_test_run("retire_alice")
+
+    with retire_alice_csv("year_to_date.csv").open(newline="", encoding="utf-8") as fh:
+        gains = [row for row in csv.DictReader(fh)
+                 if row["from_account"] == row["to_account"] == hsa]
+    assert [row["tax_character"] for row in gains] == ["ltcg"]
+
+    def state(run: Path) -> dict[str, int]:
+        with RunConnection(run, "retire_alice") as rc:
+            frame = rc._read_sql("SELECT bucket, amount FROM tax_year_summary WHERE year = 2026 "
+                                 "AND bucket IN ('state_agi', 'state_tax', 'federal_agi')")
+        return {str(row.bucket): int(row.amount) for row in named_rows(frame)}
+
+    before = state(old)
+    assert before and state(new) == before
 
 
 def test_projected_rows_add_to_an_earlier_rolls_and_drop_years_that_no_longer_count() -> None:

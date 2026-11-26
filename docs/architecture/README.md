@@ -251,7 +251,7 @@ flowchart LR
   roll -->|"sim scenario roll,<br/>nightly by the builder"| scenario_files
   market -->|"sim prices fetch,<br/>daily by the builder"| price_files
   research -->|"sim symbol research,<br/>one symbol each morning by the builder,<br/>each about monthly"| allocation_files
-  public -->|"analysis historical"| history
+  public -->|"sim historical"| history
   history -.->|calibrates| templates
 
   class people,exports,market,public,research out
@@ -514,14 +514,14 @@ Guides: [templates/README.md](../../templates/README.md) (every CSV column), [sc
 flowchart TB
   subgraph T["Tier 1 · Code repo: templates/ (read-only, versioned with the code)"]
     direction LR
-    template_aux["<b>templates/aux/</b><br/>tax law and demographics:<br/>brackets · deductions · RMD factors<br/>life tables · state tables"]
+    template_aux["<b>templates/tables/</b><br/>tax law and demographics:<br/>brackets · deductions · RMD factors<br/>life tables · state tables"]
     template_scenarios["<b>templates/scenarios/t_*</b><br/>inflation and market factors,<br/>long-run series, ensembles,<br/>episodes (crisis, spike)"]
   end
 
   subgraph S["Tier 2 · Data repo root: shared by every scenario"]
     direction LR
     who["<b>persons.csv</b><br/>securities.csv · allocations.csv"]
-    shared_aux["<b>aux/</b><br/>only what the household changes,<br/>above all filing_status.csv"]
+    shared_aux["<b>tables/</b><br/>only what the household changes,<br/>above all filing_status.csv"]
     shared_prices["<b>prices/</b> · <b>itemizations/</b>"]
     shared_code["<b>strategies/*.py</b> · <b>taxes/*.py</b><br/>household code"]
     simp["<b>imports/</b><br/>saved mappings<br/>(the loader never reads it)"]
@@ -534,7 +534,7 @@ flowchart TB
     flows["<b>What happens</b><br/>scheduled.csv: recurring rules<br/>calendar.csv: dated changes<br/>year_to_date.csv"]
     route["<b>Where money goes</b><br/>chains/source/*.csv<br/>chains/destination/*.csv"]
     policy["<b>Policy</b><br/>strategies/*.csv · targets.csv<br/>taxes/*.csv · guard_rails.csv"]
-    assume["<b>Assumptions</b><br/>series/*.csv: growth and inflation<br/>optional own aux/ prices/ itemizations/"]
+    assume["<b>Assumptions</b><br/>series/*.csv: growth and inflation<br/>optional own tables/ prices/ itemizations/"]
   end
 
   template_aux -->|"same file name in the<br/>data repo replaces it"| shared_aux
@@ -581,7 +581,7 @@ What a scenario folder holds, and how each file is overlaid down the lineage
 | `chains/source/`, `chains/destination/` | where money is drawn from and swept to | whole file, by chain name |
 | `taxes/<jurisdiction>.csv` | the income taxes | whole file |
 | `strategies/`, `strategy_vary/` | responsive strategies, and what an ensemble varies of them | whole file, by strategy name |
-| `series/`, `aux/`, `prices/`, `itemizations/` | rate projections, and overrides of shared tables (`itemizations/` are the `@name` sums) | whole file, by file name |
+| `series/`, `tables/`, `prices/`, `itemizations/` | rate projections, and overrides of shared tables (`itemizations/` are the `@name` sums) | whole file, by file name |
 
 ## 6a. Inheritance: the load order
 
@@ -631,7 +631,7 @@ Each file kind follows one of three rules as the loader walks the load order.
 flowchart TB
   top["<b>Each file kind has one of three overlay rules</b>, applied down the load order"]:::note
   rows["<b>Row by key</b><br/>accounts (name) · account_lots (account + lot)<br/>scheduled (name) · lifespan (person)<br/>calendar (name, else its fields)<br/>year_to_date · targets · residence<br/><br/>a new key adds a row<br/>the same key replaces the whole row<br/>no delete: end-date the rule instead"]
-  whole["<b>Whole file by name</b><br/>chains/ROLE/NAME.csv<br/>strategies/NAME.csv · strategy_vary/NAME.csv<br/>taxes/JURISDICTION.csv<br/>series/ · aux/ · prices/ · itemizations/<br/><br/>the nearest file wins outright; then the<br/>data repo root, then templates/aux<br/>(series/ has no shared root)"]
+  whole["<b>Whole file by name</b><br/>chains/ROLE/NAME.csv<br/>strategies/NAME.csv · strategy_vary/NAME.csv<br/>taxes/JURISDICTION.csv<br/>series/ · tables/ · prices/ · itemizations/<br/><br/>the nearest file wins outright; then the<br/>data repo root, then templates/tables<br/>(series/ has no shared root)"]
   fields["<b>Field by field</b><br/>scenario.csv: a blank cell inherits<br/>meta_json: merged key by key<br/>(ensemble_size, reserve, after_tax, roll ...)<br/><br/>a template's dates and seed are only<br/>fallbacks, so mixing one in<br/>cannot move the scenario's span"]
   out[("<b>One intent DB</b><br/>the merged scenario, plus parents_json and load_order_json<br/>so a run file can say what it inherited")]
   top --> rows --> out

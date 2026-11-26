@@ -124,7 +124,7 @@ def test_a_fund_paying_its_own_yield_is_exempt_where_mostly_muni_bonds(
                          "opening_cost_basis": "100000.00"}])
     rest = f"{100 - int(muni.rstrip('%'))}%"
     (test_data_dir / "allocations.csv").write_text(
-        f"symbol,as_of,asset_class,weight\nFND,,muni,{muni}\nFND,,cash,{rest}\n")
+        f"symbol,as_of,asset_class,weight\nFND,,muni,{muni}\nFND,,cash,{rest}\n", encoding="utf-8")
     for series, rate in (("muni", "4%"), ("cash", "3%"), ("FND_yield", "3%")):
         write_series(series, f"2026-01-31,{rate}")
     rules = _payout_rules(load_test_copy().intent_path)
@@ -143,7 +143,7 @@ def test_territory_bonds_are_exempt_everywhere_and_dc_taxes_no_muni_bonds(
     state: str, taxed: str,
 ) -> None:
     add_state_tax(state)
-    with retire_alice_csv("account_lots.csv").open("a") as f:
+    with retire_alice_csv("account_lots.csv").open("a", encoding="utf-8") as f:
         f.write("Asset_Brokerage_Joint,pr,,,,,muni_PR,50000.00,50000.00" + "," * 9 + "\n")
     write_series("muni_PR", "2026-01-31,4%")
     write_series("muni_PR_yield", "2026-01-31,3%")

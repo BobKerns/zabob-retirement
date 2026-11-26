@@ -272,7 +272,7 @@ def test_the_loader_refuses_a_lot_growth_series_that_starts_late(
     retire_alice_csv: Callable[[str], Path], load_test_copy: Callable[[], LoadResult],
 ) -> None:
     retire_alice_csv("series/rate__brokerage_growth.csv").write_text(
-        "effective_date,annual_rate\n2027-01-31,6%\n")
+        "effective_date,annual_rate\n2027-01-31,6%\n", encoding="utf-8")
     with pytest.raises(LoadError, match=(
             r"rate__brokerage_growth.csv: its first rate is from 2027-01, but the growth of "
             r"Asset_Brokerage_Joint reads it from 2026-05")):
@@ -284,7 +284,7 @@ def test_the_loader_takes_a_set_rate_at_the_start(
     append_calendar_row: Callable[..., None],
 ) -> None:
     retire_alice_csv("series/rate__brokerage_growth.csv").write_text(
-        "effective_date,annual_rate\n2027-01-31,6%\n")
+        "effective_date,annual_rate\n2027-01-31,6%\n", encoding="utf-8")
     append_calendar_row(date="2026-05-31", kind="set_rate", series="brokerage_growth",
                         amount="5%")
     load_test_copy()

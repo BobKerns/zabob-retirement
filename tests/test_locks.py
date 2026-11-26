@@ -58,7 +58,7 @@ def test_a_reserved_run_is_not_the_latest_until_written(runs_dir: Path) -> None:
 def test_batches_order_by_their_number(runs_dir: Path) -> None:
     for name in ("2026-10-26T043000Z-9", "2026-10-26T043000Z-10"):
         (runs_dir / "base" / "monte-carlo" / name).mkdir(parents=True)
-        (runs_dir / "base" / "monte-carlo" / name / "batch_manifest.json").write_text("{}")
+        (runs_dir / "base" / "monte-carlo" / name / "batch_manifest.json").write_text("{}", encoding="utf-8")
     batch = latest_ensemble_batch(runs_dir / "base")
     assert batch is not None and batch.name == "2026-10-26T043000Z-10"
 
@@ -132,7 +132,7 @@ def test_listing_ensembles_never_waits_for_their_builds(
 
     batch = runs_dir / "base" / "monte-carlo" / "2026-10-26T043000Z"
     batch.mkdir(parents=True)
-    (batch / "batch_manifest.json").write_text('{"mode": "monte_carlo"}')
+    (batch / "batch_manifest.json").write_text('{"mode": "monte_carlo"}', encoding="utf-8")
     waited: list[str] = []
     monkeypatch.setattr(loader, "_await_fresh", lambda _runs, name, *_mode: waited.append(name))
     assert list_ensemble_recipes(runs_dir) == ["base"]
@@ -143,3 +143,16 @@ def test_listing_ensembles_never_waits_for_their_builds(
     assert waited == []
     loader.latest_ensemble_batch(runs_dir / "base")
     assert waited == ["base"]  # opening one does
+
+
+def test_a_lock_names_who_sim_login_says_the_user_is(data_repo_sim: Path) -> None:
+    """#773: who holds a lock is the logged-in user, the same in every data
+    repo; the person `sim init` chose (``.analysis_user``) no longer counts."""
+    from zabob.retirement import user_config
+
+    (data_repo_sim / ".analysis_user").write_text("alice\n", encoding="utf-8")
+    user_config.set_user("bill")
+    intent_dir = data_repo_sim.parent / "state" / "intent"
+    with locks.build_lock(intent_dir, "base"):
+        holder = locks.lock_holder(intent_dir, "base")
+        assert holder is not None and holder.user == "bill"

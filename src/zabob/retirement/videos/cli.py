@@ -94,7 +94,7 @@ def _use_docker(where: str | None) -> bool:
 def _docker(args: list[str], out: Path | None = None) -> int:
     env = dict(os.environ)
     if out is not None:
-        env["ANALYSIS_VIDEO_OUT"] = str(out.resolve())
+        env["ZABOB_VIDEO_OUT"] = str(out.resolve())
     script = _videos_root().parent.parent / "scripts" / "videos" / "docker.sh"
     return subprocess.run(["bash", str(script), *args], env=env, check=False).returncode
 
@@ -114,6 +114,9 @@ def _publish_options(with_publish: bool = False) -> Callable[[click.decorators.F
     def add(fn: click.decorators.FC) -> click.decorators.FC:
         fn = click.option("--new-upload", is_flag=True,
                           help=text("Upload again as a new video (YouTube can't replace a video's picture)."))(fn)
+        fn = click.option("--force", is_flag=True,
+                          help=text("Send titles and descriptions even when unchanged since last sent "
+                                    "(each costs API quota)."))(fn)
         fn = click.option("--refresh", is_flag=True,
                           help=text("Only update titles and descriptions of videos already up"
                                     + ("." if with_publish else " (no VIDEOS: every published one).")))(fn)
@@ -141,14 +144,15 @@ def video_group_command() -> None:
 @_publish_options(with_publish=True)
 def build_command(video: str, lang: str | None, out: Path | None, silent: bool, rerecord: bool,
                   jobs: int | None, where: str | None, publish: bool, dry_run: bool, refresh: bool,
-                  new_upload: bool) -> None:
+                  force: bool, new_upload: bool) -> None:
     """Build VIDEO (a name like 04-results, or its folder): only what
     changed since the last build. In the container when Docker is running.
     With --publish, then upload it to YouTube, or update what's there."""
     folder = _video_folder(video)
     # Checked before building: a build can take an hour, and a typo
     # shouldn't surface only at its end.
-    used = [name for name, on in (("--dry-run", dry_run), ("--refresh", refresh), ("--new-upload", new_upload))
+    used = [name for name, on in (("--dry-run", dry_run), ("--refresh", refresh), ("--force", force),
+                                       ("--new-upload", new_upload))
             if on]
     if used and not publish:
         raise click.UsageError(f"{', '.join(used)} only go{'es' if len(used) == 1 else ''} with --publish")
@@ -167,7 +171,7 @@ def build_command(video: str, lang: str | None, out: Path | None, silent: bool, 
 
         _note_already_up(folder, lang, refresh=refresh, new_upload=new_upload)
         code = commands.publish([folder], lang=lang, out=out, dry_run=dry_run, refresh=refresh,
-                                new_upload=new_upload)
+                                force=force, new_upload=new_upload)
     raise SystemExit(code)
 
 
@@ -203,13 +207,11 @@ def check_command(videos: tuple[str, ...], where: str | None) -> None:
 
 
 @video_group_command.command(name="shell")
-@click.argument("video", shell_complete=_complete_video)
-def shell_command(video: str) -> None:
-    """Open bash in the container with VIDEO's own data repo at /data."""
-    folder = _video_folder(video)
+def shell_command() -> None:
+    """Open bash in the container, in the videos' data repo at /data."""
     if not docker_running():
         raise click.ClickException("shell needs Docker, and it isn't installed here or isn't running")
-    raise SystemExit(_docker(["shell", folder.name]))
+    raise SystemExit(_docker(["shell"]))
 
 
 @video_group_command.command(name="image")
@@ -235,13 +237,13 @@ def image_command() -> None:
               help="Where the builds are (default: out/videos).")
 @_publish_options()
 def publish_command(videos: tuple[str, ...], lang: str | None, out: Path | None, dry_run: bool,
-                    refresh: bool, new_upload: bool) -> None:
+                    refresh: bool, force: bool, new_upload: bool) -> None:
     """Upload built VIDEOS to YouTube, or update what's there."""
     from zabob.retirement.videos import commands
 
     folders = [_video_folder(v) for v in videos]
     raise SystemExit(commands.publish(folders, lang=lang, out=out, dry_run=dry_run, refresh=refresh,
-                                      new_upload=new_upload))
+                                      force=force, new_upload=new_upload))
 
 
 @video_group_command.command(name="setup")

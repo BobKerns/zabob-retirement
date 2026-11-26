@@ -1,7 +1,7 @@
 """Download public price and return series and summarize them for calibrating
 an ensemble's varying rates (docs/guides/historical-calibration.md).
 
-For each series and each period, ``analysis historical`` reports the statistics a varying
+For each series and each period, ``sim historical`` reports the statistics a varying
 `set-rate` row needs: the compound (geometric) mean rate, median, SD, range,
 year-to-year persistence and the yearly shock a ``vary_process`` row needs,
 and the correlation with a reference series, both
@@ -38,7 +38,7 @@ email address: ``--contact``, ``$HISTORICAL_CALIBRATION_CONTACT``, or
 
 Example::
 
-    uv run analysis historical --reference bls:CUUR0000SA0L1E \\
+    uv run sim historical --reference bls:CUUR0000SA0L1E \\
         --period "Great Inflation=1966-1982" \\
         CPI-U=bls:CUUR0000SA0 Medical=bls:CUUR0000SAM Shelter=bls:CUUR0000SAH1
 """
@@ -150,8 +150,8 @@ class Fetcher:
             data = self._download(url)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-            stamp.write_text(datetime.now(UTC).date().isoformat() + "\n")
-        self.retrieved[url] = stamp.read_text().strip() if stamp.exists() else "unknown"
+            stamp.write_text(datetime.now(UTC).date().isoformat() + "\n", encoding="utf-8")
+        self.retrieved[url] = stamp.read_text(encoding="utf-8").strip() if stamp.exists() else "unknown"
         return path.read_bytes()
 
     def retrieved_by_place(self) -> dict[str, str]:
@@ -168,13 +168,14 @@ class Fetcher:
         # contact address, while FRED's bot filter silently drops unfamiliar
         # agents and accepts urllib's default one.
         headers = {}
-        if (urllib.parse.urlparse(url).hostname or "").endswith("bls.gov"):
+        host = urllib.parse.urlparse(url).hostname or ""
+        if host == "bls.gov" or host.endswith(".bls.gov"):
             if not self.contact:
                 raise DataError(
                     "no contact email for the User-Agent (BLS refuses requests without one): "
                     "pass --contact, set $HISTORICAL_CALIBRATION_CONTACT, or set git's user.email"
                 )
-            headers["User-Agent"] = f"analysis historical (contact: {self.contact})"
+            headers["User-Agent"] = f"sim historical (contact: {self.contact})"
         request = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=120, context=ssl_context()) as response:
@@ -519,7 +520,7 @@ def load_series(fetcher: Fetcher, args: list[str]) -> list[Series]:
             s = load_csv_like(f"fred:{ident}", text, ident, f"FRED {ident}", kind)
         else:
             try:
-                text = Path(ident).read_text()
+                text = Path(ident).read_text(encoding="utf-8")
             except OSError as exc:
                 raise DataError(f"couldn't read {ident}: {exc}") from exc
             s = load_csv_like(f"csv:{ident}", text, Path(ident).stem, ident, kind)
@@ -655,7 +656,7 @@ def summarize(label: str, annual: pd.Series, reference: pd.Series | None, window
         both = pd.concat([values, ref_values], axis=1, join="inner").dropna()
         if (len(both) >= MIN_YEARS_FOR_CORRELATION
                 and both.iloc[:, 0].std() > 0 and both.iloc[:, 1].std() > 0):
-            from scipy import stats  # slow to import; `analysis` TAB completion loads this module
+            from scipy import stats  # slow to import; `sim` TAB completion loads this module
             tau = stats.kendalltau(both.iloc[:, 0], both.iloc[:, 1]).statistic
             rho_tau = tau_rho(float(tau))
             pearson = float(both.iloc[:, 0].corr(both.iloc[:, 1]))
@@ -854,11 +855,11 @@ def run(series_args: Sequence[str], *, reference_arg: str | None = None, period_
         hold_years: int = DEFAULT_HOLD_YEARS,
         fmt: str = "markdown", cache: Path = DEFAULT_CACHE, refresh: bool = False,
         contact: str | None = None) -> None:
-    """Print the summary tables for ``analysis historical``; raises
+    """Print the summary tables for ``sim historical``; raises
     :class:`DataError` when a period or a source is bad."""
     if cache == DEFAULT_CACHE and not cache.is_dir():
         # Don't quietly start a cache inside site-packages.
-        raise DataError(f"the committed data isn't at {cache} (is analysis installed from a checkout?); "
+        raise DataError(f"the committed data isn't at {cache} (is the program installed from a checkout?); "
                         "pass --cache DIR")
     periods = [parse_period(p) for p in period_args] or [(k, *v) for k, v in DEFAULT_PERIODS.items()]
     fetcher = Fetcher(cache, contact, refresh)

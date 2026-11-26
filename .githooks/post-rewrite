@@ -4,12 +4,15 @@
 # fails the git command.
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [ -f "$top/data/private/state/builder/config.json" ] || exit 0
-[ -x "$top/.venv/bin/sim" ] || exit 0
+sim="$top/.venv/bin/sim"
+# A Windows venv has its programs in Scripts, as .exe (#748).
+[ -x "$sim" ] || sim="$top/.venv/Scripts/sim.exe"
+[ -x "$sim" ] || exit 0
 env -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_CONFIG \
     -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT -u GIT_OBJECT_DIRECTORY \
     -u GIT_DIR -u GIT_WORK_TREE -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE \
     -u GIT_INDEX_FILE -u GIT_NO_REPLACE_OBJECTS -u GIT_REPLACE_REF_BASE \
     -u GIT_PREFIX -u GIT_SHALLOW_FILE -u GIT_COMMON_DIR \
     -u GIT_QUARANTINE_PATH \
-    "$top/.venv/bin/sim" builder notify --quiet --data-dir "$top/data/private/sim" >/dev/null 2>&1 &
+    "$sim" builder notify --quiet --data-dir "$top/data/private/sim" >/dev/null 2>&1 &
 exit 0

@@ -8,7 +8,7 @@ from pathlib import Path
 
 def test_pth_is_installed_in_site_packages():
     pth = Path(sysconfig.get_paths()["purelib"]) / "zabob_retirement_truststore.pth"
-    assert pth.read_text().strip() == "import truststore; truststore.inject_into_ssl()"
+    assert pth.read_text(encoding="utf-8").strip() == "import truststore; truststore.inject_into_ssl()"
 
 
 def test_fresh_interpreter_uses_truststore():

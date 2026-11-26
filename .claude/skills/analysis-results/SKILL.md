@@ -19,7 +19,7 @@ repo root.
   different job. You may *run* scenarios (`sim run X`, `sim all`) when a
   result is missing or stale; say so first if it's an ensemble (minutes).
 - **Don't move the user's current scenario** with your own lookups:
-  `env.sh` sets `ANALYSIS_KEEP_SCENARIO`. Commands you type into the user's
+  `env.sh` sets `ZABOB_KEEP_SCENARIO`. Commands you type into the user's
   view pane *should* switch it, as their own commands would.
 - **Close stdin**: run every `sim` command with `</dev/null`. A command
   missing an argument asks for it, and would otherwise wait forever
@@ -35,7 +35,7 @@ That activates the real data through the main checkout (its `sim` and
 `python`, which the runs and the background builder use) and prints the data
 dir. Every shell command starts fresh, so begin each with it.
 
-Read `$ANALYSIS_DATA_DIR/AI-NOTES.md` if it exists: the household's own notes
+Read `$ZABOB_DATA_DIR/AI-NOTES.md` if it exists: the household's own notes
 on what its scenarios and accounts mean and what it usually asks. If you learn
 something worth keeping there, propose the wording to the user; don't write
 it yourself.
@@ -61,7 +61,7 @@ opens a pane beside your session (once; it is reused) and types into it, so
 charts draw inline there and the user can scroll or type in it too.
 
 ```sh
-uv run -q .claude/skills/analysis-results/show.py --cmd "source '$ANALYSIS_DATA_DIR/activate-analysis'"
+uv run -q .claude/skills/analysis-results/show.py --cmd "source '$ZABOB_DATA_DIR/activate-retirement'"
 uv run -q .claude/skills/analysis-results/show.py --cmd 'sim compare base retire_alice --section net-worth --graph'
 uv run -q .claude/skills/analysis-results/show.py --read 20
 uv run -q .claude/skills/analysis-results/show.py chart.png
@@ -122,6 +122,18 @@ latest run; add `</dev/null`. Charts marked † take `--graph` (in the pane) or
 `sim networth`, `account history`, the reports and `report guard-rails` have
 no chart yet (#327): for those pictures, open the notebook.
 
+**Read figures with `--json`.** The list, show and report commands above (and
+`sim explain`, `sim compare`, `sim items`, every `sim ensemble` report including
+`sensitivity`, `draws` and `factors`, `sim allocation`,
+`sim account holdings|holders`, `sim strategy log`, `sim prices show`,
+`sim scenario show`, `sim chain show`, `sim builder status`)
+take `--json` (or `--csv`): the rows behind the table, under the table's
+column names, unrounded (dollars to the cent, shares and rates as
+fractions), with the heading's facts (title, dollars, run) as fields and a
+command with several tables giving each by name under `tables`. Read
+numbers from that rather than from a table's whole dollars; notes go to
+stderr, so stdout is only JSON. Show the user the table (or chart) itself.
+
 **"Why did X happen"**: find the month (`sim explain` lists negative
 balances; `account history` shows the change), list that month's movements
 with `sim items` (narrow it with `--reason`, `--rule`, `--tax-character`,
@@ -146,8 +158,10 @@ which scenario in the lineage sets it.
 .claude/skills/analysis-results/notebook.sh net_worth.ipynb
 ```
 
-It starts JupyterLab (as `analysis jupyter`, from the main checkout, in the
-background) if it isn't running, and opens the notebook in the browser. Tell
+It runs `sim jupyter start NOTEBOOK` from the main checkout: that starts
+JupyterLab in the background if it isn't running, and opens the notebook in
+the browser. JupyterLab keeps running for the user afterwards; `sim jupyter
+stop` stops it. Tell
 the user which widget or section to look at, and which scenario to pick in
 it (`net_worth` and `events` open on `base`; the others on the current
 scenario).
@@ -159,7 +173,7 @@ approved), you could add and run cells in an open notebook directly.
 ## Gotchas
 
 - Every command naming a scenario makes it current unless
-  `ANALYSIS_KEEP_SCENARIO` is set; `env.sh` sets it. Needs #350.
+  `ZABOB_KEEP_SCENARIO` is set; `env.sh` sets it. Needs #350.
 - `sim compare X` with one scenario prompts for a variant. With
   `</dev/null` it aborts (`variant: Aborted!`); without, it hangs.
 - Run `pending.py` and `sim` from the **main checkout's** venv (`env.sh`

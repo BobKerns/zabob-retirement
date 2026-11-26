@@ -31,6 +31,11 @@ ITEMIZED_LINES_API = 5
 SEPARATE_API = 6
 """The API version that added :meth:`StateTablesYear.separate` (#580)."""
 
+STANDARD_ADDONS_API = 8
+"""The API version that moved a ``standard`` ``state_adjustments`` row from
+:meth:`StateTablesYear.other_deductions` into :meth:`StateTablesYear.deductions`'
+standard deduction (#610)."""
+
 SEPARATE = "MFS"
 """The filing status of each spouse filing separately on one return (#580)."""
 
@@ -41,6 +46,18 @@ class _Exclusion(Adjustment):
     person's grants (total, and how much of it is gain), which reach a
     separate return on :class:`Joint` with the subtractions."""
     grants: Mapping[str, tuple[int, int]] = field(default_factory=dict)
+    ss_grants: Mapping[str, int] = field(default_factory=dict)
+    """What it left out of each person's Social Security (#613)."""
+
+
+def _addon_cut(amount: int, phased: int, addons: int) -> int:
+    """What a phase-out (#578) takes off a standard deduction of ``amount``
+    phased to ``phased``, with ``addons`` (#610) on it: the same share of
+    the add-ons as of the deduction, so both are gone where it is."""
+    cut = amount - phased
+    if cut <= 0 or not amount:
+        return max(0, cut)
+    return cut + addons * cut // amount
 
 
 class StateTablesYear(FederalStateYear):
@@ -130,6 +147,10 @@ class StateTablesYear(FederalStateYear):
         # every filing status (California's $1 million). A local income tax
         # is its own jurisdiction (local_bands, #508).
         self._surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series)
+        # A benefit recapture (#549) takes back the lower brackets' benefit
+        # as state AGI rises: an addition to tax by AGI, not a rate on
+        # taxable income, so its own rows rather than more bands.
+        self._recapture = common.recapture_rows(ty, series)
 
         # The state's own deductions and credits (#511, #488): a renter's
         # deduction, an exemption, a deduction for federal tax paid. Each is
@@ -165,6 +186,7 @@ class StateTablesYear(FederalStateYear):
         self._mfs_ltcg = common.rate_table(ty, params.ltcg_bracket_aux, series, SEPARATE)
         self._mfs_stcg = common.rate_table(ty, params.stcg_bracket_aux, series, SEPARATE)
         self._mfs_surcharge = common.rate_table(ty, registries.STATE_SURCHARGE, series, SEPARATE)
+        self._mfs_recapture = common.recapture_rows(ty, series, SEPARATE)
         self._mfs_standard = common.standard_deduction_row(
             ty, *self._standard_table(), SEPARATE)
         # Unclipped, so one spouse's business loss stays theirs rather than
@@ -191,6 +213,12 @@ class StateTablesYear(FederalStateYear):
             ty, _filing_status_in=lambda year: SEPARATE if year == ty.year
             else joint_status_in(year))
         self._adjustment_named = {a.name: a for a in self._adjustments}
+        # A filer's add-on to their own standard deduction (#610) is the
+        # MFS row's, as their standard deduction is: one filer's worth.
+        self._mfs_addon_each = {
+            a.name: a.figure // a.units
+            for a in common.state_adjustments(self._mfs_ty, params.adjustments_aux, series)
+            if a.standard and a.base == "filers" and a.units}
 
     def _standard_table(self) -> tuple[str, str | None]:
         """The standard deduction table the year reads, and its series: a
@@ -216,8 +244,29 @@ class StateTablesYear(FederalStateYear):
         if not ty.has_table(itemized_aux):
             itemized_aux = "federal_deductions"
         itemized = common.itemized_deduction(ty, itemized_aux)
-        return {"standard_deduction": standard, "itemized_deduction": itemized,
+        # A table line that is part of the standard deduction (#610): DC's
+        # and Kansas's extra at 65 counts before the comparison, so it can
+        # make the standard deduction the larger, and a household that
+        # itemizes never gets it. Its own line shows what it added.
+        addons = self._standard_addons
+        standard += sum(addons.values())
+        return {**addons, "standard_deduction": standard, "itemized_deduction": itemized,
                 "deduction": max(standard, itemized)}
+
+    @cached_property
+    def _addons_in_standard(self) -> bool:
+        """Whether the table's ``standard`` rows are part of the standard
+        deduction (#610). A household module written for API 7 or before
+        that writes its own :meth:`deductions` never adds them there, so
+        they stay plain deductions in :meth:`other_deductions`, as they were
+        when it was written."""
+        return not self._written_before(("deductions",), STANDARD_ADDONS_API)
+
+    @cached_property
+    def _standard_addons(self) -> dict[str, int]:
+        if not self._addons_in_standard:
+            return {}
+        return {a.name: a.figure for a in self._adjustments if a.standard}
 
     def deductions_at(self, income: Income, basis: Basis) -> Mapping[str, int]:
         """:meth:`deductions`, with :meth:`itemized_lines` at the year's
@@ -265,12 +314,15 @@ class StateTablesYear(FederalStateYear):
         """The ``standard`` deduction :meth:`deductions` gave, phased out at
         the year's AGI (#578), the state's or, as its row's ``phaseout_agi``
         says, the federal. The cut comes off what it gave, so a subclass's
-        own additions to it stay."""
+        own additions to it stay. The table's add-ons to it (#610) phase out
+        with it, in the same proportion."""
         row = self._phase_out
         if row is None or standard is None:
             return standard
         agi = basis.federal.agi if row.get("phaseout_agi") == "federal" else income.agi
-        cut = int(row["amount"]) - common.phased_standard_deduction(row, agi)
+        amount = int(row["amount"])
+        cut = _addon_cut(amount, common.phased_standard_deduction(row, agi),
+                         sum(self._standard_addons.values()))
         return max(0, standard - cut) if cut > 0 else standard
 
     def itemized_lines(self) -> common.Itemized | None:
@@ -374,10 +426,12 @@ class StateTablesYear(FederalStateYear):
         # Gain taken away (the drawdown estimate replaces posted gain) can't
         # be left out; gain added isn't in anyone's income by kind.
         net_gain = min(self._exclusion.net_gain, capital.stcg + self._taxed_ltcg(gain, extra))
-        off_ordinary, off_ltcg, off_short, grants = self._exclusion.split_by_person(
-            ordinary, ltcg, net_gain)
+        off_ordinary, off_ltcg, off_short, grants, off_ss = self._exclusion.split_by_person(
+            ordinary, ltcg, net_gain,
+            self._exclusion_ss(basis) if self._exclusion_covers_ss else None)
         retirement = _Exclusion("retirement_exclusion", ordinary=off_ordinary - off_short,
-                                stcg=off_short, ltcg=off_ltcg, grants=grants)
+                                stcg=off_short, ltcg=off_ltcg, ss=sum(off_ss.values()),
+                                grants=grants, ss_grants=off_ss)
         ss = Adjustment("ss_difference", ss=income.ss - self._taxable_ss(basis))
         # The table's subtractions come off ordinary income, tested against
         # the income before them, and never take it below zero.
@@ -391,13 +445,38 @@ class StateTablesYear(FederalStateYear):
         return (*([refund] if refund.ordinary else []), exclusion,
                 *([swap] if self._gains_bands else []), retirement, ss, *own)
 
+    @cached_property
+    def _exclusion_covers_ss(self) -> bool:
+        """Whether any exclusion grant covers Social Security (#613), so
+        :meth:`_exclusion_ss` is worth figuring."""
+        return any(registries.STATE_EXCLUSION_SS in g.income for g in self._exclusion.grants)
+
+    def _exclusion_ss(self, basis: Basis) -> dict[str, tuple[int, int]]:
+        """Each person's Social Security as a retirement exclusion covering
+        ``ss`` reads it (#613): their share of the federally taxable amount,
+        by benefits, and what of it the state still taxes after its
+        ``state_social_security`` table."""
+        people = sorted(common.household(self.ty))
+        if not people:
+            return {}
+        benefits = self._ss_benefits
+        federal = common.apportion(basis.federal["ss_taxable"],
+                                   {p: benefits.get(p, 0) for p in people})
+        if self._ss_tiers is None:
+            return {p: (federal[p], 0) for p in people}
+        state = (self._taxable_ss_by_person(basis) if set(self._ss_tiers) <= set(people)
+                 else common.apportion(self._taxable_ss(basis), {p: benefits.get(p, 0)
+                                                                 for p in people}))
+        return {p: (federal[p], state.get(p, 0)) for p in people}
+
     def _adjusted(self, step: str, income: int, basis: Basis, *,
                   refundable: bool = False) -> dict[str, int]:
         """The table's lines at ``step``, after the household income test on
         ``income``: of credits, the ``refundable`` ones or the others."""
         out = {}
         for a in self._adjustments:
-            if a.step != step or a.refundable != refundable:
+            if (a.step != step or a.refundable != refundable
+                    or (a.standard and self._addons_in_standard)):
                 continue
             figure = a.figure
             if a.base == "federal_tax":
@@ -485,7 +564,23 @@ class StateTablesYear(FederalStateYear):
         }
 
     def tax(self, taxable: int, income: Income) -> int:
-        return super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+        recapture = common.recapture(self._recapture, income.agi)
+        # What this step added, for tax_lines to show: a subclass's own tax
+        # step that doesn't call this one adds none.
+        self._recaptured = recapture if self._recapture else None
+        return (super().tax(taxable, income) + common.progressive_tax(taxable, self._surcharge)
+                + recapture)
+
+    def tax_lines(self, taxable: int, income: Income) -> Mapping[str, int]:
+        recaptured = self._take_recaptured()
+        return {} if recaptured is None else {"recapture": recaptured}
+
+    def _take_recaptured(self) -> int | None:
+        """The recapture the last :meth:`tax` call through this class's
+        added, once: None where it added none (no table, or a subclass's
+        tax step that doesn't call this one's)."""
+        recaptured, self._recaptured = getattr(self, "_recaptured", None), None
+        return recaptured
 
     def separate(self, joint: Joint, basis: Basis) -> Separate | None:
         """Each spouse's tax filing separately on one return (#580): the
@@ -519,6 +614,16 @@ class StateTablesYear(FederalStateYear):
         itemized = deductions.get("itemized_deduction", 0)
         beside = common.split_cents(max(0, deductions["deduction"] - max(standard, itemized)), 2)
         itemized_by = common.apportion(itemized, agi)
+        # Each spouse's add-ons to their standard deduction (#610): a
+        # ``filers`` line's MFS figure for each who reached its age, any
+        # other line's joint figure divided by whose it is.
+        addons_by = dict.fromkeys(people, 0)
+        for line, amount in self._standard_addons.items():
+            each = self._mfs_addon_each.get(line)
+            shares = ({p: each * self._adjustment_named[line].shares.get(p, 0) for p in people}
+                      if each is not None else self._line_shares(line, amount))
+            for p in people:
+                addons_by[p] += shares.get(p, 0)
         others_by = dict.fromkeys(people, 0)
         for line, amount in joint.others.items():
             for p, share in self._line_shares(line, amount).items():
@@ -527,17 +632,28 @@ class StateTablesYear(FederalStateYear):
         taxes: dict[str, int] = {}
         total_deduction = total_taxable = ordinary_taxable = 0
         nol_left, nol_used = self._nol_in, 0
+        recaptured_total: int | None = None
         for i, p in enumerate(people):
             # A state without a standard deduction of its own (only
             # exemptions) gives a spouse none either.
-            own = self._spouse_standard(agi[p], fed_agi[p]) if has_standard else 0
+            # Their add-ons phase out with it (#610).
+            if has_standard:
+                amount = int(self._mfs_standard["amount"])
+                own = amount + addons_by[p] - _addon_cut(
+                    amount, self._spouse_standard(agi[p], fed_agi[p]), addons_by[p])
+            else:
+                own = addons_by[p]
             deduction = max(own, itemized_by[p]) + beside[i]
             before_nol = agi[p] - deduction - others_by[p]
             used = common.nol_used(nol_left, before_nol, self._nol_limit)
             nol_left, nol_used = nol_left - used, nol_used + used
             taxable = max(0, before_nol - used)
             with self._filing_separately():
+                self._recaptured = None
                 taxes[p] = self.tax(taxable, income_by[p])
+                if (recaptured := self._take_recaptured()) is not None:
+                    lines[f"separate_recapture_{p}"] = recaptured
+                    recaptured_total = (recaptured_total or 0) + recaptured
             lines[f"separate_agi_{p}"] = agi[p]
             lines[f"separate_deduction_{p}"] = deduction
             lines[f"separate_taxable_income_{p}"] = taxable
@@ -548,23 +664,25 @@ class StateTablesYear(FederalStateYear):
         tax, credits, credit_lines = self._after_credits(taxes, joint, lines)
         return Separate(lines, tax, nol_used, deduction=total_deduction, taxable=total_taxable,
                         ordinary_taxable=ordinary_taxable, credits=credits,
-                        credit_lines=credit_lines)
+                        credit_lines=credit_lines,
+                        tax_lines={} if recaptured_total is None
+                        else {"recapture": recaptured_total})
 
     @contextmanager
     def _filing_separately(self) -> Generator[None]:
         """:meth:`tax` with the married-filing-separately tables (#580), so
         a subclass's own tax step applies to each spouse's return too."""
         saved = (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-                 self.stcg_brackets, self._surcharge)
+                 self.stcg_brackets, self._surcharge, self._recapture)
         self.ty, self.filing_status = self._mfs_ty, SEPARATE
         self.brackets, self.ltcg_brackets, self.stcg_brackets = (
             self._mfs_brackets, self._mfs_ltcg, self._mfs_stcg)
-        self._surcharge = self._mfs_surcharge
+        self._surcharge, self._recapture = self._mfs_surcharge, self._mfs_recapture
         try:
             yield
         finally:
             (self.ty, self.filing_status, self.brackets, self.ltcg_brackets,
-             self.stcg_brackets, self._surcharge) = saved
+             self.stcg_brackets, self._surcharge, self._recapture) = saved
 
     def _spouse_income(self, income: Income, subtractions: Sequence[Adjustment],
                        basis: Basis) -> dict[str, Income]:
@@ -580,10 +698,12 @@ class StateTablesYear(FederalStateYear):
         # line is no one's in particular, and stays in the income divided.
         retirement: Adjustment = Adjustment("retirement_exclusion")
         grants: Mapping[str, tuple[int, int]] = {}
+        ss_grants: Mapping[str, int] = {}
         subtracted: dict[str, int] = {}
         for adjustment in subtractions:
             if isinstance(adjustment, _Exclusion):
                 retirement, grants = adjustment, adjustment.grants
+                ss_grants = adjustment.ss_grants
             elif (found := self._adjustment_named.get(adjustment.line)) is not None \
                     and found.step == "subtraction":
                 subtracted[adjustment.line] = adjustment.ordinary
@@ -598,8 +718,21 @@ class StateTablesYear(FederalStateYear):
         stcg_by = common.apportion(stcg, self._gain_weights)
         ltcg_by = common.apportion(income.ltcg + retirement.ltcg, self._gain_weights)
         # With rows by age (#581) each spouse's taxable share is their own.
-        ss_by = common.apportion(income.ss, self._taxable_ss_by_person(basis)
+        ss_by = common.apportion(income.ss + retirement.ss, self._taxable_ss_by_person(basis)
                                  if self._ss_tiers is not None else self._ss_weights)
+        # What the exclusion left out of each spouse's own (#613). A cent
+        # the two splits round apart, past a spouse's share, comes
+        # off the other's, so the separate AGIs still add up to the joint.
+        short = 0
+        for p in people:
+            off = ss_grants.get(p, 0)
+            take = min(off, max(0, ss_by[p]))
+            ss_by[p] -= take
+            short += off - take
+        for p in people:
+            take = min(short, max(0, ss_by[p]))
+            ss_by[p] -= take
+            short -= take
         # The exclusion's gain goes to the spouses whose grants covered
         # gain, the rest to those whose grants covered other income.
         gain_weights = {p: grants.get(p, (0, 0))[1] for p in people}

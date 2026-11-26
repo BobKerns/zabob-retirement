@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-10-01
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-006](ADR-006-ensemble-scenarios.md) (ensemble scenarios — `vary_*` columns, `resolve_member`, `ensemble_manifest`/`ensemble_draw`, member 0), [ADR-002](ADR-002-storage-schema.md) (storage schema), [ADR-004](ADR-004-reproducibility-and-activation.md) (reproducibility, provenance).
 
 ## Context
@@ -203,10 +202,10 @@ sim ensemble sensitivity <recipe> [--batch B] [--mode sensitivity|monte_carlo]
                                   [--dollars cpi_constant|nominal] [--relative]
                                   [--years 2030,2040] [--negligible 0.05]
                                   [--row NAME | --attribute NAME [--by category|flow_account|holding_account]]
-                                  [--chart | --chart-file FILE] [--top [N]] [--table]
+                                  [--graph | --graph-file FILE] [--top [N]] [--table]
 ```
 
-`--row NAME` prints one row's delta by year and quantile. `--chart` draws the §9 charts that fit what's reported, at the last reporting year: for a sensitivity batch the share heatmap and the tornado, with `--row` the delta over time and (for a ladder) the response curve, with `--attribute` the attribution bars; for a Monte Carlo batch the R² strip and the ρ (or SRRC) chart. `--top N` keeps each overview panel's N most important rows (the heatmap's by peak share, the tornado's by impact, the ρ chart's by |ρ| or |SRRC|, every latent factor kept), with "top N of M" in its title; shares stay shares of every row's total. `--top` alone fits as many as the terminal shows at its text size, filling it, for a readable recording (10 when there's no terminal to fill). An image shown in the terminal is drawn no wider than the terminal and at most 8 million pixels, which terminals decode. The charts live in the widget-free `sim/sensitivity_charts.py`, which the notebook draws with too. `--row` and `--attribute` pick the latest sensitivity batch when `--mode` isn't given.
+`--row NAME` prints one row's delta by year and quantile. `--graph` draws the §9 charts that fit what's reported, at the last reporting year: for a sensitivity batch the share heatmap and the tornado, with `--row` the delta over time and (for a ladder) the response curve, with `--attribute` the attribution bars; for a Monte Carlo batch the R² strip and the ρ (or SRRC) chart. `--top N` keeps each overview panel's N most important rows (the heatmap's by peak share, the tornado's by impact, the ρ chart's by |ρ| or |SRRC|, every latent factor kept), with "top N of M" in its title; shares stay shares of every row's total. `--top` alone fits as many as the terminal shows at its text size, filling it, for a readable recording (10 when there's no terminal to fill). An image shown in the terminal is drawn no wider than the terminal and at most 8 million pixels, which terminals decode. The charts live in the widget-free `sim/sensitivity_charts.py`, which the notebook draws with too. `--row` and `--attribute` pick the latest sensitivity batch when `--mode` isn't given.
 
 `--sensitivity` on a scenario with no unresolved `vary_*` rows is an error ("nothing to perturb"), not a silent single run. Neither runs on a pool ([ADR-009](ADR-009-pooled-ensembles.md) §7): `--sensitivity` and `sim ensemble sensitivity` on a pool's batch are refused, pointing at its components, since a row only one component draws would be confounded with which world a member is in. `--sensitivity` together with `--ensemble-size` is also an error, because an OAT batch's size is always `1 + k × m`, where `k` counts the swept factors (§2) as well as the rows.
 
@@ -256,21 +255,3 @@ For a `monte_carlo` batch the same notebook shows each row's measure at the `Rep
 - **Ad-hoc perturbation of literal rows** (`--perturb name=±10%` without marking the row varying): convenient, but it reintroduces the fixed-delta problems in the Context section. Revisit if marking rows varying turns out to be friction in practice.
 - **Trajectory PCA + regression, and PLS:** treat each Monte Carlo member's vector of year-end net worth as one observation. PCA across members finds the dominant *shapes* of variation, typically an overall level (lifetime income − expenses) and an early-versus-late timing component. Regressing each member's component scores on its draws then says which parameters drive the level and which drive the timing. Partial least squares does both steps at once, finding input-weighted axes that best explain the output vector. Both are promising complements to the heatmap; worth judging once real batches exist. PCA or ICA on the *inputs* is not: the inputs are independent draws by construction, or correlated through an ADR-008 tree that's already known, so there's no structure to find, and ICA would at best rediscover the `vary_*` rows already recorded in `ensemble_draw`.
 - **Decision-variable sweeps** (a retirement date at every quarter across a range): a "which choice is best?" question rather than "which uncertainty matters?". A ladder (§3) is already most of the mechanism; what's missing is presenting it as a choice rather than an uncertainty.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#31](https://github.com/BobKerns/zabob-retirement/issues/31): `truncated_normal` quantiles follow its new sinh-arcsinh shape, `triangular` added, and the base case is every family's median (§3); the parameters view shows shape and implied moments (§9).
-- [#42](https://github.com/BobKerns/zabob-retirement/issues/42): `--jobs` now defaults to one worker per available CPU, not 1 (§8).
-- [#39](https://github.com/BobKerns/zabob-retirement/issues/39): an OAT batch also perturbs [ADR-008](ADR-008-correlated-parameters.md) latent factors, each moving its whole family to their conditional medians, and reports them labeled as factors (§2, §5, §6.1, §7, §9).
-- [#38](https://github.com/BobKerns/zabob-retirement/issues/38): a Monte Carlo batch with [ADR-008](ADR-008-correlated-parameters.md) correlated rows is ranked and pinned by SRRC with its own interval, reports PRCC, a line per latent factor, and the correlations its normal scores achieved (§6.2, §9).
-- [#68](https://github.com/BobKerns/zabob-retirement/issues/68): the achieved correlations are read through Kendall's τ, and rows sharing a Student-t copula tree make a batch correlated (§6.2).
-- [#221](https://github.com/BobKerns/zabob-retirement/issues/221): a varying lifespan is swept as `lifespan:<person>`, centered on its authored age (§2).
-- [#222](https://github.com/BobKerns/zabob-retirement/issues/222): a `life_table` lifespan's parameters row gives its 1st to 99th percentile ages and its set-forward (§2).
-- [#281](https://github.com/BobKerns/zabob-retirement/issues/281): a `date_marker` is swept as one parameter, moving the rows dated from it (§2).
-- [#292](https://github.com/BobKerns/zabob-retirement/issues/292) ([ADR-009](ADR-009-pooled-ensembles.md)): sensitivity is refused on a pool, run on its components instead (§7).
-- [#329](https://github.com/BobKerns/zabob-retirement/issues/329): `sim ensemble sensitivity` draws the notebook's charts (`--chart`) and shows one row (`--row`); the views move to `sim/sensitivity_charts.py` (§7, §9).
-- [#438](https://github.com/BobKerns/zabob-retirement/issues/438): PRCC gets a 95% interval, and the notebook's correlation chart can plot ρ, SRRC or PRCC (`CorrelationMeasurePicker`) (§6.2, §9).
-- [#452](https://github.com/BobKerns/zabob-retirement/issues/452): `--top [N]` draws an overview's most important rows, or as many as fill the terminal (§7).
-- [#454](https://github.com/BobKerns/zabob-retirement/issues/454): each mode's batches in a folder of their own; the background builder makes an ensemble's sensitivity batch after its Monte Carlo batch, and `sim ensemble sensitivity` offers every ensemble and makes a missing batch ([ADR-004](ADR-004-reproducibility-and-activation.md) §12) (§5).

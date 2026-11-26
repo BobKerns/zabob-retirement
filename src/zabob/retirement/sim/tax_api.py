@@ -40,7 +40,7 @@ __all__ = [
     "TaxYear", "calculator", "is_registered", "percent", "register",
 ]
 
-API_VERSION = 7
+API_VERSION = 9
 """Bumped when a calculator written against the previous version could
 break, or one written for this version needs what the previous lacks. 1
 (#510) is the first a data repo can write to; 2 (#511) adds a state year's
@@ -58,7 +58,13 @@ reads the tables those would replace. 7 (#593) adds
 :attr:`TaxPaid.refunded`, :meth:`TaxYear.tax_refunded`,
 :attr:`TaxYear.prior_taxes_paid` and :meth:`TaxYear.prior_tax_paid`, for
 the refunds a federal return recaptures; :attr:`TaxYear.taxes_paid` still
-holds this year's rows only."""
+holds this year's rows only. 8 (#610) moves a state year's ``standard``
+``state_adjustments`` rows from ``other_deductions`` into the standard
+deduction ``deductions`` returns; a state year whose module says it was
+written for 7 or before and that overrides ``deductions`` keeps them in
+``other_deductions``, since its ``deductions`` doesn't add them. 9 (#549)
+adds a state year's ``tax_lines`` step, lines that show a part of its
+tax (a benefit recapture)."""
 
 Row = dict[str, Any]
 """One aux table row's payload."""

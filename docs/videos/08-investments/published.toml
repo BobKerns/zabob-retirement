@@ -1,50 +1,55 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
-video = "pZ7fnO18Wug"
-uploaded = 2026-11-11T08:47:04Z
+video = "-o72MmAH4fk"
+uploaded = 2026-11-24T18:00:13Z
+snippet = "ac53bbfb97746632"
 scenes = [
-  ["title", 13.96],
-  ["contents", 18.00],
-  ["lots", 29.22],
-  ["holdings", 31.04],
-  ["symbol", 26.39],
-  ["invest", 29.48],
-  ["prices", 42.76],
-  ["growth", 33.61],
-  ["allocation", 41.64],
-  ["taxes", 49.91],
-  ["gains", 37.40],
-  ["location", 25.46],
-  ["roth-lots", 38.44],
-  ["invest-roth", 38.56],
-  ["location-table", 25.28],
+  ["title", 16.23],
+  ["contents", 20.97],
+  ["lots", 33.17],
+  ["holdings", 30.96],
+  ["symbol", 29.76],
+  ["invest", 28.96],
+  ["prices", 46.77],
+  ["growth", 37.04],
+  ["allocation", 41.60],
+  ["taxes", 55.12],
+  ["gains", 37.36],
+  ["location", 29.25],
+  ["roth-lots", 38.24],
+  ["invest-roth", 40.84],
+  ["location-table", 28.18],
   ["nb-accounts", 21.67],
-  ["ai", 18.27],
-  ["end", 8.48],
+  ["ai", 20.92],
+  ["end", 9.21],
 ]
 
 [ja]
-video = "y5amRH5w594"
-uploaded = 2026-11-11T08:47:20Z
+video = "OsUfKbGlXB4"
+uploaded = 2026-11-24T18:00:32Z
+snippet = "8342471da34d5198"
 scenes = [
-  ["title", 17.79],
-  ["contents", 21.45],
-  ["lots", 36.61],
-  ["holdings", 31.16],
-  ["symbol", 35.84],
-  ["invest", 29.36],
-  ["prices", 48.52],
-  ["growth", 39.29],
-  ["allocation", 41.80],
-  ["taxes", 59.91],
-  ["gains", 42.15],
-  ["location", 32.86],
-  ["roth-lots", 38.44],
-  ["invest-roth", 44.99],
-  ["location-table", 29.60],
-  ["nb-accounts", 21.73],
-  ["ai", 24.23],
-  ["end", 8.24],
+  ["title", 18.56],
+  ["contents", 22.05],
+  ["lots", 38.42],
+  ["holdings", 30.96],
+  ["symbol", 36.97],
+  ["invest", 28.96],
+  ["prices", 48.92],
+  ["growth", 41.46],
+  ["allocation", 41.60],
+  ["taxes", 62.20],
+  ["gains", 43.88],
+  ["location", 33.80],
+  ["roth-lots", 38.24],
+  ["invest-roth", 47.55],
+  ["location-table", 30.33],
+  ["nb-accounts", 21.67],
+  ["ai", 25.41],
+  ["end", 8.56],
 ]

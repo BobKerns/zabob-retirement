@@ -139,10 +139,11 @@ def test_a_name_given_on_the_line_is_not_asked(sim: Callable[..., Result], test_
     assert "accounts: " not in result.output
 
 
-# Required params that aren't names a scenario defines: a date, and the
-# inputs of the importers, which are run from scripts.
+# Required params that aren't names a scenario defines: a date, the
+# inputs of the importers, which are run from scripts, and the public
+# series `sim historical` summarizes.
 _STILL_REQUIRED = {"sim import holdings files", "sim import budget file",
-                   "sim import budget from_account"}
+                   "sim import budget from_account", "sim historical series_specs"}
 
 
 def test_only_non_names_are_required() -> None:
@@ -364,7 +365,7 @@ def test_series_rename_offers_only_series_it_can_rename(sim: Callable[..., Resul
     offered = next(line for line in result.output.splitlines() if line.startswith("series: "))
     choices = offered.removeprefix("series: ").split(", ")
     assert "brokerage_growth" in choices
-    assert "cpi" not in choices  # in the shared aux/ folder
+    assert "cpi" not in choices  # in the shared tables/ folder
     assert "stock" not in choices  # an asset class
 
 
@@ -377,7 +378,7 @@ def test_a_named_batch_is_offered_only_when_it_holds_runs_of_the_mode(tmp_path: 
     for recipe, mode in (("mc_recipe", "monte_carlo"), ("oat_recipe", "sensitivity")):
         batch = batches_dir(tmp_path / recipe, mode) / "b1"
         batch.mkdir(parents=True)
-        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": mode}))
+        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": mode}), encoding="utf-8")
     (tmp_path / "stale_recipe" / "monte-carlo" / "b1").mkdir(parents=True)  # no manifest, no members
     result = CliRunner().invoke(click.Command("ask", callback=lambda: click.echo(
         sim_cli._ask_ensemble_run(tmp_path, "monte_carlo", batch="b1"))), input="mc_recipe\n")
@@ -391,8 +392,8 @@ def test_a_rules_person_may_be_the_household(sim: Callable[..., Result], test_da
     """#368: `joint` is a rule's person even when persons.csv has no row
     for it (as `sim init` writes it): the loader supplies one."""
     persons = test_data_dir / "persons.csv"
-    persons.write_text("".join(line for line in persons.read_text().splitlines(keepends=True)
-                               if not line.startswith("joint,")))
+    persons.write_text("".join(line for line in persons.read_text(encoding="utf-8").splitlines(keepends=True)
+                               if not line.startswith("joint,")), encoding="utf-8")
     result = sim("scheduled", "add", "2027-01-31", "Asset_Checking", "Expense_Living", "100",
                  "--name", "shared", "--person", "joint", "--scenario", "retire_alice")
     assert result.exit_code == 0, result.output
@@ -403,7 +404,7 @@ def _mc_runs(runs: Path, *recipes: str) -> None:
     for recipe in recipes:
         batch = runs / recipe / "monte-carlo" / "b1"
         batch.mkdir(parents=True)
-        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": "monte_carlo"}))
+        (batch / BATCH_MANIFEST_FILENAME).write_text(json.dumps({"mode": "monte_carlo"}), encoding="utf-8")
 
 
 def _ask_ensemble(runs: Path, data: Path | None, input: str = "", *,  # noqa: A002
@@ -452,7 +453,7 @@ def test_a_second_ensemble_is_asked_for_even_when_one_is_current(tmp_path: Path)
 def test_an_ensemble_is_asked_for_without_a_data_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ANALYSIS_DATA_DIR", raising=False)
+    monkeypatch.delenv("ZABOB_DATA_DIR", raising=False)
     runs = tmp_path / "runs"
     _mc_runs(runs, "mc_one")
     result = _ask_ensemble(runs, None, input="mc_one\n")
@@ -487,3 +488,23 @@ def test_a_builtin_account_is_not_a_mistyped_one(sim: Callable[..., Result]) -> 
 
 def test_builtin_accounts_include_payouts_and_growth() -> None:
     assert {"capital_gains", "dividends", "interest_income"} <= set(names.builtin_account_names())
+
+
+def test_ensemble_rename_refuses_and_skips_templates(
+    sim: Callable[..., Result], test_data_dir: Path, test_ensemble_scenario: str,
+) -> None:
+    # A template is the code repository's; renaming one would leave the data
+    # repo's scenarios on a missing parent (#297).
+    template = "t_market_ensemble"
+    ctx = click.Context(sim_group_command)
+    ctx.params["data_dir"] = test_data_dir
+    assert template in completion._ensembles(ctx, test_data_dir)
+    offered = completion.OWN_ENSEMBLE.choices(ctx)
+    assert test_ensemble_scenario in offered and template not in offered
+    for what in ("ensemble", "scenario"):
+        result = sim(what, "rename", template, "mine")
+        assert result.exit_code != 0 and f"{template} is a template scenario" in result.output, result.output
+    assert not (test_data_dir / "scenarios" / "mine").exists()
+    # At a terminal a template's name isn't taken for a typo and re-asked:
+    # the command says why it refuses it.
+    assert completion.OWN_ENSEMBLE.is_known(ctx, template)

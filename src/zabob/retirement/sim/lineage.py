@@ -3,7 +3,7 @@
 A scenario's ``parent_scenario`` names one parent or, colon-separated, a main
 parent followed by mix-ins (``base:retire_early:high_inflation``). Everything
 that reasons about "the scenarios this one is built from" -- the loader's
-overlays, the aux/series/prices/itemizations override search, staging's
+overlays, the tables/series/prices/itemizations override search, staging's
 affected-scenario check and the provenance scope -- goes through
 :func:`load_order`, so they can't disagree about which folders are read or in
 what order.
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 from zabob.retirement.resources import TEMPLATES_DIR
@@ -28,8 +29,8 @@ from zabob.retirement.resources import TEMPLATES_DIR
 TEMPLATE_PREFIX = "t_"
 # The checkout's templates/, or the copy a wheel ships (#662).
 TEMPLATE_SCENARIOS_DIR = TEMPLATES_DIR / "scenarios"
-# The tax-law aux tables, read beneath the data repo's aux/ (#317).
-TEMPLATE_AUX_DIR = TEMPLATE_SCENARIOS_DIR.parent / "aux"
+# The tax-law aux tables, read beneath the data repo's tables/ (#317).
+TEMPLATE_AUX_DIR = TEMPLATE_SCENARIOS_DIR.parent / "tables"
 # What a mix-in only scenario is loaded on top of when loaded by itself
 # (#259): it has nothing, and its dates and seed only fill blanks.
 MIXIN_BASE = "t_empty"
@@ -139,14 +140,20 @@ def is_mixin_only(scenarios_dir: Path, name: str) -> bool:
     span, so it has none, and it can't run by itself; loaded by itself (to
     check it), it sits on ``MIXIN_BASE``. Its parents, if any, are mix-ins
     too."""
-    # A pool has no dates of its own either; its components have them.
-    if is_pool(scenarios_dir, name):
-        return False
     # Only a whole, acyclic lineage shows there are no dates: a missing
     # parent or a cycle is the loader's to report, not a mix-in.
     try:
         order = lineage_order(scenarios_dir, name, strict=True)
     except ScenarioCycleError:
+        return False
+    return _order_is_mixin_only(scenarios_dir, order)
+
+
+def _order_is_mixin_only(scenarios_dir: Path, order: Sequence[str]) -> bool:
+    """:func:`is_mixin_only` for the scenario last in ``order``, its acyclic
+    lineage order, so a caller that has the order doesn't walk it twice."""
+    # A pool has no dates of its own either; its components have them.
+    if not order or is_pool(scenarios_dir, order[-1]):
         return False
     for n in order:
         if is_template(scenarios_dir, n):
@@ -172,8 +179,14 @@ def load_order(scenarios_dir: Path, scenario_name: str, *, strict: bool = False)
     loader can report it. With ``strict``, a cycle raises
     :class:`ScenarioCycleError`; otherwise the link closing it is ignored.
     """
-    order = lineage_order(scenarios_dir, scenario_name, strict=strict)
-    if is_mixin_only(scenarios_dir, scenario_name):
+    try:
+        order = lineage_order(scenarios_dir, scenario_name, strict=True)
+    except ScenarioCycleError:
+        if strict:
+            raise
+        # The link closing the cycle is ignored; a cycle isn't a mix-in.
+        return lineage_order(scenarios_dir, scenario_name)
+    if _order_is_mixin_only(scenarios_dir, order):
         base = lineage_order(scenarios_dir, MIXIN_BASE, strict=strict)
         return [*(n for n in base if n not in order), *order]
     return order

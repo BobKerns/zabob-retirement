@@ -76,10 +76,12 @@ brightWhite = "#ffffff"
 
 # One table per narration language. A translation (script.<lang>.md) needs one.
 # engine: kokoro (synthesized) or silent (timed silence, for drafts and tests).
+# Zabob, the course's host, narrates: a British man's voice (Bob chose
+# bm_george from samples), with British pronunciation to match.
 [narration.en]
 engine = "kokoro"
-voice = "af_heart"
-lang = "en-us"
+voice = "bm_george"
+lang = "en-gb"
 speed = 1.0
 
 # How the voice says words it gets wrong, wherever they appear: a respelling,
@@ -87,6 +89,8 @@ speed = 1.0
 # keep the word.
 [narration.en.pronounce]
 IRA = "/ˌaɪˌɑːɹˈeɪ/"
+# Stressed on the second syllable; the voice says ZA-bob.
+Zabob = "/zəbˈɒb/"
 WSL = "W S L"
 Jupyter = "Jupiter"
 JupyterLab = "Jupiter Lab"
@@ -99,8 +103,9 @@ jupyter = "jupiter"
 "what-ifs" = "/wˈʌt ˈɪfs/"
 "What-ifs" = "/wˈʌt ˈɪfs/"
 
+# Kokoro's one male Japanese voice: Zabob is a man, so his voice is too.
 [narration.ja]
 engine = "kokoro"
-voice = "jf_alpha"
+voice = "jm_kumo"
 lang = "ja"
 speed = 1.0

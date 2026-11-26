@@ -88,7 +88,7 @@ def test_readme_description_combines_title_paragraph_and_pointer(tmp_path: Path)
     (scenario_dir / "README.md").write_text(
         "# Inflation sensitivity\n\n"
         "This recipe varies CPI to see how sensitive the plan is.\n\n"
-        "## Why\n\nBecause hyperinflation can't really be projected.\n"
+        "## Why\n\nBecause hyperinflation can't really be projected.\n", encoding="utf-8"
     )
     description = readme_description(scenario_dir, data_dir=data_dir)
     expected = (
@@ -102,7 +102,7 @@ def test_readme_description_combines_title_paragraph_and_pointer(tmp_path: Path)
 def test_readme_description_no_pointer_when_its_the_whole_document(tmp_path: Path) -> None:
     scenario_dir = tmp_path / "scenarios/base"
     scenario_dir.mkdir(parents=True)
-    (scenario_dir / "README.md").write_text("# Base\n\nThe primary plan.\n")
+    (scenario_dir / "README.md").write_text("# Base\n\nThe primary plan.\n", encoding="utf-8")
     assert readme_description(scenario_dir, data_dir=tmp_path) == "# Base\n\nThe primary plan."
 
 
@@ -111,7 +111,7 @@ def test_readme_description_blank_for_an_empty_readme(tmp_path: Path) -> None:
     # is only for a scenario with no README.md at all (ADR-003 §4.1e).
     scenario_dir = tmp_path / "scenarios/empty"
     scenario_dir.mkdir(parents=True)
-    (scenario_dir / "README.md").write_text("\n")
+    (scenario_dir / "README.md").write_text("\n", encoding="utf-8")
     assert readme_description(scenario_dir, data_dir=tmp_path) == ""
 
 
@@ -121,7 +121,7 @@ def test_regenerate_more_link_repoints_a_markdown_link_at_a_new_data_dir(
     old_data_dir = tmp_path / "old"
     new_data_dir = tmp_path / "new"
     (new_data_dir / "scenarios" / "inflation_1").mkdir(parents=True)
-    (new_data_dir / "scenarios" / "inflation_1" / "README.md").write_text("# x\n\ny\n\nz\n")
+    (new_data_dir / "scenarios" / "inflation_1" / "README.md").write_text("# x\n\ny\n\nz\n", encoding="utf-8")
     description = (
         "# Inflation sensitivity\n\n"
         "This recipe varies CPI to see how sensitive the plan is.\n\n"

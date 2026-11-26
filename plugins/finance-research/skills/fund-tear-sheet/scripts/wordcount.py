@@ -7,7 +7,7 @@ Usage: python wordcount.py tear-sheet.md
 import re
 import sys
 
-text = open(sys.argv[1]).read()
+text = open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"^#{1,3} +(\d+\.? *)?Sources\b(?! of)", text, re.M | re.I)
 body = text[: m.start()] if m else text
 lines = [line for line in body.splitlines() if not re.fullmatch(r"\s*\|?[\s:|-]+\|?\s*", line)]  # drop |---|---| rows

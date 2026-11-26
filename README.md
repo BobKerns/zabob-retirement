@@ -39,6 +39,9 @@ Start with *Video 1: What it does, and how it works*
 simple model already answers useful questions. You add detail only when a
 question needs it.
 
+The software runs on your computer and sends nothing to its developer; see the
+[privacy policy](./PRIVACY.md).
+
 The repository also holds an Amazon expense categorizer. Both tools work from
 a CLI and from Jupyter notebooks, on Python 3.14+ with uv.
 
@@ -52,13 +55,13 @@ The simulator works out a state's income tax the same way for every state:
 federal-style income, with capital gains taxed as ordinary income by
 default, less the state's standard deduction, run through the state's
 brackets ([how tax is handled](./docs/user-guide.md#3-how-tax-is-handled)). A
-state needs two tables in `aux/`, `state_brackets__XX.csv` and
+state needs two tables in `tables/`, `state_brackets__XX.csv` and
 `state_standard_deduction__XX.csv`, a state tax, `taxes/state.csv`, and a
 `residence.csv` saying where the household lives. `sim tax state` chooses the
 state, and adds the state tax if the scenario has none; `sim tax move` records
 a move to another state or county. Where a state treats capital gains differently, up to three more
 tables say how: a share of long-term gain excluded, and gain rates of its own
-([the `aux/` README](./templates/aux/README.md#a-states-capital-gains)).
+([the `tables/` README](./templates/tables/README.md#a-states-capital-gains)).
 Social Security is left out unless `state_social_security__XX.csv` says how
 the state taxes it: the federally taxable amount less an exclusion that can
 phase out with income. Two more are optional: `state_surcharge__XX.csv`, a
@@ -99,8 +102,8 @@ an issue to close, or a row you write yourself.
 | Arizona | Partial | Long-term gain subtraction limited to assets bought after 2011 |
 | Arkansas | Partial | Low-income tax tables |
 | California | Shipped | |
-| Colorado | Partial | Social Security sharing the pension subtraction's cap from 55 to 64, over the income |
-| Connecticut | Partial | Benefit recapture ([#549](https://github.com/BobKerns/zabob-retirement/issues/549)); personal tax credit; Social Security's 25% cap |
+| Colorado | Tables needed | |
+| Connecticut | Partial | Personal tax credit; Social Security's 25% cap |
 | Delaware | Tables needed | |
 | District of Columbia | Shipped | Extra deduction when blind |
 | Florida | No tax | |
@@ -126,7 +129,7 @@ an issue to close, or a row you write yourself.
 | New Hampshire | No tax | |
 | New Jersey | Tables needed | |
 | New Mexico | Tables needed | |
-| New York | Partial | Benefit recapture ([#549](https://github.com/BobKerns/zabob-retirement/issues/549)); Yonkers surcharge (a share of state tax) |
+| New York | Partial | Yonkers surcharge (a share of state tax) |
 | North Carolina | Shipped | Exclusion for government pensions vested before August 1989 (a row you write) |
 | North Dakota | Tables needed | |
 | Ohio | Tables needed | |
@@ -167,7 +170,18 @@ an issue to close, or a row you write yourself.
 This repository is a single top-level Python project. There are no nested repos or subprojects.
 
 ## Setup
-To install without git knowledge, paste this into a terminal:
+To use the simulator, install it from PyPI with [uv](https://docs.astral.sh/uv/):
+```sh
+uv tool install zabob-retirement
+sim init --example     # Alice and Bill's household, to try things on
+sim init               # or your own data repo, in ~/zabob-retirement
+```
+`sim init` makes the data repo your default, so the commands find it from any
+folder and shell, Windows PowerShell included.
+Upgrade with `uv tool upgrade zabob-retirement`. See
+[docs/SETUP.md](./docs/SETUP.md#install-the-program) for more.
+
+To work on the code too, without git knowledge, paste this into a terminal:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/BobKerns/zabob-retirement/main/scripts/install.sh | sh
 ```
@@ -206,48 +220,39 @@ categories, mapping = load_categorization_state("state")
 
 ### Shell Autocomplete (Click)
 
-This CLI uses Click shell completion. Completions are available for all three scripts.
-
-One-time for current shell session:
-
-```sh
-eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"   # zsh
-eval "$(_AMAZON_COMPLETE=zsh_source amazon)"        # zsh
-eval "$(_SIM_COMPLETE=zsh_source sim)"              # zsh
-```
-
-If the scripts are not on your `PATH`, use `uv run`:
+For `sim`, set it up once (bash, zsh, fish or PowerShell; with no shell named,
+yours):
 
 ```sh
-eval "$(_ANALYSIS_COMPLETE=zsh_source uv run analysis)"   # zsh
-eval "$(_AMAZON_COMPLETE=zsh_source uv run amazon)"        # zsh
-eval "$(_SIM_COMPLETE=zsh_source uv run sim)"              # zsh
+sim completion install
 ```
 
-Persist in your shell config:
+It saves the completion script and adds a line reading it to your shell's
+startup file; `sim completion show SHELL` prints the script instead. See
+[SETUP.md](docs/SETUP.md#install-the-program).
+
+`analysis` and `amazon`, the developer's tools, use Click's own lines, for
+the current shell or in `~/.zshrc` (`bash_source` for bash, `fish_source`
+for fish):
 
 ```sh
-# zsh
-echo 'eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"' >> ~/.zshrc
-echo 'eval "$(_AMAZON_COMPLETE=zsh_source amazon)"' >> ~/.zshrc
-echo 'eval "$(_SIM_COMPLETE=zsh_source sim)"' >> ~/.zshrc
-
-# bash — replace zsh_source with bash_source above
+eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"
+eval "$(_AMAZON_COMPLETE=zsh_source amazon)"
 ```
 
-Reload your shell after adding it:
-
-```sh
-exec zsh   # or: exec bash
-```
+With the scripts not on your `PATH`, put `uv run` before `analysis` or
+`amazon`. Sourcing the data repo's `activate-retirement` turns on all three.
 
 In `sim`, TAB also completes the names a scenario defines: scenarios,
 ensembles, accounts, lots, chains, scheduled rules, calendar rows, persons,
 series, tags, symbols and itemizations. Names come from the scenario named on
 the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
-before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir` or
-`$ANALYSIS_DATA_DIR`, which the data repo's `activate-analysis` sets.
+before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
+`$ZABOB_DATA_DIR` (which the data repo's `activate-retirement` sets), or
+the data repo `sim switch` shows. `sim completion install` turns TAB
+completion on in bash, zsh, fish or PowerShell (see
+[SETUP.md](docs/SETUP.md#install-the-program)).
 
 A command run without a name it needs asks for it, listing the choices,
 with the same completion at the prompt.
@@ -350,7 +355,7 @@ longer produces, is listed as `kept`: it stays in force until it is ended
 there with `sim scheduled delete`.
 
 The export to read is an argument (`sim import transactions export.csv`).
-With none, and `ANALYSIS_DATA_DIR` pointing to the simulator data directory,
+With none, and `ZABOB_DATA_DIR` pointing to the simulator data directory,
 the command reads `../quicken/Transaction Export.csv` and the Amazon state in
 `../state/`, both at the data repo's top level.
 
@@ -395,3 +400,16 @@ Spell checking is handled by cspell (see `cspell.json` and `.cspell/project-word
 **Tabs are forbidden in all text files.**
 
 Use spaces for all indentation and alignment. Hard tab characters (\t) are not allowed anywhere in the repository, including code, markdown, and documentation. This prevents formatting issues and ensures consistency across all editors and platforms.
+
+## Questions and ideas
+Ask questions in [Discussions](https://github.com/BobKerns/zabob-retirement/discussions)
+(Q&A), suggest features under Ideas, and share scenarios and strategies under
+Show and tell. Issues are for bugs and settled work. It's a public forum, so
+leave out real balances, names and account details: describe the problem with
+the example household (Alice and Bill) or made-up figures.
+
+## Contributing
+How work is branched, reviewed and merged is in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Releasing
+Publishing to PyPI is described in [docs/releasing.md](./docs/releasing.md).

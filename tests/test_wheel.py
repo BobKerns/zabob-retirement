@@ -14,7 +14,8 @@ import pytest
 from zabob.retirement import resources
 from zabob.retirement.checkout import is_checkout
 
-pytestmark = pytest.mark.slow
+# They build the wheel from this checkout.
+pytestmark = [pytest.mark.slow, pytest.mark.checkout]
 
 SHIPPED = "zabob/retirement/_shipped/"
 
@@ -23,7 +24,7 @@ def test_wheel_ships_the_checkout_folders(built_wheel: Path, repo_root: Path) ->
     with zipfile.ZipFile(built_wheel) as wheel:
         names = set(wheel.namelist())
         info = wheel.read("zabob/retirement/_build_info.py").decode()
-    for folder in ("templates", "notebooks", "prototype_data"):
+    for folder in ("templates", "notebooks", "prototype_data", "plugins"):
         tracked = subprocess.run(["git", "ls-files", folder], cwd=repo_root, capture_output=True, text=True,
                                  check=True).stdout.split()
         # Every tracked file ships (a link to a folder ships what it leads to).
@@ -31,6 +32,7 @@ def test_wheel_ships_the_checkout_folders(built_wheel: Path, repo_root: Path) ->
     assert SHIPPED + "templates/scenarios/t_empty/scenario.csv" in names
     assert SHIPPED + "notebooks/net_worth.ipynb" in names
     assert SHIPPED + "notebooks/docs/user-guide.md" in names
+    assert SHIPPED + "plugins/finance-research/skills/fund-tear-sheet/SKILL.md" in names
     assert not any("__pycache__" in n or ".ipynb_checkpoints" in n for n in names)
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True,
                           check=True).stdout.strip()
@@ -57,7 +59,7 @@ def test_installed_program_runs_without_a_checkout(
     # The prototype data, as shipped, loads with the shipped templates.
     data = tmp_path / "data"
     shutil.copytree(Path(templates).parent / "prototype_data", data)
-    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"} | {"ANALYSIS_NO_BUILDER": "1"}
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"} | {"ZABOB_NO_BUILDER": "1"}
     done = subprocess.run([installed_wheel / "sim", "check", "--all", "--data-dir", data],
                           cwd=tmp_path, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
@@ -68,8 +70,9 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
     """The whole first session of a `uv tool install` user, on the example data."""
     home = tmp_path / "home"
     home.mkdir()
-    (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
-    env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ANALYSIS_NO_BUILDER": "1",
+    (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n",
+                                        encoding="utf-8")
+    env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ZABOB_NO_BUILDER": "1",
            "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
            **{f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER")
               for what, value in (("NAME", "t"), ("EMAIL", "t@t"))}}
@@ -77,10 +80,10 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
                           capture_output=True, text=True)
     assert init.returncode == 0, init.stdout + init.stderr
     root = home / "zabob-retirement"
-    assert (root / "sim" / ".analysis").read_text() == f"installed:{installed_wheel}\n"
+    assert (root / "sim" / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_wheel}\n"
     assert (root / "notebooks" / "net_worth.ipynb").is_file()
     done = subprocess.run(
-        ["bash", "-c", f"source {root / 'sim' / 'activate-analysis'} && sim switch && sim check base"],
+        ["bash", "-c", f"source {root / 'sim' / 'activate-retirement'} && sim switch && sim check base"],
         cwd=tmp_path, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "Current scenario: base" in done.stdout and "ok" in done.stdout

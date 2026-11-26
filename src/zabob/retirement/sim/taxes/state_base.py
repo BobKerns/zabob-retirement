@@ -123,7 +123,9 @@ class Separate:
     The rest are the two returns' figures added up, which the return shows
     in place of the joint one's when it takes this one, so its lines
     reconcile: the deduction, taxable income and its ordinary part, the
-    credits taken, and what each credit line took."""
+    credits taken, what each credit line took, and the two returns'
+    :meth:`StateYear.tax_lines` added up (#549), which stand in for the
+    joint return's."""
     lines: Mapping[str, int]
     tax: int
     nol_used: int
@@ -132,6 +134,7 @@ class Separate:
     ordinary_taxable: int
     credits: int
     credit_lines: Mapping[str, int]
+    tax_lines: Mapping[str, int] = MappingProxyType({})
 
 
 class StateYear(Prepared):
@@ -223,6 +226,12 @@ class StateYear(Prepared):
         credits is lower than the joint return's."""
         return None
 
+    def tax_lines(self, taxable: int, income: Income) -> Mapping[str, int]:
+        """Lines that show a part of :meth:`tax` on the joint return, at
+        the same ``taxable`` income and ``income`` (a benefit recapture,
+        #549); they report, and change nothing. None by default."""
+        return {}
+
     def excise(self, basis: Basis) -> tuple[Mapping[str, int], int]:
         """A tax the state levies apart from its income tax, on its own base
         (Washington's on capital gains, #489): its lines and the tax, which
@@ -271,6 +280,7 @@ class StateYear(Prepared):
         nol_used = common.nol_used(self._nol_in, before_nol, self._nol_limit)
         taxable = max(0, before_nol - nol_used)
         tax = self.tax(taxable, income)
+        tax_lines = self.tax_lines(taxable, income)
         # These credits can't take the tax below zero: a named line shows
         # what it took, in order, so the lines add up to the credits taken.
         # Asked once, and handed to a separate return as they are.
@@ -301,27 +311,38 @@ class StateYear(Prepared):
                 ordinary_taxable = separate.ordinary_taxable
                 deductions = {**deductions, "deduction": separate.deduction}
                 credit_lines = dict(separate.credit_lines)
+                tax_lines = dict(separate.tax_lines)
         excise_lines, excise = self.excise(basis)
         refundable = {line: max(0, amount) for line, amount in self.refundable_credits(
             owed + excise, income, basis).items()}
-        lines = {
-            "ordinary_income": income.ordinary,
-            "ltcg_taxed": income.ltcg,
-            "nol_used": nol_used,
-            **common.nol_carried(self._nol_in - nol_used + self._nol_new, self._nol_lapse),
-            "ss_taxable": income.ss,
-            "agi": income.agi,
-            **self.fixed_lines(basis),
-            **adjustments,
-            **deductions,
-            **others,
-            **credit_lines,
-            "taxable_income": taxable,
-            "ordinary_taxable": ordinary_taxable,
-            "credits": credits,
-            **separate_lines,
-            **excise_lines,
-        }
+
+        # A tax line (#549) mustn't overwrite another line, or be overwritten.
+        def with_tax_lines(shown: Mapping[str, int]) -> dict[str, int]:
+            return {
+                "ordinary_income": income.ordinary,
+                "ltcg_taxed": income.ltcg,
+                "nol_used": nol_used,
+                **common.nol_carried(self._nol_in - nol_used + self._nol_new, self._nol_lapse),
+                "ss_taxable": income.ss,
+                "agi": income.agi,
+                **self.fixed_lines(basis),
+                **adjustments,
+                **deductions,
+                **others,
+                **shown,
+                **credit_lines,
+                "taxable_income": taxable,
+                "ordinary_taxable": ordinary_taxable,
+                "credits": credits,
+                **separate_lines,
+                **excise_lines,
+            }
+
+        lines = with_tax_lines({})
+        if clash := sorted(set(tax_lines) & {*lines, "tax"}):
+            raise TaxError(f"tax line {', '.join(clash)} names a line the return already "
+                           "has; name it apart (#549)")
+        lines = with_tax_lines(tax_lines)
         if clash := sorted(set(refundable) & {*lines, "tax"}):
             raise TaxError(f"refundable credit line {', '.join(clash)} names a line the "
                            "return already has; name it apart (#568)")

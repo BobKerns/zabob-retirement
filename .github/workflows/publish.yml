@@ -1,0 +1,118 @@
+# Publish zabob-retirement to PyPI (#662), with trusted
+# publishing: PyPI trusts this workflow, by name, in the environments below,
+# so no token is stored anywhere.
+#
+# - TestPyPI (environment testpypi): a manual run, or a pushed pre-release tag
+#   (v1.0.0b1, v1.1.0rc1, v1.2.0a1).
+# - PyPI (environment pypi): a published GitHub release, only.
+#
+# Nothing runs on ordinary pushes, to spare Actions minutes. A version can be
+# uploaded once per index, ever: bump pyproject.toml first.
+name: Publish
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*a*", "v*b*", "v*rc*"]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The commit the wheel is stamped with needs no history; a shallow
+          # clone has HEAD.
+          fetch-depth: 1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          # Pinned, as in gates.yml.
+          version: "0.12.23"
+
+      - name: Check the tag matches the version
+        env:
+          # Only the ref name comes from the event; never its text.
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$(uv version --short)"
+          if [ "$REF_TYPE" = tag ] && [ "$REF_NAME" != "v$version" ]; then
+              echo "::error::tag $REF_NAME doesn't match version $version (expected v$version)"
+              exit 1
+          fi
+          echo "Publishing $version"
+
+      - name: Build
+        # The wheel is built from the sdist, as a user building from it would.
+        run: uv build --out-dir dist
+
+      - name: Check the wheel installs and runs with no checkout
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/check"
+          uv pip install --python "$RUNNER_TEMP/check/bin/python" dist/zabob_retirement-*.whl
+          cd "$RUNNER_TEMP"
+          ZABOB_NO_BUILDER=1 GIT_CONFIG_GLOBAL=/dev/null \
+              GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@example.com \
+              GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@example.com \
+              "$RUNNER_TEMP/check/bin/sim" init --example "$RUNNER_TEMP/example"
+          ZABOB_NO_BUILDER=1 "$RUNNER_TEMP/check/bin/sim" check --all --data-dir "$RUNNER_TEMP/example/sim"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: ${{ github.event_name != 'release' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/zabob-retirement/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A release's tag push and the manual run before it can carry
+          # one version twice; TestPyPI keeps the first.
+          skip-existing: true
+
+  pypi:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/zabob-retirement/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3

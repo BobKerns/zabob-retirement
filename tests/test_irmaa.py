@@ -22,7 +22,7 @@ from zabob.retirement.sim.reports import tax_by_year
 
 Run = Callable[..., Path]
 
-# The prototype's 2026 table (aux/irmaa_tiers.csv), in cents.
+# The prototype's 2026 table (tables/irmaa_tiers.csv), in cents.
 MFJ_FLOORS = {1: 218_000_00, 2: 274_000_00, 3: 342_000_00, 4: 410_000_00, 5: 750_000_00}
 SINGLE_FLOORS = {1: 109_000_00, 2: 137_000_00, 3: 171_000_00, 4: 205_000_00, 5: 500_000_00}
 PART_B = {1: 81_20, 2: 202_90, 3: 324_60, 4: 446_30, 5: 487_00}
@@ -438,12 +438,12 @@ def test_irmaa_tier_needs_a_tier_table_and_a_whole_number(
         **dict.fromkeys(SCHEDULED_CSV_HEADER, ""), "meta_json": "{}",
         **_conversion(2031, irmaa_tier=-1)}
     scheduled.to_csv(path, index=False)
-    (test_data_dir / "aux" / f"{registries.IRMAA_TIERS}.csv").unlink()
+    (test_data_dir / "tables" / f"{registries.IRMAA_TIERS}.csv").unlink()
     with pytest.raises(LoadError) as error:
         load_with()
     issues = "\n".join(error.value.issues)
     assert "irmaa_tier must be a whole number, 0 or more" in issues
-    assert "irmaa_tier needs aux/irmaa_tiers.csv" in issues
+    assert "irmaa_tier needs tables/irmaa_tiers.csv" in issues
 
 
 def test_irmaa_tier_at_the_top_tier_caps_nothing_and_is_refused(

@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-09-23
 - **Supersedes:** the reserved `holding` / `lot` tables and `transfer_event.from_holding_id` / `to_holding_id` ([ADR-002](ADR-002-storage-schema.md) §Reserved schema); the account-level running cost basis that [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.7 (withdrawing from a taxable lot) now describes per lot.
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-001](ADR-001-overall-architecture.md) (domain objects, `AccountState`), [ADR-002](ADR-002-storage-schema.md) (storage schema), [ADR-003](ADR-003-registries-and-csv-schemas.md) (registries, CSV layouts, chains §4.7, `rmd` §2.3).
 
 ## Context
@@ -168,15 +167,6 @@ An `rmd` rule's amount comes from its **subject account**: the total of its trad
 
 On an account with several lots a single-lot source is a load error, as is a chain that draws from anything but the subject account's lots. There are no implicit chains. Aggregation across several of an owner's IRAs is deliberately not modelled: a brokerage distributes per account, without regard to distributions taken elsewhere, so each RMD is computed from its own account's lots.
 
-### Amendments applied on acceptance
-
-Applied to [ADR-001](ADR-001-overall-architecture.md), [ADR-002](ADR-002-storage-schema.md) and [ADR-003](ADR-003-registries-and-csv-schemas.md) (Phase 6).
-
-- [ADR-002](ADR-002-storage-schema.md): replace the `holding`/`lot` reserved schema and `schema_overview` rows with the §1–§2 DDL; `account_model_member` and `transfer_event` changes; `account_state` view; `SCHEMA_VERSION` 17 → 18.
-- [ADR-003](ADR-003-registries-and-csv-schemas.md): §4.3 new columns and overlay key; §4.7 leaf chains per lot and the lot columns; §2.3 interim `rmd` guard; §4.7 taxable-lot withdrawals made per lot.
-- [ADR-001](ADR-001-overall-architecture.md): `AccountState` row in the domain-object table becomes a view over per-lot state.
-- [ADR-003](ADR-003-registries-and-csv-schemas.md): the `tax_character` registry gains `stcg`; §4.4 gains the `ltcg_brackets` aux kind; income tax (§2.6) taxes long-term gains at those rates when present.
-
 ## Consequences
 
 - Positive: lot-level sales and per-security growth with no price path in the engine; reporting is untouched through the view; one file (`account_lots.csv`) carries opening state; the ledger stays zero-sum and event-sourced.
@@ -189,22 +179,3 @@ Applied to [ADR-001](ADR-001-overall-architecture.md), [ADR-002](ADR-002-storage
 - `on_death` sweeps and the other account-level rule kinds (`ss_benefit`, income tax, `mortgage_payment`) all need auditing for one-balance-per-account assumptions; the plan's Phase 0 does this.
 - Namespace collision between account names and symbols in `aux_table` rate series (lookup order in §5 covers it, but an account and a ticker with the same name would be ambiguous).
 - `sim import holdings` sets the lot each outside account is mapped to, adding together those mapped to one lot (a mapping row names the lot of a multi-lot account, ADR-003 §4.17). From a source that lists holdings by symbol (a brokerage's positions download), each holding sets the account's lot of that symbol, its shares, balance and, in a taxable account, its basis, and a holding with no lot can be given a new one ([#527](https://github.com/BobKerns/zabob-retirement/issues/527)).
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#78](https://github.com/BobKerns/zabob-retirement/issues/78): a fund lot can grow at the blend of its allocation slices' rate series (§5).
-- [#160](https://github.com/BobKerns/zabob-retirement/issues/160): the table is named `account_lot` (was `account_model_member`) and loses `model_id` with the single-row `account_model` table (§1).
-- [#197](https://github.com/BobKerns/zabob-retirement/issues/197): the `sell_asset` and `buy_asset` calendar kinds are dropped, so nothing here refers to them (Context, Consequences).
-- [#199](https://github.com/BobKerns/zabob-retirement/issues/199): a sale through a destination chain's basis step recovers the lot's basis, and a `capital_improvement` step adds to it (§7).
-- [#217](https://github.com/BobKerns/zabob-retirement/issues/217): a `retirement` account's lots each carry a subkind (Roth or traditional, IRA or 401k) that sets the lot's tax treatment, and its RMD counts only traditional lots (§1, §3, §8).
-- [#217](https://github.com/BobKerns/zabob-retirement/issues/217): a Roth lot tracks basis and splits a distribution by the five-year rule (§7).
-- [#224](https://github.com/BobKerns/zabob-retirement/issues/224): a `retirement` lot's growth counterparty follows its subkind, not the account's `tax_character` (§5).
-- [#256](https://github.com/BobKerns/zabob-retirement/issues/256): a Roth lot's five-year rules change at a death (§7).
-- [#255](https://github.com/BobKerns/zabob-retirement/issues/255): a lot's basis steps up at a death (§7).
-- [#468](https://github.com/BobKerns/zabob-retirement/issues/468): a taxable lot pays out dividends and interest each year from yield series, taxed that year and reinvested with basis; its growth rule takes them out of total return (§5, §7).
-- [#547](https://github.com/BobKerns/zabob-retirement/issues/547): long-term and short-term capital-gain distributions from `<series>_cg_yield` and `<series>_stcg_yield`, taxed `ltcg` and `ordinary`; an untaxed lot holding shares reinvests its payouts untaxed, buying shares without basis; a fund's ordinary payouts are dividends from `ordinary_dividends`, not interest (§5).
-- [#497](https://github.com/BobKerns/zabob-retirement/issues/497): every HSA lot gets payouts, from `hsa_dividends` and `hsa_gain_distributions`, which add basis; an HSA lot tracks a basis, and a withdrawal's gain over it is an `hsa_gain` row for a state that taxes the HSA (§5, §7).
-- [#265](https://github.com/BobKerns/zabob-retirement/issues/265): a municipal bond class (`muni`, `muni_<ST>`) pays its yield as tax-exempt interest from `muni_interest` or `muni_interest__<ST>` (§5).
-- [#527](https://github.com/BobKerns/zabob-retirement/issues/527): an import mapping can name a lot, so a multi-lot account can be imported into, one outside account per lot (open questions).

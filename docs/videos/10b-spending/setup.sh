@@ -8,13 +8,13 @@
 # its run renamed to a fixed time, so every recording reads the same run.
 
 
-export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
+export HOME="$(dirname "$ZABOB_DATA_DIR")/home"
 mkdir -p "$HOME"
-unset ANALYSIS_DATA_DIR
-sim init ~/retirement/data --id alice --display "Alice Example" --birthdate 1962-04-15 \
+unset ZABOB_DATA_DIR
+sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/retirement/data/sim/activate-analysis > /dev/null
-cd ~/retirement/data
+source ~/zabob-retirement/sim/activate-retirement > /dev/null
+cd ~/zabob-retirement
 
 stage() {  # commit what the commands before made, and mark where a scene starts
     git add -A
@@ -100,7 +100,7 @@ demo_batch() {
     local batch
     batch="$(ls -t "state/runs/$1/monte-carlo" | head -1)"
     mv "state/runs/$1/monte-carlo/$batch" "state/runs/$1/monte-carlo/$2"
-    mv "state/intent/$1/$batch" "state/intent/$1/$2" 2>/dev/null || true
+    mv "state/intent/$1/monte-carlo/$batch" "state/intent/$1/monte-carlo/$2" 2>/dev/null || true
 }
 
 # 10a's rebalance scenario, as that video makes it.

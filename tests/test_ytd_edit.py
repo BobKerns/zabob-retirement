@@ -273,7 +273,7 @@ def test_widening_a_header_keeps_what_the_rows_inherit(
 ) -> None:
     # The child's override leaves `year` out of its header, so it inherits 2025.
     child = test_child_scenario / "year_to_date.csv"
-    child.write_text("name,amount\nprior_ltcg_loss_carryforward,-1000.00\n")
+    child.write_text("name,amount\nprior_ltcg_loss_carryforward,-1000.00\n", encoding="utf-8")
 
     result = _sim(test_data_dir, "child", "edit", "prior_wages_alice", "--amount", "1")
 
@@ -288,7 +288,7 @@ def test_editing_an_own_row_of_a_partial_header_keeps_what_it_inherits(
     test_data_dir: Path, test_child_scenario: Path,
 ) -> None:
     child = test_child_scenario / "year_to_date.csv"
-    child.write_text("name,amount\nprior_ltcg_loss_carryforward,-1000.00\n")
+    child.write_text("name,amount\nprior_ltcg_loss_carryforward,-1000.00\n", encoding="utf-8")
 
     result = _sim(test_data_dir, "child", "edit", "prior_ltcg_loss_carryforward", "--amount", "-900")
 

@@ -103,7 +103,7 @@ def test_a_current_start_needs_a_rate_before_its_date(
     """The series file's first entry is on the row's own date, which the row
     replaces, and no earlier row sets the series: nothing to start from."""
     retire_alice_csv("series/rate__Asset_Checking.csv").write_text(
-        "effective_date,annual_rate\n2026-12-31,3%\n")
+        "effective_date,annual_rate\n2026-12-31,3%\n", encoding="utf-8")
     _process_rate(append_calendar_row, "stock_path", date="2026-12-31", **_CURRENT)
     issues = _issues(load_test_copy)
     assert any("vary_process_start 'current' needs a rate in effect before 2026-12-31" in i
@@ -117,7 +117,7 @@ def test_an_earlier_row_whose_date_varies_is_not_counted_at_load(
     """It could land after the process row, so only a fixed date supplies a
     start for certain."""
     retire_alice_csv("series/rate__Asset_Checking.csv").write_text(
-        "effective_date,annual_rate\n2026-12-31,3%\n")
+        "effective_date,annual_rate\n2026-12-31,3%\n", encoding="utf-8")
     append_calendar_row(date="2026-10-31", kind="set_rate", series="Asset_Checking",
                         amount="2%", name="moved", vary_target="date",
                         vary_distribution="uniform", vary_low="2026-08", vary_high="2027-06")
@@ -150,7 +150,7 @@ def test_the_start_is_strictly_before_the_rows_date(
     """A series entry on the row's own date is replaced by the row (the
     engine applies the row after the file), so the start is the one before."""
     retire_alice_csv("series/rate__Asset_Checking.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,3%\n2026-06-30,2%\n2026-12-31,5%\n")
+        "effective_date,annual_rate\n2026-01-31,3%\n2026-06-30,2%\n2026-12-31,5%\n", encoding="utf-8")
     _process_rate(append_calendar_row, "stock_path", date="2026-12-31", **_CURRENT)
     member = _member(load_test_copy().intent_path, tmp_path, 0)
     # The authored 2027-01 row cuts the path after year 0.

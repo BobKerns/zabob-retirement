@@ -67,7 +67,7 @@ def test_the_standard_deduction_switches_after_the_year_of_death(
     scenario_df.loc[0, "end"] = "2031-12-31"
     scenario_df.to_csv(scenario_csv, index=False)
 
-    retire_alice_csv("lifespan.csv").write_text("person,age_at_death\nalice,63.25\n")
+    retire_alice_csv("lifespan.csv").write_text("person,age_at_death\nalice,63.25\n", encoding="utf-8")
     add_tax()
 
     run = run_scenario(load_test_copy().intent_path, runs_dir / "r.sqlite3", run_by="T",

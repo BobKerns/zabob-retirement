@@ -8,12 +8,12 @@
 #
 #   /repo/...          the checkout, read-only: src, pyproject.toml, uv.lock,
 #                      README.md, templates, historical_data, prototype_data,
-#                      notebooks, scripts/videos, docs/videos
+#                      notebooks, plugins, scripts/videos, docs/videos
 #   /opt/env           the named volume analysis-videos-env: the project's
 #                      venv, uv's cache and Pythons, Playwright's Chromium
 #   /out               where the videos land (and the build cache, .cache)
-#   /data              the video's own data repo (`sim init /data` makes
-#                      /data/sim): a named volume per video
+#   /data              the videos' data repo (`sim init /data` makes
+#                      /data/sim): the named volume analysis-videos-data
 #
 # The entrypoint runs `uv sync` into the volume before each command (a
 # quick check once it's done), so the CLI a tape records is the checkout's
@@ -41,7 +41,7 @@ ARG KOKORO_RELEASE=https://github.com/thewh1teagle/kokoro-onnx/releases/download
 ARG TARGETARCH
 
 # VHS_NO_SANDBOX: Chromium can't sandbox itself inside a container.
-# ANALYSIS_BUILDER=off: no background builds (#300); a tape runs what it shows.
+# ZABOB_BUILDER=off: no background builds (#300); a tape runs what it shows.
 # PYTHONPYCACHEPREFIX: the code is mounted read-only, so compiled modules go
 # here, once per container run.
 ENV LANG=C.UTF-8 \
@@ -50,11 +50,11 @@ ENV LANG=C.UTF-8 \
     UV_PROJECT_ENVIRONMENT=/opt/env/venv \
     UV_NO_PROGRESS=1 \
     PLAYWRIGHT_BROWSERS_PATH=/opt/env/pw-browsers \
-    ANALYSIS_VIDEO_CACHE=/opt/analysis-videos \
-    ANALYSIS_VIDEO_DATA=/data/sim \
-    ANALYSIS_DATA_DIR=/data/sim \
+    ZABOB_VIDEO_CACHE=/opt/analysis-videos \
+    ZABOB_VIDEO_DATA=/data/sim \
+    ZABOB_DATA_DIR=/data/sim \
     VHS_NO_SANDBOX=true \
-    ANALYSIS_BUILDER=off \
+    ZABOB_BUILDER=off \
     PYTHONPYCACHEPREFIX=/tmp/pycache \
     PATH=/opt/env/venv/bin:/opt/node/bin:$PATH
 
@@ -94,22 +94,25 @@ RUN set -eu; \
         | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/vhs'; \
     curl -fsSL -o /usr/local/bin/ttyd "$gh/tsl0922/ttyd/releases/download/$TTYD_VERSION/ttyd.$ttyd"; \
     chmod 755 /usr/local/bin/ttyd /usr/local/bin/vhs; \
-    mkdir -p "$ANALYSIS_VIDEO_CACHE"; \
+    mkdir -p "$ZABOB_VIDEO_CACHE"; \
     for f in kokoro-v1.0.onnx voices-v1.0.bin; do \
-        curl -fsSL -o "$ANALYSIS_VIDEO_CACHE/$f" "$KOKORO_RELEASE/$f"; \
+        curl -fsSL -o "$ZABOB_VIDEO_CACHE/$f" "$KOKORO_RELEASE/$f"; \
     done
 
-# Chromium's system libraries, from the npm package of the Playwright the
-# project uses; Chromium itself goes in the volume (the entrypoint installs
-# it). /opt/pw-browsers/chromium is where the builder looks for it, and VHS
-# finds `chromium` on PATH: both point into the volume.
-RUN npx --yes "playwright@$PLAYWRIGHT_VERSION" install-deps chromium \
- && rm -rf /var/lib/apt/lists/* /root/.npm \
+# Chromium's system libraries, from the Python package of the Playwright the
+# project locks, at that exact version (#685: npm's playwright can lag PyPI's,
+# as 1.65.2 did), run with a throwaway uv cache and Python, since the image's
+# own uv paths are in the volume. Chromium itself goes in the volume (the
+# entrypoint installs it). /opt/pw-browsers/chromium is where the builder
+# looks for it, and VHS finds `chromium` on PATH: both point into the volume.
+RUN UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+        uvx --python 3.14 --from "playwright==$PLAYWRIGHT_VERSION" playwright install-deps chromium \
+ && rm -rf /var/lib/apt/lists/* /tmp/uv-cache /tmp/uv-python \
  && mkdir -p /opt/pw-browsers \
  && ln -s /opt/env/pw-browsers/chromium /opt/pw-browsers/chromium \
  && ln -s /opt/env/pw-browsers/chromium /usr/local/bin/chromium
 
-# /repo/.venv: activate-analysis, which video 2 sources, looks for the
+# /repo/.venv: activate-retirement, which video 2 sources, looks for the
 # code's venv there. The checkout is mounted piece by piece, so the host's
 # own .venv never shadows it.
 WORKDIR /repo

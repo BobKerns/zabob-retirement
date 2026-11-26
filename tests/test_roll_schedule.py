@@ -82,7 +82,7 @@ def test_a_marked_scenario_rolls_once_its_start_month_is_over(
     assert roll_schedule.due_scenarios(data, date(2026, 5, 31)) == []
     assert roll_schedule.due_scenarios(data, date(2026, 6, 1)) == [("retire_alice", "2026-05")]
     # Disabled: no run is kept current for it to project from.
-    (data / "scenarios" / "retire_alice" / ".disable").write_text("off\n")
+    (data / "scenarios" / "retire_alice" / ".disable").write_text("off\n", encoding="utf-8")
     assert roll_schedule.due_scenarios(data, date(2026, 6, 1)) == []
 
 
@@ -112,7 +112,7 @@ def test_a_derived_scenario_rolls_its_own_rows_after_its_parent(
         calls.append((name, own))
         if own:
             return 1, [f"Error: alice_more's start is inherited ...: {PARENT_FIRST}, or ..."]
-        (data / "scenarios" / name / "README.md").write_text("rolled\n")
+        (data / "scenarios" / name / "README.md").write_text("rolled\n", encoding="utf-8")
         return 0, []
 
     monkeypatch.setattr(roll_schedule, "_roll_one", fake)
@@ -182,7 +182,7 @@ def test_a_roll_into_a_new_year_commits_on_its_branch_tags_the_plan_and_merges(
     marked: tuple[Path, git.Repo], data_repo_origin: Path, commit_files: Callable[..., str],
 ) -> None:
     data, repo = marked
-    december = (data.parent / SCENARIO).read_text().replace("2026-05", "2026-12")
+    december = (data.parent / SCENARIO).read_text(encoding="utf-8").replace("2026-05", "2026-12")
     commit_files(repo, {SCENARIO: december}, "retire_alice starts in December")
     load = CliRunner().invoke(sim_group_command, ["load", "retire_alice", "--data-dir", str(data)])
     assert load.exit_code == 0, load.output
@@ -208,7 +208,7 @@ def test_a_roll_into_a_new_year_commits_on_its_branch_tags_the_plan_and_merges(
     assert repo.tags["plan-2026"].commit.hexsha == before
     assert [p.hexsha for p in repo.head.commit.parents] == [before, rolled.hexsha]
     assert _scenario_row(data / "scenarios" / "retire_alice" / "scenario.csv")["start"] == "2027-01"
-    ytd = (data / "scenarios" / "retire_alice" / "year_to_date.csv").read_text()
+    ytd = (data / "scenarios" / "retire_alice" / "year_to_date.csv").read_text(encoding="utf-8")
     assert "projected_2026_1" in ytd, outcome.lines
     assert not repo.is_dirty(untracked_files=True)
     with git.Repo(data_repo_origin) as origin:
@@ -231,7 +231,7 @@ def _pending_roll(repo: git.Repo, data: Path, commit_files: Callable[..., str]) 
     leaves one; its commit."""
     main = repo.head.commit.hexsha
     path = data.parent / SCENARIO
-    original = path.read_text()
+    original = path.read_text(encoding="utf-8")
     rolled = commit_files(repo, {SCENARIO: original.replace("2026-05", "2026-11")}, "Roll retire_alice")
     repo.git.update_ref(f"refs/heads/{roll_schedule.ROLL_BRANCH}", rolled)
     repo.git.reset("--hard", main)
@@ -247,7 +247,7 @@ def test_a_roll_waits_for_a_clean_main_then_merges(
 ) -> None:
     data, repo = marked
     _pending_roll(repo, data, commit_files)
-    (data / "scenarios" / "base" / "README.md").write_text("edited\n")
+    (data / "scenarios" / "base" / "README.md").write_text("edited\n", encoding="utf-8")
     assert roll_schedule.merge_pending(data) == []
     assert roll_schedule.read_state(data)["waiting"] == "main has uncommitted changes"
     assert "roll waiting to merge into main: main has uncommitted changes" in roll_schedule.describe(
@@ -256,7 +256,7 @@ def test_a_roll_waits_for_a_clean_main_then_merges(
     # main moved, but not under the rolled scenarios: the roll still merges.
     commit_files(repo, {"sim/notes.txt": "x\n"}, "elsewhere")
     assert roll_schedule.merge_pending(data)[0] == "merged the roll into main"
-    assert "2026-11" in (data.parent / SCENARIO).read_text()
+    assert "2026-11" in (data.parent / SCENARIO).read_text(encoding="utf-8")
 
 
 def test_a_roll_main_changed_the_scenario_of_is_dropped_and_done_again(
@@ -272,7 +272,7 @@ def test_a_roll_main_changed_the_scenario_of_is_dropped_and_done_again(
     state = roll_schedule.read_state(data)
     assert not state["pending"] and state["night"] is None
     assert repo.commit(roll_schedule.ROLL_BRANCH).hexsha == repo.head.commit.hexsha
-    assert "2026-05" in (data.parent / SCENARIO).read_text()
+    assert "2026-05" in (data.parent / SCENARIO).read_text(encoding="utf-8")
 
 
 def test_a_tag_is_reused_while_it_holds_the_plan_and_never_moved(
@@ -316,7 +316,7 @@ def test_scenario_edit_marks_a_scenario_to_roll_and_the_loader_checks_it(
     assert roll_schedule.marked(test_data_dir) == []
     assert json.loads(edit("--roll", "")) == {}
     path = test_scenarios_dir / "retire_alice" / "scenario.csv"
-    path.write_text(_csv_text(_scenario_row(path) | {"meta_json": '{"roll": "weekly"}'}))
+    path.write_text(_csv_text(_scenario_row(path) | {"meta_json": '{"roll": "weekly"}'}), encoding="utf-8")
     check = CliRunner().invoke(sim_group_command, ["check", "retire_alice", "--data-dir", str(test_data_dir)])
     assert check.exit_code != 0
     assert "meta_json roll must be one of monthly, off (got 'weekly')" in check.output
@@ -329,7 +329,7 @@ def test_install_records_whether_to_roll_and_when(
     code = tmp_path / "code"
     (code / "data").mkdir(parents=True)
     (code / "data" / "private").symlink_to(data.parent)
-    (data / ".analysis").write_text(f"{code}\n")
+    (data / ".analysis").write_text(f"{code}\n", encoding="utf-8")
     monkeypatch.setattr(builder, "code_dir", lambda: code.resolve())
     paths = builder.BuilderPaths.for_data(data)
 

@@ -253,7 +253,7 @@ def test_a_path_stops_before_the_next_authored_rate_for_its_series(
     _process_rate(append_calendar_row, "stock_path")
     # set_rate only adjusts a series that has a file (#204).
     retire_alice_csv("series/inflation__Asset_Checking.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,3%\n"
+        "effective_date,annual_rate\n2026-01-31,3%\n", encoding="utf-8"
     )
     append_calendar_row(date="2031-02-28", kind="set_rate", series="Asset_Checking",
                         amount="3%", description="authored later")

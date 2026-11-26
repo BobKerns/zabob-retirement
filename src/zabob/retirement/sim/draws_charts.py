@@ -1,5 +1,5 @@
 """The draws charts (#261, #330), widget-free so ``sensitivity.ipynb``'s
-Draws section and ``sim ensemble draws --chart`` draw the same figures.
+Draws section and ``sim ensemble draws --graph`` draw the same figures.
 
 ``draws_view`` shows one node: a histogram of its drawn values with the
 distribution's own 5th, 50th and 95th percentiles marked, and a histogram

@@ -92,13 +92,13 @@ def test_a_triangular_mode_left_blank_is_the_age(
 def test_the_old_final_month_column_is_rejected(
     retire_alice_csv: Callable[[str], Path], load_test_copy: Callable[[], LoadResult],
 ) -> None:
-    retire_alice_csv("lifespan.csv").write_text("person,final_month\nalice,2033-06\n")
+    retire_alice_csv("lifespan.csv").write_text("person,final_month\nalice,2033-06\n", encoding="utf-8")
 
     with pytest.raises(LoadError, match="final_month was replaced by age_at_death") as raised:
         load_test_copy()
     assert len(raised.value.issues) == 1  # the file, not each row too
 
-    retire_alice_csv("lifespan.csv").write_text("person,final_month\n")
+    retire_alice_csv("lifespan.csv").write_text("person,final_month\n", encoding="utf-8")
     with pytest.raises(LoadError, match="final_month was replaced by age_at_death"):
         load_test_copy()
 
@@ -135,7 +135,7 @@ def test_a_lifespan_needs_the_persons_birthdate(
     test_data_dir: Path,
 ) -> None:
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + "carol,Carol (fake),,,{}\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),,,{}\n", encoding="utf-8")
     write_lifespans("carol,84,,,,,,")
 
     with pytest.raises(LoadError, match="needs 'carol's birthdate"):

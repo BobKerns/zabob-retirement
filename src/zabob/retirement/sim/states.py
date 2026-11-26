@@ -22,7 +22,7 @@ NOT_SUPPORTED = "Not supported"  # a tax code of its own the model can't express
 OWN_TAX_CODE_ISSUE = "https://github.com/BobKerns/zabob-retirement/issues/570"
 
 # The series a state tax reads while the household lives in a state with
-# no income tax: templates/aux/ ships it as a 0% table.
+# no income tax: templates/tables/ ships it as a 0% table.
 NO_TAX_SERIES = "none"
 
 
@@ -57,7 +57,7 @@ STATES: tuple[State, ...] = (
     State("AZ", "Arizona", PARTIAL),
     State("AR", "Arkansas", PARTIAL),
     State("CA", "California", SHIPPED),
-    State("CO", "Colorado", PARTIAL),
+    State("CO", "Colorado", TABLES_NEEDED),
     State("CT", "Connecticut", PARTIAL),
     State("DE", "Delaware", TABLES_NEEDED),
     State("DC", "District of Columbia", SHIPPED),

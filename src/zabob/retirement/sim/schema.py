@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 70
+SCHEMA_VERSION = 71
 
 
 def connect_sim_file(path: str | Path, **kwargs: Any) -> sqlite3.Connection:
@@ -33,7 +33,10 @@ CREATE TABLE person (
     meta_json   TEXT NOT NULL DEFAULT '{}',
     -- #274: set on someone with no role, outside the household (an heir, a
     -- trust, a charity), who gets an account of their own; NULL in it.
-    kind        TEXT CHECK (kind IN ('person','trust','charity'))
+    kind        TEXT CHECK (kind IN ('person','trust','charity')),
+    -- #257: the tax year of the person's first Roth IRA contribution or
+    -- conversion, when it predates their Roth IRA lots; NULL when not given.
+    roth_clock_start INTEGER
 );
 
 -- Names for the symbols lots hold (data repo securities.csv); shared reference
@@ -162,7 +165,8 @@ CREATE TABLE account_lot (
     account_id              INTEGER NOT NULL REFERENCES account(id),
     lot                     TEXT NOT NULL DEFAULT 'default',
     subkind                 TEXT CHECK (subkind IN
-                                ('traditional_ira','roth_ira','traditional_401k','roth_401k')),
+                                ('traditional_ira','roth_ira','traditional_401k','roth_401k',
+                                 'inherited_roth_ira')),
     tax_treatment           TEXT CHECK (tax_treatment IN
                                 ('taxable','tax_deferred','tax_free','none')),
     symbol                  TEXT,
@@ -181,6 +185,9 @@ CREATE TABLE account_lot (
     -- #274: where the lot goes at its owner's death (accounts.csv
     -- beneficiary, matched to this lot); NULL when the account names none.
     beneficiary_chain_id    INTEGER REFERENCES chain(id),
+    -- #257: an inherited_roth_ira lot's decedent's five-year clock, the tax
+    -- year it started; NULL when it has run.
+    roth_clock_start        INTEGER,
     UNIQUE (account_id, lot)
 );
 

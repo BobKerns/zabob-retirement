@@ -244,10 +244,10 @@ def _rewrite_strategy(strategy_csv: Callable[[str, str], Path], scenario: str, *
     import csv
 
     path = strategy_csv(scenario, _DRAW)
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(changes)
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -277,7 +277,7 @@ def test_targets_must_add_up_to_100(
     strategy_scenarios: Path, intent_dir: Path, strategy_csv: Callable[[str, str], Path],
 ) -> None:
     strategy_csv("alice_rebalance", "targets.csv").write_text(
-        "target_set,as_of,asset_class,weight\nmain,,stock_us,60%\nmain,,bond,30%\n"
+        "target_set,as_of,asset_class,weight\nmain,,stock_us,60%\nmain,,bond,30%\n", encoding="utf-8"
     )
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert "targets.csv (main): weights add up to 90%, not 100%" in errors
@@ -287,7 +287,7 @@ def test_two_strategies_cannot_own_one_chain(
     strategy_scenarios: Path, intent_dir: Path, strategy_csv: Callable[[str, str], Path],
 ) -> None:
     path = strategy_csv("alice_rebalance", _DRAW)
-    path.with_name("second.csv").write_text(path.read_text())
+    path.with_name("second.csv").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert "chain 'portfolio_draw' is already owned by strategy 'draw_by_allocation'" in errors
 
@@ -298,10 +298,10 @@ def test_a_repeated_key_in_one_file_fails_the_load(
     """Within one file the overlay merge would keep only the last row; a
     strategy file holds just one."""
     path = strategy_csv("alice_rebalance", _DRAW)
-    lines = path.read_text().splitlines()
-    path.write_text("\n".join([*lines, lines[1]]) + "\n")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text("\n".join([*lines, lines[1]]) + "\n", encoding="utf-8")
     strategy_csv("alice_rebalance", "targets.csv").write_text(
-        "target_set,as_of,asset_class,weight\nmain,,stock_us,60%\nmain,,bond,40%\nmain,,bond,30%\n"
+        "target_set,as_of,asset_class,weight\nmain,,stock_us,60%\nmain,,bond,40%\nmain,,bond,30%\n", encoding="utf-8"
     )
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert "a strategy file holds one row, its definition (found 2)" in errors
@@ -317,7 +317,7 @@ def test_a_strategy_file_is_named_for_its_strategy(
     filename: str, text: str | None, message: str,
 ) -> None:
     path = strategy_csv("alice_rebalance", _DRAW)
-    path.with_name(filename).write_text(text or path.read_text())
+    path.with_name(filename).write_text(text or path.read_text(encoding="utf-8"), encoding="utf-8")
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert message in errors
 
@@ -330,13 +330,13 @@ def test_a_destination_chain_with_a_nested_tax_step_is_refused(
     destination = strategy_csv("alice_rebalance", "chains") / "destination"
     destination.mkdir()
     header = "account_name,lot,maximum,percent,series,cadence,tax_character,basis_of\n"
-    (destination / "inner.csv").write_text(header + "Asset_Brokerage_Joint,default,,,,,ltcg,\n")
+    (destination / "inner.csv").write_text(header + "Asset_Brokerage_Joint,default,,,,,ltcg,\n", encoding="utf-8")
     (destination / "portfolio_place.csv").write_text(
-        header + "inner,,,,,,,\nAsset_TraditionalIRA_Alice,default,,,,,,\n"
+        header + "inner,,,,,,,\nAsset_TraditionalIRA_Alice,default,,,,,,\n", encoding="utf-8"
     )
     strategy_csv("alice_rebalance", "strategies/place_by_allocation.csv").write_text(
         "kind,chain,start,end,enabled,params_json,description\n"
-        'rebalance,portfolio_place,,,,"{""portfolio"":""portfolio:invest"",""targets"":""main""}",\n')
+        'rebalance,portfolio_place,,,,"{""portfolio"":""portfolio:invest"",""targets"":""main""}",\n', encoding="utf-8")
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert "chain 'portfolio_place' has steps with a tax_character or basis_of (through chain 'inner')" in errors
 
@@ -357,7 +357,7 @@ def test_an_unclassified_portfolio_lot_names_the_row_to_add(
     strategy_scenarios: Path, intent_dir: Path,
 ) -> None:
     (strategy_scenarios / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n"
+        "symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n", encoding="utf-8"
     )
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert f"lot {IRA} in portfolio portfolio:invest has no asset class" in errors
@@ -372,16 +372,16 @@ def test_a_lot_is_classed_by_the_series_its_growth_rule_reads(
     rate series named for its symbol wins at expansion, and is no class: the
     load sees the series the run will."""
     (strategy_scenarios / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n"
+        "symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n", encoding="utf-8"
     )
     accounts = strategy_csv("alice_rebalance", "accounts.csv")
-    accounts.write_text(accounts.read_text().replace(
+    accounts.write_text(accounts.read_text(encoding="utf-8").replace(
         "Asset_TraditionalIRA_Alice,asset,retirement,alice,,,",
-        "Asset_TraditionalIRA_Alice,asset,retirement,alice,,bond,"))
+        "Asset_TraditionalIRA_Alice,asset,retirement,alice,,bond,"), encoding="utf-8")
     load_test_scenario("alice_rebalance")
     series = strategy_csv("alice_rebalance", "series")
     series.mkdir(exist_ok=True)
-    (series / "rate__BONDX.csv").write_text("effective_date,annual_rate\n2026-01-31,3%\n")
+    (series / "rate__BONDX.csv").write_text("effective_date,annual_rate\n2026-01-31,3%\n", encoding="utf-8")
     errors = _load_errors(strategy_scenarios, "alice_rebalance", intent_dir)
     assert f"lot {IRA} in portfolio portfolio:invest has no asset class" in errors
 
@@ -392,9 +392,9 @@ def test_an_account_lot_key_classifies_a_lot(
 ) -> None:
     """``account:lot`` in allocations.csv classes a lot with no symbol (Bob, #326)."""
     lots = strategy_csv("alice_rebalance", "account_lots.csv")
-    lots.write_text(lots.read_text().replace(",BONDX,", ",,"))
+    lots.write_text(lots.read_text(encoding="utf-8").replace(",BONDX,", ",,"), encoding="utf-8")
     (strategy_scenarios / "allocations.csv").write_text(
-        f"symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n{IRA},,bond,100%\n"
+        f"symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n{IRA},,bond,100%\n", encoding="utf-8"
     )
     load_test_scenario("alice_rebalance")
 
@@ -451,7 +451,7 @@ def test_rebalance_draws_stock_when_stock_is_overweight(
     strategy_csv: Callable[[str, str], Path], run_strategy_scenario: Callable[[str], Path],
 ) -> None:
     strategy_csv("alice_rebalance", "targets.csv").write_text(
-        "target_set,as_of,asset_class,weight\nmain,,stock_us,20%\nmain,,bond,80%\n"
+        "target_set,as_of,asset_class,weight\nmain,,stock_us,20%\nmain,,bond,80%\n", encoding="utf-8"
     )
     run = run_strategy_scenario("alice_rebalance")
     note = _decisions(run)[0][5]
@@ -591,12 +591,13 @@ def _sim(data_dir: Path, *args: str, scenario: str = "alice_rebalance"):
 
 def _ira_by_lot_key(strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path]) -> None:
     lots = strategy_csv("alice_rebalance", "account_lots.csv")
-    lots.write_text(lots.read_text().replace(",BONDX,", ",,"))
+    lots.write_text(lots.read_text(encoding="utf-8").replace(",BONDX,", ",,"), encoding="utf-8")
     (strategy_scenarios / "allocations.csv").write_text(
-        f"symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n{IRA},,bond,100%\n"
+        f"symbol,as_of,asset_class,weight\nUSSTK,,stock_us,100%\n{IRA},,bond,100%\n", encoding="utf-8"
     )
 
 
+@pytest.mark.slow
 def test_a_lot_key_follows_an_account_rename(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     load_test_scenario: Callable[[str], Path],
@@ -604,11 +605,12 @@ def test_a_lot_key_follows_an_account_rename(
     _ira_by_lot_key(strategy_scenarios, strategy_csv)
     result = _sim(strategy_scenarios, "account", "rename", "Asset_TraditionalIRA_Alice", "Asset_IRA_Alice")
     assert result.exit_code == 0, result.output
-    text = (strategy_scenarios / "allocations.csv").read_text()
+    text = (strategy_scenarios / "allocations.csv").read_text(encoding="utf-8")
     assert "Asset_IRA_Alice:default,,bond,100%" in text
     load_test_scenario("alice_rebalance")
 
 
+@pytest.mark.slow
 def test_a_lot_key_follows_a_lot_rename(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     load_test_scenario: Callable[[str], Path],
@@ -617,7 +619,7 @@ def test_a_lot_key_follows_a_lot_rename(
     result = _sim(strategy_scenarios, "account", "lot", "rename", "Asset_TraditionalIRA_Alice", "default",
                   "bonds")
     assert result.exit_code == 0, result.output
-    text = (strategy_scenarios / "allocations.csv").read_text()
+    text = (strategy_scenarios / "allocations.csv").read_text(encoding="utf-8")
     assert "Asset_TraditionalIRA_Alice:bonds,,bond,100%" in text
     assert IRA not in text
     load_test_scenario("alice_rebalance")
@@ -629,7 +631,7 @@ def test_a_strategy_follows_its_chain_rename(
 ) -> None:
     result = _sim(strategy_scenarios, "chain", "rename", "portfolio_draw", "refill_draw")
     assert result.exit_code == 0, result.output
-    assert ",refill_draw," in strategy_csv("alice_rebalance", _DRAW).read_text()
+    assert ",refill_draw," in strategy_csv("alice_rebalance", _DRAW).read_text(encoding="utf-8")
     load_test_scenario("alice_rebalance")
 
 
@@ -687,7 +689,7 @@ def test_strategy_add_with_options_writes_a_checked_row(
                   "--scenario", "alice_rebalance")
     assert result.exit_code == 0, result.output
     assert not strategy_csv("alice_rebalance", _DRAW).exists()
-    text = strategy_csv("alice_rebalance", "strategies/steer.csv").read_text()
+    text = strategy_csv("alice_rebalance", "strategies/steer.csv").read_text(encoding="utf-8")
     assert 'rebalance,portfolio_draw,,,2027-01,,,"{""portfolio"":""portfolio:invest"",""targets"":' in text
     assert '""band"":""3%""' in text
 
@@ -700,18 +702,18 @@ def test_strategy_add_is_guided(strategy_scenarios: Path, strategy_csv: Callable
     assert result.exit_code == 0, result.output
     assert "chains: asset_checking_liquidity, portfolio_draw" in result.output
     assert ',"{""portfolio"":""portfolio:invest"",""targets"":""main""}",' in (
-        strategy_csv("alice_rebalance", "strategies/steer.csv").read_text())
+        strategy_csv("alice_rebalance", "strategies/steer.csv").read_text(encoding="utf-8"))
 
 
 def test_a_bad_strategy_is_refused_with_nothing_written(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
 ) -> None:
-    before = strategy_csv("alice_rebalance", _DRAW).read_text()
+    before = strategy_csv("alice_rebalance", _DRAW).read_text(encoding="utf-8")
     result = _cli(strategy_scenarios, "strategy", "edit", "draw_by_allocation", "--param", "targets=nope",
                   "--scenario", "alice_rebalance")
     assert result.exit_code != 0
     assert "no target set 'nope'" in result.output
-    assert strategy_csv("alice_rebalance", _DRAW).read_text() == before
+    assert strategy_csv("alice_rebalance", _DRAW).read_text(encoding="utf-8") == before
 
 
 def test_editing_an_inherited_strategy_writes_an_override(
@@ -724,7 +726,7 @@ def test_editing_an_inherited_strategy_writes_an_override(
                   "--scenario", "alice_last_leaf")
     assert result.exit_code == 0, result.output
     assert "overriding alice_rebalance's" in result.output
-    assert '""band"":""2%""' in child.read_text()
+    assert '""band"":""2%""' in child.read_text(encoding="utf-8")
     con = sqlite3.connect(load_test_scenario("alice_last_leaf"))
     try:
         (params,) = con.execute("SELECT params_json FROM strategy").fetchone()
@@ -750,7 +752,7 @@ def test_disable_switches_a_strategy_off(
                   "--scenario", "alice_rebalance")
     assert result.exit_code == 0, result.output
     assert "(disabled)" in result.output
-    assert ",false," in strategy_csv("alice_rebalance", _DRAW).read_text()
+    assert ",false," in strategy_csv("alice_rebalance", _DRAW).read_text(encoding="utf-8")
 
 
 def test_log_explain_and_drift_read_the_run(
@@ -770,17 +772,19 @@ def test_log_explain_and_drift_read_the_run(
     assert "bond" in result.output and "stock_us" in result.output and "max_abs" in result.output
     chart = strategy_scenarios / "drift.svg"
     result = _cli(strategy_scenarios, "allocation", "--drift", "--runfile", run,
-                  "--chart-file", str(chart))
+                  "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
-    assert "<svg" in chart.read_text()  # a line per asset class (#327)
+    assert "<svg" in chart.read_text(encoding="utf-8")  # a line per asset class (#327)
 
 
+@pytest.mark.slow
 def test_strategy_check_runs_twice(strategy_scenarios: Path) -> None:
     result = _cli(strategy_scenarios, "strategy", "check", "alice_last_leaf")
     assert result.exit_code == 0, result.output
     assert "the same in both runs" in result.output
 
 
+@pytest.mark.slow
 def test_strategy_check_finds_a_strategy_that_reads_the_clock(
     strategy_scenarios: Path, strategy_module: Callable[[str, str], Path],
     strategy_csv: Callable[[str, str], Path],
@@ -792,6 +796,7 @@ def test_strategy_check_finds_a_strategy_that_reads_the_clock(
     assert "decided differently in" in result.output
 
 
+@pytest.mark.slow
 def test_strategy_check_finds_a_strategy_that_depends_on_hash_order(
     strategy_scenarios: Path, strategy_module: Callable[[str, str], Path],
     strategy_csv: Callable[[str, str], Path],
@@ -805,6 +810,7 @@ def test_strategy_check_finds_a_strategy_that_depends_on_hash_order(
     assert "decided differently in" in result.output
 
 
+@pytest.mark.slow
 def test_target_set_list_and_delete(strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path]) -> None:
     result = _cli(strategy_scenarios, "target", "set", "main", "stock_us=70", "--as-of", "2030-01",
                   "--scenario", "alice_rebalance")
@@ -822,7 +828,7 @@ def test_target_set_list_and_delete(strategy_scenarios: Path, strategy_csv: Call
     result = _cli(strategy_scenarios, "target", "delete", "main", "--as-of", "2030-01",
                   "--scenario", "alice_rebalance")
     assert result.exit_code == 0, result.output
-    assert "2030" not in strategy_csv("alice_rebalance", "targets.csv").read_text()
+    assert "2030" not in strategy_csv("alice_rebalance", "targets.csv").read_text(encoding="utf-8")
     result = _cli(strategy_scenarios, "target", "delete", "main", "--scenario", "alice_rebalance")
     assert result.exit_code != 0 and "no target set 'main'" in result.output
 
@@ -833,7 +839,7 @@ def test_a_child_target_set_zeroes_classes_it_leaves_out(
     result = _cli(strategy_scenarios, "target", "set", "main", "stock_us=100%", "--scenario", "alice_last_leaf")
     assert result.exit_code == 0, result.output
     assert "stock_us 100%, bond 0%" in result.output
-    assert "main,,bond,0%" in strategy_csv("alice_last_leaf", "targets.csv").read_text()
+    assert "main,,bond,0%" in strategy_csv("alice_last_leaf", "targets.csv").read_text(encoding="utf-8")
 
 
 def test_rebalance_places_overflow_into_the_underweight_class(
@@ -845,16 +851,16 @@ def test_rebalance_places_overflow_into_the_underweight_class(
     destination.mkdir()
     (destination / "portfolio_place.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
-        "Asset_TraditionalIRA_Alice,default,,,,\nAsset_Brokerage_Joint,default,,,,\n"
+        "Asset_TraditionalIRA_Alice,default,,,,\nAsset_Brokerage_Joint,default,,,,\n", encoding="utf-8"
     )
     lots = strategy_csv("alice_rebalance", "account_lots.csv")
-    lots.write_text(lots.read_text().replace(
+    lots.write_text(lots.read_text(encoding="utf-8").replace(
         "Asset_Checking,,,,,,,5000.00,,,2000.00,,portfolio_draw,,,,,",
         "Asset_Checking,,,,,,,5000.00,,,2000.00,6000.00,portfolio_draw,,,,portfolio_place,",
-    ))
+    ), encoding="utf-8")
     strategy_csv("alice_rebalance", "strategies/place_by_allocation.csv").write_text(
         "kind,chain,start,end,enabled,params_json,description\n"
-        'rebalance,portfolio_place,,,,"{""portfolio"":""portfolio:invest"",""targets"":""main""}",\n')
+        'rebalance,portfolio_place,,,,"{""portfolio"":""portfolio:invest"",""targets"":""main""}",\n', encoding="utf-8")
     run = run_strategy_scenario("alice_rebalance")
     places = [r for r in _decisions(run) if r[1] == "place"]
     assert places, "checking never overflowed"

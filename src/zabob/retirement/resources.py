@@ -1,8 +1,8 @@
 """Where the program's own folders are, in a checkout or installed (#662).
 
-``templates/``, ``notebooks/`` and ``prototype_data/`` live at the top of a
+``templates/``, ``notebooks/``, ``prototype_data/`` and ``plugins/`` live at the top of a
 code checkout, where the docs, the data repo and the tests name them. A wheel
-has no checkout, so the build hook (``hatch_build.py``) copies the three into
+has no checkout, so the build hook (``hatch_build.py``) copies them into
 the package as ``_shipped/``. Everything that reads them asks here, so a
 checkout (an editable ``uv sync`` install) reads its own working copies and
 an installed program reads what shipped with it.
@@ -15,11 +15,12 @@ import sys
 from pathlib import Path
 
 from zabob.retirement.checkout import is_checkout
+from zabob.retirement.oscompat import BIN_DIR, program
 
 __all__ = [
     "CHECKOUT_DIR", "DEFAULT_DATA_REPO", "INSTALLED", "NOTEBOOKS_DIR", "PACKAGE_DIR", "PROTOTYPE_DIR",
-    "SHIPPED_DIR", "TEMPLATES_DIR", "cache_dir", "home_checkout", "program_home", "program_sim", "same_home",
-    "shipped",
+    "SHIPPED_DIR", "TEMPLATES_DIR", "cache_dir", "data_home", "home_checkout", "program_home", "program_sim",
+    "same_home", "shipped",
 ]
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -51,8 +52,22 @@ def cache_dir(name: str) -> Path:
     (``$XDG_CACHE_HOME``, by default ``~/.cache``), in ``zabob-retirement``."""
     if CHECKOUT_DIR is not None:
         return CHECKOUT_DIR / name
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / "zabob-retirement" / name
+    return _xdg("XDG_CACHE_HOME", Path.home() / ".cache") / "zabob-retirement" / name
+
+
+def data_home(name: str) -> Path:
+    """``name`` under the user's data folder (``$XDG_DATA_HOME``, by default
+    ``~/.local/share``), in ``zabob-retirement``: for what an installed
+    program writes and must keep, which has no checkout to go in."""
+    return _xdg("XDG_DATA_HOME", Path.home() / ".local" / "share") / "zabob-retirement" / name
+
+
+def _xdg(var: str, default: Path) -> Path:
+    """An XDG base folder: the variable's value when it is an absolute
+    path, else ``default``. The spec says to ignore a relative one, which
+    would put files wherever the command happened to run."""
+    value = os.environ.get(var)
+    return Path(value) if value and Path(value).is_absolute() else default
 
 
 # -- the program a data repo is paired with ---------------------------------
@@ -84,9 +99,8 @@ def home_checkout(home: str) -> Path | None:
 def program_sim(home: str) -> Path:
     """The ``sim`` of the program a recorded home names."""
     checkout = home_checkout(home)
-    if checkout is not None:
-        return checkout / ".venv" / "bin" / "sim"
-    return Path(home.removeprefix(INSTALLED)) / "sim"
+    folder = checkout / ".venv" / BIN_DIR if checkout is not None else Path(home.removeprefix(INSTALLED))
+    return program(folder, "sim")
 
 
 def same_home(a: str, b: str) -> bool:

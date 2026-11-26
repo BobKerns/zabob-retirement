@@ -9,13 +9,13 @@
 # its run renamed to a fixed time, so every recording reads the same run.
 
 
-export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
+export HOME="$(dirname "$ZABOB_DATA_DIR")/home"
 mkdir -p "$HOME"
-unset ANALYSIS_DATA_DIR
-sim init ~/retirement/data --id alice --display "Alice Example" --birthdate 1962-04-15 \
+unset ZABOB_DATA_DIR
+sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/retirement/data/sim/activate-analysis > /dev/null
-cd ~/retirement/data
+source ~/zabob-retirement/sim/activate-retirement > /dev/null
+cd ~/zabob-retirement
 
 stage() {  # commit what the commands before made, and mark where a scene starts
     git add -A

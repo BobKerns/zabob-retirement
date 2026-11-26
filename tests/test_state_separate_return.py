@@ -399,12 +399,12 @@ def test_the_loader_wants_mfs_rows_where_spouses_may_file_separately(
     test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
     add_state_tax()
-    brackets = test_data_dir / "aux" / "state_brackets__CA.csv"
+    brackets = test_data_dir / "tables" / "state_brackets__CA.csv"
     dated = _first_date(brackets)
     write_aux("state_separate_return__CA.csv", f"effective_date,allowed\n{dated},yes\n")
-    rows = brackets.read_text().splitlines(keepends=True)
-    brackets.write_text("".join(r for r in rows if ",MFS," not in r))
-    with pytest.raises(LoadError, match=rf"aux/state_brackets__CA.csv \({dated}\): no MFS rows"):
+    rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
+    brackets.write_text("".join(r for r in rows if ",MFS," not in r), encoding="utf-8")
+    with pytest.raises(LoadError, match=rf"tables/state_brackets__CA.csv \({dated}\): no MFS rows"):
         load_test_copy()
 
 
@@ -415,12 +415,12 @@ def test_the_loader_wants_mfs_rows_in_the_gain_tables_too(
     """A gain table without MFS rows would tax a spouse's gain as ordinary
     income, so it's refused too."""
     add_state_tax()
-    dated = _first_date(test_data_dir / "aux" / "state_brackets__CA.csv")
+    dated = _first_date(test_data_dir / "tables" / "state_brackets__CA.csv")
     write_aux("state_separate_return__CA.csv", f"effective_date,allowed\n{dated},yes\n")
     write_aux("state_ltcg_brackets__CA.csv",
               "effective_date,filing_status,bracket_index,floor,marginal_rate\n"
               f"{dated},MFJ,0,0.00,3%\n{dated},Single,0,0.00,3%\n")
-    with pytest.raises(LoadError, match=rf"aux/state_ltcg_brackets__CA.csv \({dated}\): no MFS"):
+    with pytest.raises(LoadError, match=rf"tables/state_ltcg_brackets__CA.csv \({dated}\): no MFS"):
         load_test_copy()
 
 
@@ -434,14 +434,14 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
     way to ones with them before then are fine; ones still in force then
     are refused."""
     add_state_tax()
-    brackets = test_data_dir / "aux" / "state_brackets__CA.csv"
+    brackets = test_data_dir / "tables" / "state_brackets__CA.csv"
     dated = _first_date(brackets)
     later = _years_on(dated, mfs_from)
     write_aux("state_separate_return__CA.csv",
               f"effective_date,allowed\n{dated},no\n{_years_on(dated, 5)},yes\n")
-    header, *rows = brackets.read_text().splitlines(keepends=True)
+    header, *rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
     brackets.write_text(header + "".join(r for r in rows if ",MFS," not in r)
-                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)))
+                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)), encoding="utf-8")
     if refused:
         with pytest.raises(LoadError, match=rf"state_brackets__CA.csv \({dated}\): no MFS"):
             load_test_copy()
@@ -451,7 +451,7 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
 
 def _first_date(path: Path) -> str:
     """The earliest effective date in aux table ``path``."""
-    return min(line.split(",", 1)[0] for line in path.read_text().splitlines()[1:])
+    return min(line.split(",", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()[1:])
 
 
 def _years_on(dated: str, years: int) -> str:
@@ -540,3 +540,71 @@ def test_whose_the_exclusion_is_survives_a_subtractions_override(
     prepared = _prepared(ledger, aux)
     state = _OwnSubtractions(prepared.calc, prepared.ty).compute()
     assert (state["separate_agi_alice"], state["separate_agi_bill"]) == (50_000_00, 40_000_00)
+
+
+# -- Add-ons to the standard deduction (#610) ---------------------------------
+
+def _addon(amount: int, status: str | None = None) -> tuple[str, dict[str, Any]]:
+    """$``amount`` on the standard deduction for each filer from 65."""
+    row = {"name": "age_65", "step": "deduction", "base": "filers", "amount": amount,
+           "min_age": 65, "standard": "yes"}
+    return DATED, {**row, "filing_status": status} if status else row
+
+
+def test_a_standard_add_on_phases_out_with_the_standard_deduction(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Halfway through the phase-out, half the add-on is gone too; past
+    its end, all of it."""
+    standard = [(DATED, {"filing_status": s, "amount": amount,
+                         "phaseout_start": 80_000_00, "phaseout_end": 100_000_00})
+                for s, amount in (("MFJ", 6_500_00), ("MFS", 3_250_00), ("Single", 3_250_00))]
+    aux = _aux(allowed=None, standard=standard)
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00)]
+    _pay(ledger, post_transfer, 50_000_00, 40_000_00)
+    state = _state(ledger, aux)
+    assert state["age_65"] == 1_000_00
+    assert state["standard_deduction"] == state["deduction"] == 3_250_00 + 500_00
+    _pay(ledger, post_transfer, 10_000_00, 0)
+    assert _state(ledger, aux)["deduction"] == 0
+
+
+def test_each_spouse_takes_the_mfs_add_on(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+) -> None:
+    """Alice, 65, files separately with the MFS row's add-on on her own
+    standard deduction, not her share of the joint one; Bill, 60, has none."""
+    aux = _aux()
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00, "MFJ"), _addon(1_500_00, "MFS")]
+    _pay(ledger, post_transfer, 60_000_00, 40_000_00)
+    state = _state(ledger, aux)
+    assert state["separate_return"] == 1
+    assert state["separate_deduction_alice"] == 3_250_00 + 1_500_00
+    assert state["separate_deduction_bill"] == 3_250_00
+
+
+class _OwnStandard(StateTablesYear):
+    """A household's state year writing its own standard deduction."""
+
+    def deductions(self) -> Mapping[str, int]:
+        return {"standard_deduction": 6_500_00, "itemized_deduction": 0,
+                "deduction": 6_500_00}
+
+
+def test_a_deductions_step_written_before_the_add_ons_keeps_them_as_deductions(
+    ledger: sqlite3.Connection, post_transfer: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Written for API 7 or before, its deductions() never adds the add-on,
+    so the add-on stays a deduction after AGI, as it was then."""
+    aux = _aux(allowed=None)
+    aux[(registries.STATE_ADJUSTMENTS, STATE)] = [_addon(1_000_00)]
+    _pay(ledger, post_transfer, 60_000_00, 40_000_00)
+    prepared = _prepared(ledger, aux)
+    monkeypatch.setattr(sys.modules[__name__], "API_VERSION", 7, raising=False)
+    older = _OwnStandard(prepared.calc, prepared.ty).compute()
+    assert older["age_65"] == 1_000_00
+    assert older["taxable_income"] == 100_000_00 - 6_500_00 - 1_000_00
+    monkeypatch.setattr(sys.modules[__name__], "API_VERSION", 8)
+    assert _OwnStandard(prepared.calc, prepared.ty).compute()["taxable_income"] \
+        == 100_000_00 - 6_500_00

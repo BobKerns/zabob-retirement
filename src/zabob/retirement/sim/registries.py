@@ -103,6 +103,11 @@ follows every rule, so no rule's order is tied to it. ``fill_bracket``'s
 conversions come last: an RMD can't be converted, so it must come out first,
 and the conversion's target needs the year's whole income."""
 
+HSA_GAIN_CHARACTERS: tuple[str, ...] = ("ltcg", "stcg")
+"""The characters of an HSA withdrawal's gain over basis (``hsa_gain``,
+#497), and of a year_to_date.csv row from an HSA lot to itself that
+carries one (#605)."""
+
 # Canonical year_to_date.csv column order (ADR-003 §4.10).
 YEAR_TO_DATE_CSV_HEADER: tuple[str, ...] = (
     "name", "from_account", "from_lot", "to_account", "to_lot", "amount",
@@ -303,7 +308,21 @@ RETIREMENT_LOT_SUBKINDS: dict[str, str] = {
     "roth_ira": "tax_free",
     "traditional_401k": "tax_deferred",
     "roth_401k": "tax_free",
+    # #257: a Roth IRA inherited from someone outside the household (a
+    # non-spouse), held apart from the beneficiary's own: the decedent's
+    # five-year clock, no age test, emptied within ten years.
+    "inherited_roth_ira": "tax_free",
 }
+INHERITED_ROTH_SUBKIND = "inherited_roth_ira"
+# #257: a non-spouse beneficiary must empty an inherited Roth IRA by Dec 31
+# of the tenth year after the death (SECURE Act, IRC §401(a)(9)(H)).
+INHERITED_ROTH_YEARS = 10
+# The rule covers deaths from this year on; a beneficiary of an earlier one
+# keeps the life-expectancy stretch, with no deadline.
+SECURE_ACT_YEAR = 2020
+# #257: the first tax year a Roth IRA could take money (Taxpayer Relief Act
+# of 1997); a roth_clock_start before it is a typo.
+FIRST_ROTH_YEAR = 1998
 
 # Lot subkinds an RMD may be drawn from: Roth IRAs never had RMDs, and Roth
 # 401ks have none from 2024 (SECURE 2.0 §325).
@@ -657,6 +676,14 @@ STATE_GAINS_DEDUCTION = "state_gains_deduction"
 """The aux kind of the standard deduction of a state's gains tax (#489),
 one figure per filing status like ``state_standard_deduction``."""
 
+STATE_RECAPTURE = "state_recapture"
+"""The aux kind of a state's benefit recapture (#549): an addition to tax
+that takes back the benefit of its lower brackets as state AGI rises,
+Connecticut's 2% phase-out add-back and tax recapture, New York's
+supplemental tax. Each row adds up to ``amount`` over ``width`` dollars of
+AGI above ``floor``, in a straight line or in whole ``step``s; the rows of
+a filing status add up to the ``state_recapture`` line."""
+
 STATE_HSA_TREATMENTS: tuple[str, ...] = ("federal", "taxable")
 """A ``state_hsa`` row's ``treatment``: ``federal`` follows the federal
 rules (the default, without a table); ``taxable`` is California's, which
@@ -676,7 +703,18 @@ in the order a row that covers several uses them up: ordinary income from a
 ``dividend``, ``qualified_dividend`` legs); a
 ``retirement_account`` distribution (``tax_deferred_out``, ``roth_nonqualified``);
 a ``capital_gain`` (``stcg``/``ltcg``); and ``other``, the rest of the state's
-taxable income. ``all`` in a row stands for every one of them."""
+taxable income. ``all`` in a row stands for every one of them.
+
+A row may also cover ``ss`` (:data:`STATE_EXCLUSION_SS`, #613), which
+``all`` doesn't stand for."""
+
+STATE_EXCLUSION_SS = "ss"
+"""The Social Security a ``state_retirement_exclusion`` row may cover
+(#613): Colorado's pension subtraction counts each person's taxable Social
+Security against its cap. It uses up the cap by the person's federally
+taxable Social Security, but leaves out only what the
+``state_social_security`` table left taxed, so the two never subtract the
+same dollar."""
 
 STATE_ADJUSTMENTS = "state_adjustments"
 """The aux kind of a state's own deductions and credits (#511, #488), keyed
@@ -778,7 +816,7 @@ STATE_KEYED_AUX_KINDS: frozenset[str] = frozenset({
     "state_brackets", STATE_ITEMIZED_LIMITS, STATE_STANDARD_DEDUCTION, STATE_LTCG_BRACKETS, STATE_STCG_BRACKETS,
     STATE_LTCG_EXCLUSION, STATE_SOCIAL_SECURITY, STATE_SURCHARGE, STATE_HSA,
     STATE_RETIREMENT_EXCLUSION, STATE_LOCAL_TAX, STATE_ADJUSTMENTS,
-    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN,
+    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN, STATE_RECAPTURE,
 })
 """The aux kinds keyed by state (or, for ``state_local_tax``, by county):
 a tax year reads the series where the household lives that year
@@ -786,11 +824,12 @@ a tax year reads the series where the household lives that year
 
 OPTIONAL_STATE_AUX_KINDS: frozenset[str] = frozenset({
     STATE_ITEMIZED_LIMITS, STATE_SURCHARGE, STATE_HSA, STATE_LOCAL_TAX, STATE_ADJUSTMENTS,
-    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN,
+    STATE_GAINS_TAX, STATE_GAINS_DEDUCTION, STATE_SEPARATE_RETURN, STATE_RECAPTURE,
 })
 """The state tables a state may lack (#490, #487, #489, #542, #580): then it
 has no surcharge, local tax or gains tax, its HSA follows the federal rules,
-it figures no itemized lines from spending, and a couple files jointly."""
+it figures no itemized lines from spending, a couple files jointly, and no
+benefit is recaptured."""
 
 STATE_BAND_KINDS: frozenset[str] = frozenset({STATE_SURCHARGE, STATE_LOCAL_TAX, STATE_GAINS_TAX})
 """The state tables of bands (#490, #487, #489): a surcharge's and a local
@@ -816,6 +855,7 @@ TAX_GROWTH_SERIES_COLUMNS: dict[str, dict[str, str]] = {
     STATE_LOCAL_TAX: {"floor_series": "floor"},
     STATE_GAINS_TAX: {"floor_series": "floor"},
     STATE_GAINS_DEDUCTION: {"amount_series": "amount"},
+    STATE_RECAPTURE: {"floor_series": "floor", "amount_series": "amount"},
     "ltcg_brackets": {"floor_series": "floor"},
     STATE_LTCG_BRACKETS: {"floor_series": "floor"},
     STATE_STCG_BRACKETS: {"floor_series": "floor"},
@@ -890,6 +930,11 @@ AUX_KIND_COLUMNS: dict[str, tuple[str, ...]] = {
     STATE_GAINS_TAX:
         ("effective_date", "filing_status", "bracket_index", "floor", "marginal_rate"),
     STATE_GAINS_DEDUCTION: ("effective_date", "filing_status", "amount"),
+    # A state's benefit recapture (#549): each row adds to the tax up to
+    # `amount` over `width` dollars of state AGI above `floor`, in a
+    # straight line, or with `step` in whole steps, any part of one counting
+    # as a step (Connecticut's tables). The rows of one filing status add up.
+    STATE_RECAPTURE: ("effective_date", "filing_status", "floor", "width", "amount", "step"),
     # Federal long-term capital gain rates: the same shape as federal_brackets,
     # but a band's floor is the taxable income (ordinary income plus the gain,
     # stacked on top) at which its rate starts. Optional: without it long-term
@@ -958,11 +1003,14 @@ AUX_KIND_COLUMNS: dict[str, tuple[str, ...]] = {
     # every status. `less_ss` (an `income` row with an amount, #579) takes
     # the Social Security received off the cap: each filer's own with
     # `per_person`, else the household's. A `refundable` credit (#579) is
-    # paid in full, below zero tax. Every column after `base` may be left out.
+    # paid in full, below zero tax. A `standard` deduction (#610) is part of
+    # the standard deduction, added to it before it is compared with the
+    # itemized one, so a household that itemizes doesn't get it. Every
+    # column after `base` may be left out.
     STATE_ADJUSTMENTS: (
         "effective_date", "name", "step", "base", "tag", "rate", "amount", "per_person",
         "min_age", "filing_status", "income_limit", "phaseout", "phaseout_rate",
-        "less_ss", "refundable",
+        "less_ss", "refundable", "standard",
     ),
     # Itemized deductions: a dated total, no filing_status split (unlike
     # standard_deduction). Optional; when present, a tax jurisdiction uses
@@ -1107,6 +1155,7 @@ AUX_MONEY_COLUMNS: dict[str, frozenset[str]] = {
     STATE_LOCAL_TAX: frozenset({"floor"}),
     STATE_GAINS_TAX: frozenset({"floor"}),
     STATE_GAINS_DEDUCTION: frozenset({"amount"}),
+    STATE_RECAPTURE: frozenset({"floor", "width", "amount", "step"}),
     "standard_deduction": frozenset({"amount"}),
     STATE_STANDARD_DEDUCTION: frozenset({
         "amount", "floor", "phaseout_start", "phaseout_end", "phaseout_step",
@@ -1135,8 +1184,9 @@ AUX_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
                                       "min_age"}),
     STATE_ADJUSTMENTS: frozenset({
         "tag", "rate", "amount", "per_person", "min_age", "filing_status", "income_limit",
-        "phaseout", "phaseout_rate", "less_ss", "refundable",
+        "phaseout", "phaseout_rate", "less_ss", "refundable", "standard",
     }),
+    STATE_RECAPTURE: frozenset({"step"}),
 }
 """Columns of ``AUX_KIND_COLUMNS`` a file may leave out, by kind: a missing
 column or a blank cell is stored as None."""
@@ -1204,11 +1254,11 @@ ENSEMBLE_DISTRIBUTIONS: set[str] = {"uniform", "truncated_normal", "triangular",
 # its new one, not aliased, so a file is converted once (a clean break).
 # #31: `vary_mean` became `vary_median`, the truncated distribution's median,
 # and its meaning changed for asymmetric bounds. #284: `vary_innovation_sd`
-# became `vary_shock_sd`, the name `analysis historical` gives it.
+# became `vary_shock_sd`, the name `sim historical` gives it.
 RENAMED_CALENDAR_COLUMNS: dict[str, tuple[str, str]] = {
     "vary_mean": ("vary_median", "now the median of the truncated distribution, so the "
                                  "base case is exactly the authored value"),
-    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `analysis historical` "
+    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `sim historical` "
                                             "calls it Shock SD"),
 }
 
@@ -1287,15 +1337,20 @@ DISTRIBUTION_REQUIRED_PARAMS: dict[str, tuple[str, ...]] = {
 }
 
 
-# The IRS filing-status codes the aux tables are keyed by (templates/aux/
+# The IRS filing-status codes the aux tables are keyed by (templates/tables/
 # README.md): Head of Household isn't modeled. `sim init` offers these.
 FILING_STATUSES: tuple[str, ...] = ("MFJ", "Single", "MFS")
 
 
 # ADR-003 §4.1 and §4.9.
 PERSONS_CSV_HEADER: tuple[str, ...] = (
-    "id", "display", "birthdate", "sex", "role", "meta_json", "kind",
+    "id", "display", "birthdate", "sex", "role", "meta_json", "kind", "roth_clock_start",
 )
+# #257: persons.csv `roth_clock_start`, the tax year of a person's first Roth
+# IRA contribution or conversion, when it predates every Roth IRA lot the
+# scenario holds; account_lots.csv's, on an inherited_roth_ira lot, the
+# decedent's. A year, or a date whose year is used. Optional in both files.
+ROTH_CLOCK_COLUMN = "roth_clock_start"
 # #222: persons.csv `sex`, which picks a life table's column. Optional (an
 # older persons.csv has no such column), but required of a person with a
 # `life_table` lifespan.
@@ -1327,6 +1382,7 @@ ACCOUNT_LOTS_CSV_HEADER: tuple[str, ...] = (
     "opening_balance", "opening_cost_basis", "prior_year_end_balance",
     "minimum_balance", "maximum_balance", "refill_chain", "refill_lot",
     "refill_target", "refill_amount", "overflow_chain", "overflow_lot",
+    "roth_clock_start",
 )
 
 # The per-lot balance-management columns of account_lots.csv (ADR-003 §4.3).

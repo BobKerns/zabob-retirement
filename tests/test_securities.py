@@ -25,7 +25,7 @@ def test_rows_are_loaded_into_the_security_table(
     test_data_dir: Path, load_test_copy: Callable[[], LoadResult]
 ) -> None:
     (test_data_dir / "securities.csv").write_text(
-        "symbol,name\nVTI,Total Stock Market ETF\nAAPL,Apple Inc.\n"
+        "symbol,name\nVTI,Total Stock Market ETF\nAAPL,Apple Inc.\n", encoding="utf-8"
     )
     assert _securities(load_test_copy()) == [
         ("AAPL", "Apple Inc."), ("VTI", "Total Stock Market ETF"),
@@ -45,7 +45,7 @@ def test_the_file_is_optional(test_data_dir: Path, load_test_copy: Callable[[], 
 def test_bad_rows_are_rejected(
     text: str, message: str, test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
-    (test_data_dir / "securities.csv").write_text(text)
+    (test_data_dir / "securities.csv").write_text(text, encoding="utf-8")
     with pytest.raises(LoadError, match=message):
         load_test_copy()
 
@@ -55,7 +55,7 @@ def test_a_blank_name_and_the_no_fetch_mark_load(
 ) -> None:
     # #640: a row may be there only to mark its symbol no_fetch.
     (test_data_dir / "securities.csv").write_text(
-        "symbol,name,no_fetch\nOLD,,1\nVTI,Total market,\nBND,Bonds,0\n")
+        "symbol,name,no_fetch\nOLD,,1\nVTI,Total market,\nBND,Bonds,0\n", encoding="utf-8")
     con = sqlite3.connect(load_test_copy().intent_path)
     try:
         rows = con.execute("SELECT symbol, name, no_fetch FROM security ORDER BY symbol").fetchall()
@@ -92,7 +92,7 @@ def test_a_lower_case_symbol_is_rejected(
     path: str, text: str, message: str, test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
     (test_data_dir / path).parent.mkdir(exist_ok=True)
-    (test_data_dir / path).write_text(text)
+    (test_data_dir / path).write_text(text, encoding="utf-8")
     with pytest.raises(LoadError, match=message):
         load_test_copy()
 

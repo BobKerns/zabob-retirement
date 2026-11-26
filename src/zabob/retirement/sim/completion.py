@@ -8,14 +8,13 @@ a name belongs to may come later on the line. Once the whole line is parsed,
 mistyped one); otherwise the command checks the name itself.
 
 Completion reads what the line has so far. The data repo is ``--data-dir``
-or ``$ANALYSIS_DATA_DIR``; the scenario is the ``--scenario`` option or the
+or ``user_config.data_dir_setting()``; the scenario is the ``--scenario`` option or the
 command's scenario argument, else the current scenario; a lot belongs to
 the account argument it pairs with (``--from-lot`` with FROM_ACCOUNT).
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -25,10 +24,12 @@ from click.shell_completion import CompletionItem
 
 from zabob.retirement.sim import names, registries, series_files
 from zabob.retirement.sim.loader import read_current_scenario
+from zabob.retirement.user_config import data_dir_setting
 
 __all__ = [
     "ACCOUNT", "ACCOUNT_OR_NEW", "ANY_TAG", "AUX_KIND", "CALENDAR_ROW", "CHAIN",
-    "CORRELATE_WITH", "ENDPOINT", "ENSEMBLE", "ITEMIZATION", "OWNER", "PERSON", "RULE",
+    "CORRELATE_WITH", "ENDPOINT", "ENSEMBLE", "ITEMIZATION", "OWNER", "OWN_ENSEMBLE", "OWN_SCENARIO",
+    "PERSON", "RULE",
     "RULE_TAG", "SCENARIO", "SCENARIO_OR_RUNFILE", "SCENARIO_PARAMS", "SCHEDULED_SERIES",
     "SENSITIVITY_ROW", "STRATEGY",
     "STRATEGY_KIND", "SYMBOL", "TAG", "TAG_FILTER", "TARGET_SET", "TAX_JURISDICTION", "TAX_KIND",
@@ -78,7 +79,7 @@ def _given(ctx: click.Context, key: str) -> Any:
 
 
 def _data_dir(ctx: click.Context) -> Path | None:
-    given = _given(ctx, "data_dir") or os.environ.get("ANALYSIS_DATA_DIR")
+    given = _given(ctx, "data_dir") or data_dir_setting()
     return Path(given) if given else None
 
 
@@ -172,6 +173,21 @@ def _ensembles(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
     ]
 
 
+def _own_scenarios(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.sim.loader import list_scenario_names
+    return list_scenario_names(data_dir)  # the data repo's own: no templates
+
+
+def _own_ensembles(ctx: click.Context, data_dir: Path) -> list[str]:
+    import zabob.retirement.sim.scenario as sc  # it imports this module's importer, cli
+    return [name for name in _own_scenarios(ctx, data_dir) if sc.ensemble_settings(data_dir, name)[1] is not None]
+
+
+def _templates(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.sim.lineage import template_names
+    return template_names(data_dir / "scenarios")
+
+
 def _pools(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
     from zabob.retirement.sim.lineage import is_pool
     return [name for name in names.scenario_names(data_dir) if is_pool(data_dir / "scenarios", name)]
@@ -252,6 +268,11 @@ PARENTS = ParentList(_scenarios, "scenario", check=False)
 # `sim explain`'s target: a scenario, or a run file's path, which no list holds.
 SCENARIO_OR_RUNFILE = NameType(_scenarios, "scenario", check=False)
 ENSEMBLE = NameType(_ensembles, "ensemble")
+# The data repo's own, for a command that changes one: a template is the
+# code repository's, so not renamed from here (#297). A template's name is
+# known, not re-asked as a typo, so the command can say why it refuses it.
+OWN_SCENARIO = NameType(_own_scenarios, "scenario", known=_templates)
+OWN_ENSEMBLE = NameType(_own_ensembles, "ensemble", known=_templates)
 POOL = NameType(_pools, "pool")
 POOL_COMPONENT = PoolComponent(_pool_components, "ensemble", check=False)
 ACCOUNT = NameType(_in_scenario(names.account_names), "account")
@@ -382,6 +403,34 @@ def _import_sources(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: A
     return sources_with_maps(data_dir)
 
 
+def _notebooks(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import server
+
+    folder = _given(ctx, "notebook_dir") or server.root() / "notebooks"
+    return [n.removesuffix(".ipynb") for n in server.notebook_names(Path(folder))]
+
+
+# A notebook `sim jupyter start` opens. Unchecked: the command checks it
+# itself, since its place may hold an option meant for jupyter lab.
+NOTEBOOK = NameType(_notebooks, "notebook", check=False)
+
+
+def _logins(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return hub.logins()
+
+
+def _hub_users(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return list(hub.read_users())
+
+
+# A login on this machine, to add to the hub (#766); checked against the
+# machine's logins by the command, since system logins aren't offered.
+LOGIN = NameType(_logins, "login", check=False)
+HUB_USER = NameType(_hub_users, "hub user")
 # A source with saved mappings: a folder under the data dir's imports/.
 IMPORT_SOURCE = NameType(_import_sources, "import source")
 # A lot may hold a symbol nothing names yet, and prices can fetch one.

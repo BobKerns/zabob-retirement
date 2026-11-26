@@ -11,9 +11,11 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from zabob.retirement import research_plugin as rp
+from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import registries
 
 HOUSEHOLD = rp.ResearchConfig(languages=("en", "ja"), tax_state="CA")
@@ -27,7 +29,7 @@ def _skill_text(plugin: Path) -> str:
 
 @pytest.mark.parametrize("skill", rp.skill_names())
 def test_committed_defaults_are_a_neutral_render(skill):
-    # Fails after a defaults template edit: run `analysis research-plugin render --neutral`.
+    # Fails after a defaults template edit: run `sim symbol research-plugin render --neutral`.
     text = (rp.SOURCE_DIR / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
     assert rp.current_defaults(text) == rp.render_defaults(rp.NEUTRAL, skill)
 
@@ -57,7 +59,7 @@ def test_household_render_adds_overlays(tmp_path):
     assert "(for a language, all of its tabs)" in skill
     assert not (plugin / "defaults").exists()
     assert not (plugin / "overlays").exists()
-    manifest = json.loads((tmp_path / ".claude-plugin" / "marketplace.json").read_text())
+    manifest = json.loads((tmp_path / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert manifest["name"] == rp.LOCAL_MARKETPLACE
     assert manifest["plugins"][0]["source"] == f"./{rp.PLUGIN_NAME}"
 
@@ -143,7 +145,7 @@ def test_eval_fixture_config_parses():
 
 def test_allocation_script_classes_match_registry():
     # The script keeps its own copy so it runs outside this repo's venv.
-    text = (rp.SOURCE_DIR / "skills" / "fund-tear-sheet" / "scripts" / "allocation.py").read_text()
+    text = (rp.SOURCE_DIR / "skills" / "fund-tear-sheet" / "scripts" / "allocation.py").read_text(encoding="utf-8")
     copy = re.search(r"^SIM_CLASSES = (\[.*\])$", text, re.M)
     assert copy is not None
     # One state's municipal bonds (muni_CA) are the notes' to name.
@@ -152,7 +154,7 @@ def test_allocation_script_classes_match_registry():
 
 def _fund_calc(tmp_path: Path, rows: list[tuple[str, str, str, str]]) -> str:
     data = tmp_path / "data.csv"
-    with data.open("w", newline="") as f:
+    with data.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["section", "metric", "period", "value", "unit", "source_url", "as_of"])
         for section, metric, period, value in rows:
@@ -183,7 +185,7 @@ def test_install_renders_then_installs_from_local_marketplace(tmp_path, monkeypa
     monkeypatch.setattr(rp.subprocess, "run", lambda args, check: calls.append(args))
     data = tmp_path / "data"
     data.mkdir()
-    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n")
+    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n", encoding="utf-8")
     out = tmp_path / "out"
     result = CliRunner().invoke(rp.research_plugin_command,
                                 ["install", "--data-dir", str(data), "--out", str(out)])
@@ -196,6 +198,33 @@ def test_install_renders_then_installs_from_local_marketplace(tmp_path, monkeypa
     ]
 
 
+def test_the_default_config_is_neutral_and_names_every_setting():
+    """#798: commented out, it changes nothing, but shows every setting."""
+    assert rp.parse_config(rp.DEFAULT_CONFIG) == rp.NEUTRAL
+    settings = rp.DEFAULT_CONFIG.split("\n\n", 1)[1]  # past the opening note
+    uncommented = "\n".join(line.removeprefix("# ") for line in settings.splitlines())
+    assert set(yaml.safe_load(uncommented)) == {"languages", "tax_state", "tabs"}
+    assert set(yaml.safe_load(uncommented)["tabs"]) == set(rp.OPTIONAL_TABS)
+
+
+def test_install_gives_a_data_repo_without_settings_the_commented_ones(tmp_path, monkeypatch):
+    """#798: a repo made before sim init wrote one; one it has is kept."""
+    monkeypatch.setattr(rp.shutil, "which", lambda name: "/usr/bin/claude")
+    monkeypatch.setattr(rp.subprocess, "run", lambda args, check: None)
+    data = tmp_path / "data"
+    data.mkdir()
+    args = ["install", "--data-dir", str(data), "--out", str(tmp_path / "out")]
+    result = CliRunner().invoke(rp.research_plugin_command, args)
+    assert result.exit_code == 0, result.output
+    assert (data / rp.CONFIG_FILENAME).read_text(encoding="utf-8") == rp.DEFAULT_CONFIG
+    assert "every setting commented out" in result.output
+    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n", encoding="utf-8")
+    result = CliRunner().invoke(rp.research_plugin_command, args)
+    assert result.exit_code == 0, result.output
+    assert (data / rp.CONFIG_FILENAME).read_text(encoding="utf-8") == "languages: [en, ja]\n"
+    assert "commented out" not in result.output
+
+
 def test_install_without_claude_fails(monkeypatch):
     monkeypatch.setattr(rp.shutil, "which", lambda name: None)
     result = CliRunner().invoke(rp.research_plugin_command, ["install"])
@@ -205,18 +234,53 @@ def test_install_without_claude_fails(monkeypatch):
 
 def test_render_reports_a_bad_config(tmp_path):
     bad = tmp_path / rp.CONFIG_FILENAME
-    bad.write_text("tax_state: XX\n")
+    bad.write_text("tax_state: XX\n", encoding="utf-8")
     result = CliRunner().invoke(rp.research_plugin_command,
                                 ["render", "--config", str(bad), "--out", str(tmp_path / "out")])
     assert result.exit_code != 0
     assert "two-letter" in result.output
 
 
+@pytest.mark.checkout
 def test_repo_marketplace_lists_the_neutral_plugin():
-    manifest = json.loads((rp.REPO_ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    assert CHECKOUT_DIR is not None
+    manifest = json.loads((CHECKOUT_DIR / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "analysis"
     assert manifest["plugins"][0]["source"] == f"./plugins/{rp.PLUGIN_NAME}"
-    settings = json.loads((rp.REPO_ROOT / ".claude" / "settings.json").read_text())
+    settings = json.loads((CHECKOUT_DIR / ".claude" / "settings.json").read_text(encoding="utf-8"))
     # Registered for discovery only: never switched on for everyone.
     assert "analysis" in settings["extraKnownMarketplaces"]
     assert "enabledPlugins" not in settings
+
+
+def test_an_installed_program_renders_into_the_users_data_folder(tmp_path, monkeypatch):
+    # #676: no checkout means no out/; Claude Code reads the render in place,
+    # so it goes where it is kept, not in a cache.
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert rp.default_out_dir() == tmp_path / "zabob-retirement" / rp.PLUGIN_NAME
+
+
+def test_an_installed_program_refuses_to_rewrite_the_neutral_plugin(monkeypatch):
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    result = CliRunner().invoke(rp.research_plugin_command, ["render", "--neutral"])
+    assert result.exit_code != 0
+    assert "installed" in result.output
+
+
+def test_a_relative_xdg_data_home_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setattr(rp, "CHECKOUT_DIR", None)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", "relative/data")
+    assert rp.default_out_dir() == tmp_path / ".local" / "share" / "zabob-retirement" / rp.PLUGIN_NAME
+
+
+def test_the_plugin_commands_are_under_sim_symbol():
+    import click
+
+    from zabob.retirement.cli import main
+    from zabob.retirement.sim.cli import symbol_group_command
+
+    ctx = click.Context(symbol_group_command)
+    assert symbol_group_command.get_command(ctx, "research-plugin") is rp.research_plugin_command
+    assert main.get_command(click.Context(main), "research-plugin") is None  # moved from `analysis` (#763)

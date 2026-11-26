@@ -47,10 +47,10 @@ def _breaches(run: Path) -> list[tuple[int, str, int, int]]:
 
 def _rewrite(path: Path, **changes: str) -> None:
     """Change the first row of a one-row CSV file."""
-    with path.open(newline="") as f:
+    with path.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(changes)
-    with path.open("w", newline="") as f:
+    with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -138,7 +138,7 @@ def _share_of_plan(run: Path) -> dict[int, float]:
 
 def _room_rail(strategy_csv: Callable[[str, str], Path]) -> None:
     """Add ``room``, a positive rail every year is past: spending below $1M."""
-    with strategy_csv(SCENARIO, "guard_rails.csv").open("a", newline="") as f:
+    with strategy_csv(SCENARIO, "guard_rails.csv").open("a", newline="", encoding="utf-8") as f:
         f.write("room,spending,,,below,1000000.00,cpi_constant,positive,2027-01,,Room to spend\n")
 
 
@@ -315,7 +315,7 @@ def test_rails_join_the_tree_only_where_a_trigger_reads_them(strategy_scenarios,
     rails = data / "scenarios" / "alice_spending" / "guard_rails.csv"
     rails.write_text(
         "name,measure,select,portfolio,side,threshold,basis,sense,start,end,description\n"
-        "loose,spending,,,above,90000.00,cpi_constant,negative,,,\n")
+        "loose,spending,,,above,90000.00,cpi_constant,negative,,,\n", encoding="utf-8")
     assert provenance.data_stamps(data, "alice_spending").tree_id == untriggered
     assert not provenance.data_stamps(data, "alice_spending").dirty
     # alice_triggers inherits alice_spending, so its trigger reads that rail too.
@@ -372,10 +372,10 @@ def test_strategy_add_asks_a_breach_kind_for_its_trigger(strategy_scenarios, str
         input="cut_on_breach\nflex:optional\ntight:cumulative\n\n\n")
     assert result.exit_code == 0, result.output
     assert "guard rails: budget, four_percent, gk_lower, gk_upper, tight" in result.output
-    with strategy_csv(SCENARIO, "strategies/again.csv").open(newline="") as f:
+    with strategy_csv(SCENARIO, "strategies/again.csv").open(newline="", encoding="utf-8") as f:
         assert next(csv.DictReader(f))["trigger"] == "tight:cumulative"
 
 
 def _read_row(strategy_csv: Callable[[str, str], Path]) -> dict[str, str]:
-    with strategy_csv(SCENARIO, RESPOND).open(newline="") as f:
+    with strategy_csv(SCENARIO, RESPOND).open(newline="", encoding="utf-8") as f:
         return next(csv.DictReader(f))

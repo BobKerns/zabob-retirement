@@ -32,6 +32,12 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
+from zabob.retirement.oscompat import BIN_DIR, WINDOWS, is_link, link_dir, login_name, program, utf8_stdio
+from zabob.retirement.user_config import data_dir_setting
+from zabob.retirement.historical.cli import historical_command
+from zabob.retirement.research_plugin import research_plugin_command
+from zabob.retirement.jupyter.cli import jupyter_group
+from zabob.retirement.sim import shell_completion  # registers PowerShell with click (#792)
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -53,12 +59,12 @@ from zabob.retirement.expenses.baseline import (
 )
 from zabob.retirement.sim import (
     allocation, asset_classes, calendar_guide, chain_edit, chain_map, completion, deductions, drift, guard_rail_guide,
-    guard_rails, load_warnings, lot_guide, names, prices, readme, registries, rename, reports, research, roll,
+    guard_rails, load_warnings, lot_guide, names, output, prices, readme, registries, rename, reports, research, roll,
     scenario_guide,
     scheduled_guide, sensitivity, series_files, setup_listings, shortfalls, strategy_code, strategy_files,
     strategy_guide, symbols, states, tax_code, tax_files, tax_guide, units, working_set, ytd_guide,
 )
-from zabob.retirement.sim.accounts import load_accounts_view, render_accounts_table
+from zabob.retirement.sim.accounts import AccountRow, load_accounts_view, render_accounts_table
 from zabob.retirement.sim.connection import (
     EXPENSE_CATEGORIES, open_run, open_scenario, year_end_values, Connection, RunConnection,
 )
@@ -132,7 +138,8 @@ from zabob.retirement.sim.loader import (
     DISABLE_FILE,
     KEEP_SCENARIO_ENV,
     calendar_row_key,
-    current_scenario_path,
+    roth_clock_year,
+    forget_current_scenario,
     list_scenario_names,
     template_aux_copies,
     load_scenario,
@@ -171,6 +178,7 @@ from zabob.retirement.sim.dates import (
 )
 from zabob.retirement.sim.lineage import (
     MIXIN_BASE,
+    MIXIN_ONLY_DESCRIPTION,
     default_description,
     is_mixin_only,
     is_pool,
@@ -191,18 +199,19 @@ from zabob.retirement.sim.overlay import (
 from zabob.retirement.frames import clip_years, index_years, named_rows, row_years
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS, Death, DollarMode, InvestmentAssetSubkind, ItemType
 from zabob.retirement.sim.retention import RETENTION_FILENAME, RetentionError, prune_state
-from zabob.retirement.sim.schema import connect_sim_file
+from zabob.retirement.sim.schema import SCHEMA_VERSION, connect_sim_file
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from rich.console import RenderableType
+    from zabob.retirement.sim.lifespan_curves import PersonLifespan
 
 
 def _resolve_state_dir(
     directory: Path | None, default: Path, data_dir: Path | None = None,
 ) -> Path:
     """``directory`` if given, else ``default`` (``intent`` or ``runs``) under the
-    state dir beside the data repo (``data_dir``, else ``$ANALYSIS_DATA_DIR``)."""
+    state dir beside the data repo (``data_dir``, else ``data_dir_setting()``)."""
     if directory is not None:
         return directory
     return find_state_dir(data_dir, DEFAULT_STATE_DIR) / default
@@ -247,7 +256,7 @@ def _shown(path: Path, *, resolve: bool = True) -> str:
     leads to: data/private is how a checkout names its data repo, wherever
     that is."""
     full = Path(path).expanduser()
-    bases = ((Path.cwd(), ""), (Path.home(), "~/"))
+    bases = ((Path.cwd(), ""), (Path.home(), "~" + os.sep))
     if resolve:
         full, bases = full.resolve(), tuple((base.resolve(), prefix) for base, prefix in bases)
     for base, prefix in bases:
@@ -314,11 +323,75 @@ def _format_warning(
     return f"warning: {message}\n"
 
 
-@click.group(name="sim")
-def sim_group_command() -> None:
+_SUBCOMMAND_ARGS = "zabob.sim.subcommand_args"
+
+
+class _SimGroup(click.Group):
+    """Keeps the subcommand's arguments where the group's callback can see
+    them: whether it was given --data-dir decides whether the working folder
+    counts (#773)."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        rest = super().parse_args(ctx, args)
+        ctx.meta[_SUBCOMMAND_ARGS] = list(rest)
+        return rest
+
+
+@click.group(name="sim", cls=_SimGroup)
+@click.pass_context
+def sim_group_command(ctx: click.Context) -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
+    utf8_stdio()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
+        return
+    args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
+    _follow_working_folder(args)
+    # Not for a command that says who you are.
+    if ctx.invoked_subcommand != "login" and not (ctx.invoked_subcommand == "switch" and any(
+            arg == "--login" or arg.startswith("--login=") for arg in args)):
+        _note_not_logged_in()
+
+
+def _follow_working_folder(args: list[str]) -> None:
+    """Record the data repo the working folder is in as the current one,
+    saying so, when it isn't already (#773): a command run there uses it, and
+    so do the ones after it, wherever they're run. --data-dir and
+    $ZABOB_DATA_DIR are for scripts and one shell, so neither is recorded,
+    and with either the working folder doesn't count; nor is anything
+    recorded for a lookup ($ZABOB_KEEP_SCENARIO). A code checkout's
+    data/private is used there but not recorded: in a worktree it is often
+    template data, gone with the worktree. Notebooks use it without recording
+    it (``user_config.data_dir_setting``)."""
+    from zabob.retirement import user_config
+
+    # `sim switch --data` records the one it names instead.
+    if os.environ.get("ZABOB_DATA_DIR") or os.environ.get(KEEP_SCENARIO_ENV) or any(
+            arg in ("--data-dir", "--data") or arg.startswith(("--data-dir=", "--data=")) for arg in args):
+        return
+    if os.environ.get(BUILDER_CHILD_ENV) or (here := user_config.local_data_dir()) is None:
+        return
+    if user_config.in_checkout(here):
+        return
+    was = user_config.default_data_dir()
+    if was is not None and was.resolve() == here.resolve():
+        return
+    try:
+        user_config.set_default_data_dir(here)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {_shown_repo(here)} as your data repo: {exc}", err=True)
+        return
+    previous = f" (was {_shown_repo(was)})" if was is not None else ""
+    click.echo(f"Data repo is now {_shown_repo(here)}{previous}: the one this folder is in", err=True)
+
+
+def _note_not_logged_in() -> None:
+    from zabob.retirement import user_config
+
+    if os.environ.get(BUILDER_CHILD_ENV) or user_config.current_user() is not None:
+        return
+    click.echo(f"Not logged in: `sim login` says who you are (meanwhile, {login_name()}).", err=True)
 
 
 @sim_group_command.command()
@@ -327,7 +400,7 @@ def sim_group_command() -> None:
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -353,7 +426,7 @@ def sim_group_command() -> None:
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER). Used only when running.",
+    help="Identifier recorded in simulation_run.run_by (default: your login name). Used only when running.",
 )
 @click.option(
     "--run/--no-run",
@@ -485,7 +558,7 @@ def _load_locked(
     "-v", "--verbose", is_flag=True, default=False,
     help="With --all, also warn of things defined but not read yet (unused "
     "latent factors, set_rate rows nothing reads), as a single check does. "
-    "Also list the data repo's aux/ files that only copy templates/aux/.",
+    "Also list the data repo's tables/ files that only copy templates/tables/.",
 )
 def check(
     scenario_name: str | None, data_dir: Path | None, check_all: bool, verbose: bool,
@@ -495,7 +568,7 @@ def check(
     A single scenario's check also warns of things defined but not read yet;
     --all leaves those out unless --verbose is given (#204), since base and
     mix-in scenarios define many on purpose for the scenarios built on them.
-    --verbose also names the shared aux/ files that only copy templates/aux/
+    --verbose also names the shared tables/ files that only copy templates/tables/
     (#317), which can be deleted.
     """
     if check_all and scenario_name is not None:
@@ -504,7 +577,7 @@ def check(
     if verbose:
         for name in template_aux_copies(resolved):
             click.echo(
-                f"note: aux/{name} is the same as templates/aux/{name}, which is read "
+                f"note: tables/{name} is the same as templates/tables/{name}, which is read "
                 "anyway; deleting it lets later template updates through", err=True)
     if not check_all:
         ref = _resolve_scenario(resolved, scenario_name)
@@ -598,8 +671,7 @@ def _resolve_scenario(
     except LoadError as exc:
         if defaulted:
             raise click.ClickException(
-                f"{current_scenario_path(data_dir)} names a missing scenario: {scenario!r}; "
-                "name one"
+                f"the current scenario, {scenario!r}, is missing; name one"
             ) from None
         raise click.ClickException("; ".join(exc.issues)) from None
     if defaulted:
@@ -627,7 +699,11 @@ def _make_current(data_dir: Path, name: str) -> None:
     previous = read_current_scenario(data_dir)
     if previous == name:
         return
-    write_current_scenario(data_dir, name)
+    try:
+        write_current_scenario(data_dir, name)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {name} as your current scenario: {exc}", err=True)
+        return
     _announce_current(name, previous)
 
 
@@ -649,10 +725,11 @@ def _note_use(data_dir: Path | None, *names: str | None) -> None:
 def _resolve_data_dir(data_dir: Path | None) -> Path:
     if data_dir is not None:
         return data_dir.resolve()
-    env = os.environ.get("ANALYSIS_DATA_DIR")
+    env = data_dir_setting()
     if not env:
         raise click.ClickException(
-            "ANALYSIS_DATA_DIR not set; pass --data-dir or source the data repo's activate"
+            "no data repo: make one with `sim init`, choose one with `sim switch --data DIR`, "
+            "or pass --data-dir"
         )
     return Path(env).resolve()
 
@@ -663,7 +740,7 @@ def _resolve_data_dir(data_dir: Path | None) -> Path:
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -680,7 +757,7 @@ def _resolve_data_dir(data_dir: Path | None) -> Path:
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER)",
+    help="Identifier recorded in simulation_run.run_by (default: your login name)",
 )
 @click.option("--allow-dirty-data", is_flag=True, default=False)
 @click.option("--allow-dirty-code", is_flag=True, default=False)
@@ -738,7 +815,7 @@ def run(
 
     Naming a scenario also records it as the data repo's current scenario,
     same as ``sim load <scenario>``. When a data repo is resolvable
-    (--data-dir or $ANALYSIS_DATA_DIR), this reloads the intent file first --
+    (--data-dir, else the one `sim switch` shows), this reloads the intent file first --
     loading is cheap, and it means a CSV edit since the last explicit
     ``sim load`` is never silently missed. Without a resolvable data repo,
     this only needs the already-built intent file, unchanged.
@@ -761,13 +838,13 @@ def run(
         sensitivity=sensitivity, ensemble_size=ensemble_size, only=only,
         quantiles_text=quantiles_text, jobs=jobs,
     )
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     if resolved_data_dir is not None or scenario_name is None:
         resolved_data_dir = resolved_data_dir or _resolve_data_dir(data_dir)
         scenario_name = _resolve_scenario(resolved_data_dir, scenario_name).name
         if is_mixin_only(resolved_data_dir / "scenarios", scenario_name):
-            _refuse_mixin_only_run(scenario_name, sc.dependents(resolved_data_dir / "scenarios", scenario_name))
+            _refuse_mixin_only_run(scenario_name, _runnable_users(resolved_data_dir / "scenarios", scenario_name))
     if resolved_data_dir is not None:
         _offer_commit(resolved_data_dir, [scenario_name], commit=commit,
                       allow_dirty_data=allow_dirty_data, command=f"sim run {scenario_name}")
@@ -787,7 +864,7 @@ def run(
         try:
             _run_pool(
                 scenario_name, resolved_data_dir, resolved_intent_dir, resolved_runs_dir,
-                run_by=run_by or os.environ.get("USER") or "unknown",
+                run_by=run_by or login_name(),
                 allow_dirty_data=allow_dirty_data, allow_dirty_code=allow_dirty_code,
                 ensemble_size=ensemble_size, jobs=jobs, rebuild=rebuild,
             )
@@ -849,10 +926,12 @@ def _load_and_run(
                 f"intent file not found: {intent_path}\n"
                 f"  run: analysis sim load {scenario_name}"
             )
-        elif _intent_is_mixin_only(intent_path):
-            # Without the data repo, the intent a `sim check` left says so.
-            _refuse_mixin_only_run(scenario_name, [])
-        resolved_by = run_by or os.environ.get("USER") or "unknown"
+        else:
+            _refuse_stale_intent(intent_path, scenario_name)
+            if _intent_is_mixin_only(intent_path):
+                # Without the data repo, the intent a `sim check` left says so.
+                _refuse_mixin_only_run(scenario_name, [])
+        resolved_by = run_by or login_name()
         _run_loaded(
             scenario_name, intent_path, resolved_intent_dir, resolved_runs_dir,
             run_by=resolved_by, allow_dirty_data=allow_dirty_data,
@@ -868,14 +947,51 @@ def _refuse_mixin_only_run(name: str, users: Sequence[str]) -> NoReturn:
         "or give it --start and --end (`sim scenario edit`)")
 
 
+def _runnable_users(scenarios_dir: Path, name: str) -> list[str]:
+    """The nearest scenarios built on ``name`` that can run, sorted: its
+    dependents, except that a dependent that is mix-in only too is passed
+    through to its own dependents (#347), since suggesting it would only be
+    refused the same way."""
+    found: set[str] = set()
+    seen = {name}
+    pending = [name]
+    while pending:
+        for user in sc.dependents(scenarios_dir, pending.pop()):
+            if user in seen:
+                continue
+            seen.add(user)
+            if is_mixin_only(scenarios_dir, user):
+                pending.append(user)
+            else:
+                found.add(user)
+    return sorted(found)
+
+
+def _refuse_stale_intent(intent_path: Path, scenario_name: str) -> None:
+    """Refuse an intent loaded under another schema than this code's: its
+    tables don't match the run file's, so snapshotting it would fail with a
+    raw sqlite error (#347). Only a fresh `sim load` can bring it up to date."""
+    con = connect_sim_file(intent_path)
+    try:
+        row = con.execute("SELECT schema_version FROM intent_manifest WHERE id = 1").fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        con.close()
+    if row is None or row[0] != SCHEMA_VERSION:
+        found = "no schema version" if row is None else f"schema {row[0]}"
+        raise click.ClickException(
+            f"{intent_path} was loaded under {found}, and this code uses schema {SCHEMA_VERSION}\n"
+            f"  run: analysis sim load {scenario_name}")
+
+
 def _intent_is_mixin_only(intent_path: Path) -> bool:
     """Whether the intent was loaded from a mix-in only scenario, as the
-    loader recorded (``scenario.mixin_only``)."""
+    loader recorded (``scenario.mixin_only``). Only for an intent
+    :func:`_refuse_stale_intent` accepted, which has the column."""
     con = connect_sim_file(intent_path)
     try:
         row = con.execute("SELECT mixin_only FROM scenario").fetchone()
-    except sqlite3.Error:
-        return False
     finally:
         con.close()
     return bool(row and row[0])
@@ -1450,6 +1566,7 @@ def _run_one_member(
         # A member's negative balances are recorded in its run file
         # (negative_balance_warnings); printed, eighty members' warnings
         # would bury the batch (#369), so the batch counts them instead.
+        # Its inherited Roth IRA warnings (#257) are recorded too, and not shown.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             run_scenario(
@@ -1461,6 +1578,8 @@ def _run_one_member(
         for warning in caught:
             if issubclass(warning.category, RuntimeWarning) and "went negative" in str(warning.message):
                 short = True
+            elif issubclass(warning.category, RuntimeWarning) and "inherited Roth IRA" in str(warning.message):
+                pass
             else:
                 warnings.showwarning(warning.message, warning.category, warning.filename,
                                      warning.lineno, warning.file, warning.line)
@@ -1591,7 +1710,7 @@ def ensemble_create(
 
     _make_current(data_dir_p, name)
     click.echo(f"created ensemble recipe {_shown(target)}")
-    click.echo(f"  inherits: {_inherits_line(data_dir_p, parents)}")
+    click.echo(f"  inherits: {_inherits_line(data_dir_p, name, parents)}")
     for label, own, inherited in (
         ("seed", seed, inherited_seed), ("ensemble_size", ensemble_size, inherited_size),
     ):
@@ -1602,7 +1721,11 @@ def ensemble_create(
     _suggest_readme(target)
     click.echo(
         "  next: sim calendar add <kind> ... --vary-distribution ... to mark rows as "
-        f"varying, then sim run {name}"
+        "varying, then "
+        # A mix-in only recipe can't run by itself (#347): `sim run` refuses it.
+        + ("mix it into a scenario with dates, or give it --start and --end "
+           f"(sim ensemble edit {name})" if is_mixin_only(data_dir_p / "scenarios", name)
+           else f"sim run {name}")
     )
 
 
@@ -1652,7 +1775,7 @@ def _write_pool(
         meta["reserve"] = reserve
     # A pool's row has no dates, seed or parents (ADR-009 §1).
     row = {**dict.fromkeys(registries.SCENARIO_HEADER, ""), "name": name, "description": description,
-           "created_by": created_by or sc.current_user(),
+           "created_by": created_by or sc.current_user(data),
            "meta_json": json.dumps(meta, separators=(",", ":"))}
     existed = folder.is_dir()
     old_csv = (folder / "scenario.csv").read_bytes() if (folder / "scenario.csv").is_file() else None
@@ -1691,7 +1814,7 @@ def _pool_readme(name: str, description: str, components: Mapping[str, str | Non
               help="The component whose member 0 is the pool's base case. Default: the first.")
 @click.option("--description", default=None, help="Default: 'Pooled from <components>'.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_pool_create(
     name: str | None, components: tuple[str, ...], ensemble_size: int | None,
     base: str | None, description: str | None, data_dir: Path | None,
@@ -1764,7 +1887,7 @@ def _ask_pool_components(data: Path, current: str | None) -> tuple[str, ...]:
 @click.option("--description", default=None,
               help="The pool's description; '' takes the generated 'Pooled from <components>'.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_pool_edit(
     name: str | None, components: tuple[str, ...], size: str | None, base: str | None,
     reserve: str | None, description: str | None, data_dir: Path | None,
@@ -1862,12 +1985,13 @@ def _apply_pool_edit(
 @ensemble_group_command.command("list")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("-v", "--verbose", is_flag=True, default=False,
               help="Show a table with each ensemble's parents, dates, seed, "
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template ensembles (t_ names) read from the code repository.")
+@output.output_options
 def ensemble_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's ensembles: ``sim scenario list``, keeping only
     the scenarios whose merged ensemble_size is positive."""
@@ -1964,7 +2088,7 @@ def _is_ensemble(data_dir: Path, name: str) -> bool:
 
 
 def _run_by(run_by: str | None) -> str:
-    return run_by or os.environ.get("USER") or "unknown"
+    return run_by or login_name()
 
 
 def _ensemble_batch_dir(
@@ -1979,6 +2103,11 @@ def _ensemble_batch_dir(
             f"'sim ensemble sensitivity {scenario_name} --batch {batch_dir.name}'"
         )
     return batch_dir
+
+
+def _year_axis(table: pd.DataFrame) -> pd.DataFrame:
+    """A year-end table as ``_echo_year_table`` heads it: its index ``year``."""
+    return table if isinstance(table.index, pd.MultiIndex) else table.rename_axis("year")
 
 
 def _echo_year_table(table: pd.DataFrame) -> None:
@@ -2030,7 +2159,7 @@ _ENSEMBLE_DATA_DIR_OPTION = click.option(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 _ENSEMBLE_ACCOUNT_OPTION = click.option(
     "--account", default=None, type=completion.ACCOUNT,
@@ -2110,28 +2239,34 @@ def _years_text(years: tuple[int, int]) -> str:
 
 
 def _graph_options(
-    drawn: str, *, after: str | None = None, written: str = "the chart", how: str = "",
+    drawn: str, *, after: str, written: str = "the chart", how: str = "",
     file_note: str = "",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """``--graph`` and ``--graph-file``, the same on every command that
-    draws; only the help's words differ: what is ``drawn`` (and ``written``
-    to a file). A command that prints ``after`` (its table or tables) gets
-    ``--chart``, ``--chart-file`` and ``--table`` instead (#393): the table
-    alone by default, the chart alone with either chart option, and both,
-    chart first, with ``--table`` too."""
+    """``--graph``, ``--graph-file`` and ``--table``, the same on every
+    command that draws; only the help's words differ: what is ``drawn`` (and
+    ``written`` to a file) instead of what it prints, ``after`` (its table or
+    tables). The table alone by default, the chart alone with either graph
+    option, and both, chart first, with ``--table`` too (#393).
+
+    ``--chart`` and ``--chart-file`` are the same options under other names
+    (#779): commands once split between the two spellings, and either is
+    what someone tries first."""
 
     def capital(text: str) -> str:
         return text[:1].upper() + text[1:]
 
-    flag, file_flag = ("--chart", "--chart-file") if after else ("--graph", "--graph-file")
-    instead = f" instead of {after} (add --table for both, the chart first)" if after else ""
+    flag, file_flag = "--graph", "--graph-file"
+    instead = f" instead of {after} (add --table for both, the chart first)"
     graph = click.option(
-        flag, "as_graph", is_flag=True,
-        help=capital(f"draw {drawn} in the terminal (kitty or iTerm2 image protocol){how}, "
-                     f"or write a PNG file when the terminal can't show images{instead}."),
+        flag, "--chart", "as_graph", is_flag=True,
+        help=capital(f"draw {drawn} in the terminal (kitty, iTerm2 or Sixel image protocol){how}, "
+                     "or write a PNG file when the terminal can't show images, and open it in the "
+                     "image viewer when the session is local (ZABOB_IMAGE_PROTOCOL=file to only "
+                     f"write it){instead}."),
     )
     graph_file = click.option(
-        file_flag, "graph_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
+        file_flag, "--chart-file", "graph_file",
+        type=click.Path(dir_okay=False, path_type=Path), default=None,
         help=capital(f"write {written} to this .png or .svg file{file_note}{instead}."),
     )
     table = click.option(
@@ -2151,7 +2286,7 @@ def _graph_options(
             # With a chart, what the body prints after _hold_tables() (once
             # it has asked for any names) waits until the chart is drawn, and
             # is dropped unless --table asks for it too.
-            state = _ChartFirst(table=with_table) if after is not None and charted else None
+            state = _ChartFirst(table=with_table) if charted else None
             token = _CHART_FIRST.set(state)
             try:
                 result = fn(*args, **kwargs)
@@ -2164,19 +2299,18 @@ def _graph_options(
             if state is not None:
                 state.release(draw=True)
             return result
-        options = graph(graph_file(checked))
-        return table(options) if after is not None else options
+        return table(graph(graph_file(checked)))
     return decorate
 
 
 class _ChartFirst:
-    """With --chart or --chart-file on a command that prints tables: what it
+    """With --graph or --graph-file on a command that prints tables: what it
     prints after ``_hold_tables()``, and the charts it draws, held back until
     it's done, then the chart, and the tables only with --table."""
 
     def __init__(self, *, table: bool) -> None:
         self.table = table
-        self.charts: list[tuple[Any, ...]] = []
+        self.charts: list[Callable[[], None]] = []
         self.printed: _HeldOutput | None = None
         self._redirect = ExitStack()
 
@@ -2190,7 +2324,7 @@ class _ChartFirst:
         printed, self.printed = self.printed, None
         if draw:
             for chart in self.charts:
-                _draw_figure(*chart)
+                chart()
         # After an error, what led up to it is shown whatever the options;
         # so is a command's say-so when it had no chart to draw.
         if printed is not None and (self.table or not draw or not self.charts):
@@ -2228,7 +2362,7 @@ _DEFAULT_TOP = 10
 _ENSEMBLE_GRAPH_OPTIONS = _graph_options("them as the notebook's chart", after="the tables")
 _LOG_OPTION = click.option(
     "--log", "log_scale", is_flag=True,
-    help="With --chart: dollars on a log scale, as the notebook's Scale toggle; "
+    help="With --graph: dollars on a log scale, as the notebook's Scale toggle; "
          "deltas, which run both ways, on a symmetric log scale. A fan that "
          "reaches zero or below is drawn linear, with a warning.",
 )
@@ -2300,7 +2434,7 @@ def _current_data_dir(data_dir: Path | None) -> Path | None:
 
 
 def _resolve_runs_dir(runs_dir: Path | None, data_dir: Path | None) -> Path:
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     return _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
 
@@ -2375,6 +2509,7 @@ def _subject(account: str | None, lot: str | None, after_tax: bool = False) -> s
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_summary(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     account: str | None, lot: str | None, reserve: str | None, dollars: str, pre_tax: bool,
@@ -2384,7 +2519,7 @@ def ensemble_summary(
     """Mean/median/SD, 5th/20th/.../95th percentiles and the mean of the
     worst 5% and 20% (CVaR) of year-end net worth (or --account's balance,
     or one --lot of it) across SCENARIO_NAME's members, and the share below
-    the reserve when one is set. --chart draws the members' fan chart.
+    the reserve when one is set. --graph draws the members' fan chart.
 
     --start and --end limit the years shown; the share ever below the
     reserve still looks back to the start of the run.
@@ -2426,13 +2561,7 @@ def ensemble_summary(
     table = _shown_years(year_end_values(pd.concat(
         [monthly_summary, risk_summary(frame, reserve_dollars, cpi_frame)], axis=1,
     )), years)
-    click.echo(
-        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
-        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
-        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
-        + ("" if reserve_dollars is None
-           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
-    )
+
     def lows_frame() -> pd.DataFrame:
         # Net worth even with --account: an account only some components
         # have is 0 in the others' members, which would rank them worst.
@@ -2440,6 +2569,19 @@ def ensemble_summary(
             return cpi_frame
         return _member_frame(store, None, DollarMode.CPI_CONSTANT, None, after_tax=not pre_tax)
 
+    if output.machine():
+        output.emit(_year_axis(table), title=f"ensemble {scenario_name}", batch=batch_dir.name,
+                    dollars=mode.value, subject=_subject(account, lot, after_tax),
+                    members=len(store), failed={stem: statuses[stem] for stem in failed} or None,
+                    reserve=reserve_dollars, pool=_pool_summary_lines(batch_dir, lows_frame) or None)
+        return
+    click.echo(
+        f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} succeeded "
+        f"member(s), {len(failed)} failed; {_DOLLAR_LABELS[mode]}"
+        + (f"; {_subject(account, lot, after_tax)}" if account or after_tax else "")
+        + ("" if reserve_dollars is None
+           else f"; reserve ${reserve_dollars:,.0f} (CPI-constant)")
+    )
     for line in _pool_summary_lines(batch_dir, lows_frame):
         click.echo(f"  {line}")
     _echo_year_table(table)
@@ -2463,7 +2605,7 @@ def ensemble_summary(
 
 def _check_log(log_scale: bool, as_graph: bool, graph_file: Path | None) -> None:
     if log_scale and not as_graph and graph_file is None:
-        raise click.UsageError("--log needs --chart or --chart-file")
+        raise click.UsageError("--log needs --graph or --graph-file")
 
 
 def _fan_can_log(monthly_summary: pd.DataFrame, subject: str) -> bool:
@@ -2498,6 +2640,7 @@ def _fan_can_log(monthly_summary: pd.DataFrame, subject: str) -> bool:
 @_year_range_options
 @_ENSEMBLE_GRAPH_OPTIONS
 @_LOG_OPTION
+@output.output_options
 def ensemble_compare(
     baseline: str | None, variants: tuple[str, ...], runs_dir: Path | None,
     data_dir: Path | None, account: str | None, lot: str | None, reserve: str | None,
@@ -2513,7 +2656,7 @@ def ensemble_compare(
     VARIANTS (#328), each table has a row per (year, recipe), as the
     notebook's ensemble table does.
 
-    --chart draws the notebook's comparison panels: the paired futures'
+    --graph draws the notebook's comparison panels: the paired futures'
     deltas when the recipes pair, the CVaR deltas and, with a reserve, the
     change in the shares below it; with several
     VARIANTS (at most four), a column of panels each. When only one of a
@@ -2532,8 +2675,8 @@ def ensemble_compare(
     years = _year_range(first_year, last_year)
     if (as_graph or graph_file is not None) and len(variants) > _COMPARE_MAX_GRAPHED:
         raise click.UsageError(
-            f"--chart draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
-            "or leave --chart off for the tables")
+            f"--graph draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
+            "or leave --graph off for the tables")
     resolved_runs_dir = _resolve_runs_dir(runs_dir, data_dir)
     if baseline is None or not variants:
         if baseline is None:
@@ -2569,11 +2712,19 @@ def ensemble_compare(
     def clip(frame: pd.DataFrame) -> pd.DataFrame:
         return clip_years(frame, years)
 
-    if len(variants) == 1:
-        _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
-    else:
-        _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
-    _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    with output.collecting() as collected:
+        if len(variants) == 1:
+            _echo_one_ensemble_comparison(tables, baseline, variants[0], subject, clip)
+        else:
+            _echo_ensemble_comparisons(tables, baseline, list(variants), subject, clip)
+        _echo_ensemble_rail_deltas(data_dir, baseline, variants, stores, mode, years)
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    subject=subject, members={name: len(stores[name]) for name in names},
+                    paired={name: len(tables.pairs(baseline, name)[0]) for name in variants
+                            if baseline in tables.frames and name in tables.frames},
+                    reserve=tables.reserve)
+        return
     if as_graph or graph_file is not None:
         def chart(size: tuple[float, float] | None = None) -> Figure:
             return _ensemble_compare_chart(tables, baseline, list(variants), subject,
@@ -2604,12 +2755,16 @@ def _echo_one_ensemble_comparison(
             f"  paired: {len(pairs)} future(s)" if pairs else f"  not paired: {unpaired}"
         )
         click.echo(f"{variant} − {baseline}, year end:")
-        _echo_year_table(tables.deltas(baseline, variant, clip))
+        deltas = tables.deltas(baseline, variant, clip)
+        output.collect("deltas", _year_axis(deltas))
+        _echo_year_table(deltas)
     else:
         click.echo(f"  only one side: {tables.missing()[0]} has no {subject}")
     for name in tables.frames:
         click.echo(f"{name} tail, year end{_reserve_note(tables)}:")
-        _echo_year_table(tables.tail(name, clip))
+        tail = tables.tail(name, clip)
+        output.collect(f"tail:{name}", _year_axis(tail))
+        _echo_year_table(tail)
 
 
 def _echo_ensemble_comparisons(
@@ -2633,9 +2788,13 @@ def _echo_ensemble_comparisons(
                        else f"  {name}: not paired: {unpaired}")
         if compared:
             click.echo(f"Against {baseline}, by year end:")
-            _echo_year_table(tables.deltas_table(baseline, compared, clip))
+            deltas = tables.deltas_table(baseline, compared, clip)
+            output.collect("deltas", _year_axis(deltas))
+            _echo_year_table(deltas)
     click.echo(f"Tail and reserve, by recipe, year end{_reserve_note(tables)}:")
-    _echo_year_table(tables.tails(clip))
+    tails = tables.tails(clip)
+    output.collect("tails", _year_axis(tails))
+    _echo_year_table(tails)
 
 
 def _ensemble_compare_chart(
@@ -2643,7 +2802,7 @@ def _ensemble_compare_chart(
     clip: Callable[[pd.DataFrame], pd.DataFrame], log_scale: bool = False,
     size: tuple[float, float] | None = None,
 ) -> Figure:
-    """``sim ensemble compare --chart``'s figure: the comparison panels for
+    """``sim ensemble compare --graph``'s figure: the comparison panels for
     each variant with the account, or, when only one of a baseline and one
     variant has it, that recipe's fan chart. ``size`` is the comparison's
     (width, height) in inches; ``None`` is 16:9."""
@@ -2756,6 +2915,7 @@ _ENSEMBLE_RAIL_LEGEND = (
     help="Dollars the RMS overshoot is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_guard_rails(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     rail_names: tuple[str, ...], dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2772,7 +2932,7 @@ def ensemble_guard_rails(
     overdrawn) and the RMS over every member-year.
 
     The rails are the recipe's guard_rails.csv as it is now, read from the
-    data repo: editing one reruns nothing. --chart draws the shares and RMS.
+    data repo: editing one reruns nothing. --graph draws the shares and RMS.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
     that has been run, else one that has is asked for."""
@@ -2787,7 +2947,22 @@ def ensemble_guard_rails(
     store = _open_series(batch_dir)
     results = _ensemble_guard_rails(data_dir, scenario_name, store, mode, rail_names)
     if not results:
-        click.echo(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        output.note(f"no guard rails in {scenario_name!r}; `sim guard-rail add` adds one")
+        return
+    if output.machine():
+        shown = [r for r in results if r.applies]
+        for r in results:
+            if not r.applies:
+                output.note(f"  {r.rail.name} covers none of these members' years")
+        tables: dict[str, output.Table] = {}
+        if shown:
+            tables["summary"] = guard_rails.ensemble_summary_frame(shown)
+        for r in shown:
+            tables[r.rail.name] = guard_rails.ensemble_rail_frame(r)
+        output.emit(tables, title=f"ensemble {scenario_name} guard rails", batch=batch_dir.name,
+                    members=len(store), dollars=mode.value, legend=list(_ENSEMBLE_RAIL_LEGEND),
+                    rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense}
+                           for r in shown])
         return
     click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
                f"guard rails, {_DOLLAR_LABELS[mode]}")
@@ -2838,6 +3013,7 @@ def ensemble_guard_rails(
               help=f"One class's drift (share less target, signed) instead of the largest either way: "
                    f"{registries.asset_class_list()}.")
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_drift(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     target_set: str | None, portfolio: str | None, asset_class: str | None, as_graph: bool,
@@ -2850,7 +3026,7 @@ def ensemble_drift(
     less its target, in percentage points), and, where a strategy steers to
     the set with a band, the share of members past the band then and the
     share past it at some month so far. --asset-class follows one class
-    instead (signed: above zero is overweight). --chart draws the spread
+    instead (signed: above zero is overweight). --graph draws the spread
     over every month.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
@@ -2871,12 +3047,19 @@ def ensemble_drift(
         raise click.ClickException(f"{scenario_name}: {exc}") from None
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
     what = f"{asset_class} share less target" if asset_class else "largest drift either way"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); drift from "
                f"target set {target_set} ({whose}), {what}, percentage points"
                + (f"; band ±{band:g}" if band is not None else ""))
     table = drift.ensemble_drift_table(members, band=None if asset_class else band)
     if table.empty:
-        click.echo("(no months in the members)")
+        output.note("(no months in the members)")
+        return
+    if output.machine():
+        output.emit(table.rename_axis("month"), title=f"ensemble {scenario_name} drift",
+                    batch=batch_dir.name,
+                    members=len(store), target_set=target_set, portfolio=portfolio,
+                    measure=what, units="percentage points; past_band and ever_past fractions",
+                    band=band)
         return
     shares = [c for c in ("past_band", "ever_past") if c in table.columns]
     click.echo(table.to_string(formatters={
@@ -2908,6 +3091,7 @@ def ensemble_drift(
     help="Dollars the spending is reported in.",
 )
 @_ENSEMBLE_GRAPH_OPTIONS
+@output.output_options
 def ensemble_spending(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     category: str | None, dollars: str, as_graph: bool, graph_file: Path | None,
@@ -2920,7 +3104,7 @@ def ensemble_spending(
     whose spending strategies cut that year. Below it, over the whole run:
     each member's worst year (median and CVaR across members), its share of
     plan delivered, the years cut on average and the members ever cut.
-    --chart draws the spread of spending by year against the plan.
+    --graph draws the spread of spending by year against the plan.
 
     Without SCENARIO_NAME, the current scenario when it is an ensemble
     that has been run, else one that has is asked for."""
@@ -2941,11 +3125,17 @@ def ensemble_spending(
     # A household's partial final year counts toward cuts, not dollar figures (#377).
     partial = store.partial_last_years()
     what = f"{category} spending" if category else "spending"
-    click.echo(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
-               f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
+    output.note(f"ensemble {scenario_name} ({batch_dir.name}): {len(store)} member(s); "
+                f"{what} against the plan, {_DOLLAR_LABELS[mode]}")
     table = reports.ensemble_spending_table(delivered, budgeted, partial)
     if table.empty:
-        click.echo("(no spending in the members)")
+        output.note("(no spending in the members)")
+        return
+    if output.machine():
+        output.emit(table.rename_axis("year"), title=f"ensemble {scenario_name} {what} against the plan",
+                    batch=batch_dir.name, members=len(store), dollars=mode.value,
+                    summary=reports.ensemble_spending_summary(delivered, budgeted,
+                                                              store.whole_years(), partial))
         return
     shares = ("of_plan", "cut")
     click.echo(table.to_string(formatters={
@@ -2990,6 +3180,7 @@ def _echo_ensemble_rail_deltas(
         click.echo(f"guard rails, {variant} − {baseline} ({_DOLLAR_LABELS[mode]}): Δ of each "
                    "share of members past and of the RMS overshoot")
         for rail, frame in frames.items():
+            output.collect(f"guard_rail:{variant}:{rail}", clip_years(frame, years))
             click.echo(f"{rail}:")
             _echo_rail_share_table(clip_years(frame, years))
 
@@ -3006,7 +3197,7 @@ def _echo_ensemble_rail_deltas(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--batch", default=None,
@@ -3052,11 +3243,12 @@ def _echo_ensemble_rail_deltas(
 @click.option(
     "--top", "top", type=click.IntRange(min=0), is_flag=False, flag_value=0, default=None,
     metavar="[N]",
-    help="With --chart or --chart-file: draw only the N most important rows. "
+    help="With --graph or --graph-file: draw only the N most important rows. "
          f"Without N (or 0), as many as fill the terminal at its text size (else {_DEFAULT_TOP}); "
          "give N, or put --top after SCENARIO_NAME, so the name isn't read as N.",
 )
 @_graph_options("the notebook's charts for it", after="the tables")
+@output.output_options
 def ensemble_sensitivity(
     scenario_name: str | None, runs_dir: Path | None, data_dir: Path | None, batch: str | None,
     mode: str | None, dollars: str, relative: bool, measure: str, years: str | None,
@@ -3076,7 +3268,7 @@ def ensemble_sensitivity(
     --row NAME shows one varying row of a sensitivity batch instead: its delta
     by year and quantile. --attribute NAME breaks its net-worth delta down.
 
-    --chart draws what the notebook draws (#329). A sensitivity batch: the
+    --graph draws what the notebook draws (#329). A sensitivity batch: the
     share of each year's impact by row and year, and the tornado at the last
     reporting year; with --row, the row's delta over time and, for a quantile
     ladder, its response across its range at that year; with --attribute, where
@@ -3092,14 +3284,14 @@ def ensemble_sensitivity(
         raise click.UsageError("use one of --row and --attribute")
     if top is not None:
         if not as_graph and graph_file is None:
-            raise click.UsageError("--top needs --chart or --chart-file")
+            raise click.UsageError("--top needs --graph or --graph-file")
         if row is not None or attribute is not None:
             raise click.UsageError("--top picks rows of the overview chart; "
                                    "--row and --attribute show one row")
     # One row's views need a sensitivity batch, so that's the one to find.
     if mode is None and (row is not None or attribute is not None):
         mode = "sensitivity"
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
     if scenario_name is None:
@@ -3191,7 +3383,7 @@ def ensemble_sensitivity(
          "values and scores.",
 )
 @click.option(
-    "--csv", "csv_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
+    "--csv-file", "csv_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
     help="Write the drawn members' values (member x node, display units) to this CSV.",
 )
 @click.option("--rebuild", is_flag=True, default=False,
@@ -3199,6 +3391,7 @@ def ensemble_sensitivity(
 @_graph_options("--node's draws and --pair's scores as the notebook's charts",
                 written="the chart (one --node or one --pair; in a pool, the first component's)",
                 after="the tables")
+@output.output_options
 def ensemble_draws(
     scenario_name: str | None, runs_dir: Path | None, intent_dir: Path | None,
     data_dir: Path | None, batch: str | None, mode: str | None, node: str | None,
@@ -3214,7 +3407,7 @@ def ensemble_draws(
     then each correlated pair's implied and achieved rho. A batch run before
     the database existed gets one gathered from what its member files hold.
 
-    --node lists one node's draws and --pair one correlated pair's; --chart
+    --node lists one node's draws and --pair one correlated pair's; --graph
     draws them as the notebook does (#330): the node's values and u
     histograms, the pair's scores against each other.
 
@@ -3234,12 +3427,15 @@ def ensemble_draws(
         mode = "monte_carlo"
     charted = as_graph or graph_file is not None
     if charted and node is None and pair is None:
-        raise click.UsageError("--chart and --chart-file draw --node's draws or --pair's scores; "
+        raise click.UsageError("--graph and --graph-file draw --node's draws or --pair's scores; "
                                "name one")
     if graph_file is not None and node is not None and pair is not None:
-        raise click.UsageError("--chart-file writes one chart: --node or --pair, not both")
+        raise click.UsageError("--graph-file writes one chart: --node or --pair, not both")
+    if csv_file is not None and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for --csv-file separately")
     pair_names = _parse_pair(pair) if pair is not None else None
-    data_dir_available = data_dir is not None or bool(os.environ.get("ANALYSIS_DATA_DIR"))
+    data_dir_available = data_dir is not None or bool(data_dir_setting())
     resolved_data_dir = _resolve_data_dir(data_dir) if data_dir_available else None
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR, resolved_data_dir)
     if scenario_name is None:
@@ -3252,9 +3448,9 @@ def ensemble_draws(
         # the rest at their base case, so a histogram or scatter of its draws
         # shows those few percentiles, not the distribution (#369).
         raise click.UsageError(
-            "--chart draws a Monte Carlo batch: a sensitivity batch's members each pin one row "
+            "--graph draws a Monte Carlo batch: a sensitivity batch's members each pin one row "
             "at a chosen percentile, so its charts would show only those few points. "
-            "Its tables (--node, --pair without --chart) still list what each member used")
+            "Its tables (--node, --pair without --graph) still list what each member used")
     path = draws_db_path(batch_dir)
     if rebuild or not draws_db_current(batch_dir):
         resolved_intent_dir = _resolve_state_dir(intent_dir, DEFAULT_INTENT_DIR, resolved_data_dir)
@@ -3262,6 +3458,11 @@ def ensemble_draws(
             build_draws_db(batch_dir, intent_batch_dir(resolved_intent_dir, batch_dir))
         except EnsembleError as exc:
             raise click.ClickException(str(exc)) from None
+    if output.machine():
+        with open_draws_db(batch_dir) as con:
+            con.row_factory = sqlite3.Row
+            _emit_draws(con, path, node, pair_names)
+        return
     _hold_tables()
     with open_draws_db(batch_dir) as con:
         con.row_factory = sqlite3.Row
@@ -3289,6 +3490,7 @@ def ensemble_draws(
               help="Print the tree's Mermaid source (to paste into markdown) instead.")
 @_graph_options("the factor tree", written="the factor tree", after="the table")
 @_ENSEMBLE_DATA_DIR_OPTION
+@output.output_options
 def ensemble_factors(
     scenario: str | None, with_varying: bool, as_mermaid: bool,
     as_graph: bool, graph_file: Path | None, data_dir: Path | None,
@@ -3298,7 +3500,7 @@ def ensemble_factors(
 
     Each factor shows its ρ to its parent and how many varying rows hang
     from it; --varying lists those rows too, each with the ρ the tree gives
-    it to its factor, and the rows that vary on their own. --chart draws the
+    it to its factor, and the rows that vary on their own. --graph draws the
     tree left to right, each link labeled with the child's ρ, and with
     --varying, each row as a box on a dotted link from its factor; --mermaid
     prints the factors as a Mermaid flowchart, for a README.
@@ -3310,14 +3512,17 @@ def ensemble_factors(
     from zabob.retirement.sim import factor_tree as ft
 
     if as_mermaid and (as_graph or graph_file is not None):
-        raise click.UsageError("use one of --mermaid, --chart and --chart-file")
+        raise click.UsageError("use one of --mermaid, --graph and --graph-file")
     if as_mermaid and with_varying:
         raise click.UsageError("--varying lists rows in a table; --mermaid prints only the tree")
+    if as_mermaid and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for the Mermaid source separately")
     data = _resolve_data_dir(data_dir)
     with _intent_db(data, scenario) as (con, name):
         tree = ft.factor_tree(con)
     if not tree.factors and not (with_varying and tree.varying):
-        click.echo(f"no latent factors in {name}")
+        output.note(f"no latent factors in {name}")
         return
     if as_mermaid:
         click.echo(ft.mermaid(tree))
@@ -3331,6 +3536,9 @@ def ensemble_factors(
     under: dict[str | None, list[ft.Varying]] = {}
     for node in tree.varying:
         under.setdefault(tree.factor_of(node.name), []).append(node)
+    if output.machine():
+        _emit_factor_tree(tree, under, name, with_varying=with_varying)
+        return
     table = Table(title=f"Factors in {escape(name)}", title_justify="left")
     for column in ("Factor", "ρ", "Rows", "Description"):
         table.add_column(column, justify="right" if column in ("ρ", "Rows") else "left")
@@ -3364,6 +3572,33 @@ def ensemble_factors(
             rows.add_section()
     click.echo()
     _print_wide(rows)
+
+
+def _emit_factor_tree(tree: Any, under: dict[str | None, list[Any]], name: str, *,
+                      with_varying: bool) -> None:
+    """``ensemble factors``' --csv or --json (#682): each factor with its
+    parent (the tree's shape, which the table draws by indenting), and with
+    ``with_varying`` each varying row with its factor and tree."""
+    factors = output.Rows(["factor", "parent", "via", "rho", "nu", "rows", "description"])
+    for factor, _depth in tree.walk():
+        factors.add(factor=factor.name, parent=factor.parent, via=list(factor.via), rho=factor.rho,
+                    nu=factor.nu, rows=len(under.get(factor.name, [])),
+                    description=factor.description or None)
+    tables: dict[str, output.Table] = {"factors": factors}
+    if with_varying:
+        rows = output.Rows(["row", "tree", "factor", "via", "rho_to_factor", "rho_to_tree",
+                            "varies", "distribution"])
+        for owner, nodes in under.items():
+            root = None if owner is None else tree.root(owner)
+            for node in nodes:
+                link = tree.links.get(node.name)
+                rows.add(row=node.name, tree=root, factor=owner,
+                         via=None if link is None or link.parent == owner else link.parent,
+                         rho_to_factor=None if owner is None else tree.rho(node.name, owner),
+                         rho_to_tree=None if root is None else tree.rho(node.name, root),
+                         varies=node.varies, distribution=node.distribution)
+        tables["varying"] = rows
+    output.emit(tables, title=f"factors in {name}", scenario=name)
 
 
 def _parse_pair(pair: str) -> tuple[str, str]:
@@ -3427,6 +3662,98 @@ def _draw_cell(unit: str, value: Any, *, spread: bool = False) -> str:
     if unit == "years":
         return f"{value:.1f}"
     return f"{value:+.2f}" if not spread else f"{value:.2f}"
+
+
+def _draw_value(unit: str, value: Any) -> Any:
+    """A display-unit value (``node_display``, ``draw_display``) as
+    --csv/--json give it: a percent as a fraction, as they give every rate
+    (#196); dollars, years and dates as displayed."""
+    return value / 100 if unit == "percent" and value is not None else value
+
+
+def _emit_draws(con: sqlite3.Connection, path: Path, node: str | None,
+                pair: tuple[str, str] | None) -> None:
+    """``ensemble draws``' --csv or --json (#682): the summary's checks,
+    pairs and scales, or --node's and --pair's draws."""
+    tables: dict[str, output.Table] = {}
+    if node is not None:
+        _check_draws_node(con, node)
+        draws = output.Rows(["component", "member", "is_base", "value", "u", "z", "noise", "quantile"])
+        for r in con.execute("SELECT * FROM draw_display WHERE node = ? "
+                             "ORDER BY component, member_index", (node,)):
+            draws.add(component=r["component"], member=r["member_index"], is_base=bool(r["is_base"]),
+                      value=_draw_value(r["unit"], r["value"]), u=r["u"], z=r["z"],
+                      noise=r["noise"], quantile=r["quantile"])
+        tables["draws"] = draws
+        tables["node"] = _draw_nodes(con, "name = ?", (node,))
+    if pair is not None:
+        a, b = pair
+        found = _check_draws_pair(con, a, b)
+        units = {r["name"]: r["unit"] for r in con.execute("SELECT name, unit FROM node_display")}
+        members = output.Rows(["component", "member", "is_base", "a_value", "a_score",
+                               "b_value", "b_score"])
+        for p in found:
+            for r in _pair_rows(con, a, b, p["component"]):
+                members.add(component=p["component"], member=r["member_index"],
+                            is_base=bool(r["is_base"]),
+                            a_value=_draw_value(units.get(a, ""), r["a_value"]), a_score=r["a_z"],
+                            b_value=_draw_value(units.get(b, ""), r["b_value"]), b_score=r["b_z"])
+        tables["pair_members"] = members
+        tables["pair"] = _draw_pairs(found)
+    if tables:
+        # The members' draws first: --csv prints the first table.
+        order = [t for t in ("draws", "pair_members", "node", "pair") if t in tables]
+        output.emit({t: tables[t] for t in order}, title="ensemble draws", node=node,
+                    a=pair and pair[0], b=pair and pair[1])
+        return
+    batch = con.execute("SELECT * FROM batch").fetchone()
+    members_ = con.execute("SELECT count(*), sum(status = 'succeeded') FROM member").fetchone()
+    # The pairs the table shows: every authored link, and an implied pair
+    # only when the batch missed it.
+    pairs = con.execute(
+        "SELECT * FROM node_pair WHERE kind = 'link' OR implied_rho < achieved_low "
+        "OR implied_rho > achieved_high ORDER BY component, kind = 'implied', a, b").fetchall()
+    implied = con.execute("SELECT count(*) FROM node_pair WHERE kind = 'implied'").fetchone()[0]
+    if implied:
+        output.note(f"({implied} implied pair(s) in all, in node_pair; given only when outside "
+                    "their interval)")
+    scales = output.from_rows(["tree", "members", "min", "mean", "max"], con.execute(
+        "SELECT tree_root, count(*), min(scale), avg(scale), max(scale) FROM tail_scale "
+        "WHERE year IS NULL GROUP BY tree_root ORDER BY tree_root").fetchall())
+    output.emit({"nodes": _draw_nodes(con, "1", ()), "pairs": _draw_pairs(pairs),
+                 "tail_scales": scales},
+                title="ensemble draws", ensemble=batch["ensemble_name"], batch=batch["batch"],
+                mode=batch["mode"], members=members_[0], succeeded=members_[1] or 0,
+                seed=batch["master_seed"], database=str(path))
+
+
+def _draw_nodes(con: sqlite3.Connection, where: str, args: tuple[Any, ...]) -> output.Rows:
+    """Each node (``where`` picks them) with its distribution and the check
+    of its draws: the expected median and SD beside the drawn members'."""
+    shown = output.Rows(["component", "node", "node_kind", "distribution", "unit", "median",
+                         "correlate_with", "rho", "n", "expected_p50", "drawn_p50",
+                         "expected_sd", "drawn_sd", "ks_u_p"])
+    checks = {(r["component"], r["node"]): r for r in con.execute("SELECT * FROM draw_check_display")}
+    for n in con.execute(f"SELECT * FROM node_display WHERE {where} "
+                         "ORDER BY component, node_kind = 'factor', name", args):
+        unit = n["unit"]
+        c = checks.get((n["component"], n["name"]))
+        checked = {k: None if c is None else _draw_value(unit, c[k])
+                   for k in ("expected_p50", "drawn_p50", "expected_sd", "drawn_sd")}
+        shown.add(component=n["component"], node=n["name"], node_kind=n["node_kind"],
+                  distribution=n["distribution"], unit="fraction" if unit == "percent" else unit,
+                  median=_draw_value(unit, n["median"]), correlate_with=n["correlate_with"],
+                  rho=n["rho"], n=None if c is None else c["n"], **checked,
+                  ks_u_p=None if c is None else c["ks_u_p"])
+    return shown
+
+
+def _draw_pairs(pairs: Iterable[sqlite3.Row]) -> output.Rows:
+    shown = output.Rows(["component", "a", "b", "kind", "implied_rho", "achieved_rho",
+                         "achieved_low", "achieved_high"])
+    for p in pairs:
+        shown.add(**{c: p[c] for c in shown.columns})
+    return shown
 
 
 def _echo_draws_summary(con: sqlite3.Connection, path: Path) -> None:
@@ -3524,12 +3851,19 @@ def _echo_component_draws(
                    "their interval)")
 
 
-def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
+def _check_draws_node(con: sqlite3.Connection, node: str) -> list[sqlite3.Row]:
+    """``node``'s rows of ``node_display``, one per pool component; a usage
+    error when the batch doesn't draw it."""
     found = con.execute("SELECT * FROM node_display WHERE name = ? ORDER BY component",
                         (node,)).fetchall()
     if not found:
         known = [name for (name,) in con.execute("SELECT DISTINCT name FROM node ORDER BY name")]
         raise click.UsageError(f"--node: {node!r} isn't drawn in this batch; it draws {', '.join(known)}")
+    return found
+
+
+def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
+    found = _check_draws_node(con, node)
     pooled = con.execute("SELECT count(DISTINCT component) FROM member").fetchone()[0] > 1
     for n in found:
         unit = n["unit"]
@@ -3547,9 +3881,9 @@ def _echo_node_draws(con: sqlite3.Connection, node: str) -> None:
         ])
 
 
-def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
-    """--pair: the pair's implied and achieved rho, then each member's
-    values and scores, per pool component that correlates them."""
+def _check_draws_pair(con: sqlite3.Connection, a: str, b: str) -> list[sqlite3.Row]:
+    """The pair's rows of ``node_pair``, one per pool component that
+    correlates them; a usage error, saying what each pairs with, when none does."""
     found = con.execute(
         "SELECT * FROM node_pair WHERE (a = ? AND b = ?) OR (a = ? AND b = ?) ORDER BY component",
         (a, b, b, a)).fetchall()
@@ -3563,6 +3897,26 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
             "WHERE a = ? OR b = ? ORDER BY kind = 'implied', other", (a, a, a))]
         hint = f"; {a} pairs with {', '.join(partners)}" if partners else f"; {a} pairs with nothing"
         raise click.UsageError(f"--pair: {a!r} and {b!r} aren't a correlated pair in this batch{hint}")
+    return found
+
+
+def _pair_rows(con: sqlite3.Connection, a: str, b: str, component: str) -> list[sqlite3.Row]:
+    """Each member's values and scores of ``a`` and ``b`` in ``component``."""
+    return con.execute(
+        "SELECT member_index, max(is_base) AS is_base, "
+        "max(CASE WHEN node = ? THEN value END) AS a_value, "
+        "max(CASE WHEN node = ? THEN z END) AS a_z, "
+        "max(CASE WHEN node = ? THEN value END) AS b_value, "
+        "max(CASE WHEN node = ? THEN z END) AS b_z "
+        "FROM draw_display WHERE component = ? AND node IN (?, ?) "
+        "GROUP BY member_index ORDER BY member_index",
+        (a, a, b, b, component, a, b)).fetchall()
+
+
+def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
+    """--pair: the pair's implied and achieved rho, then each member's
+    values and scores, per pool component that correlates them."""
+    found = _check_draws_pair(con, a, b)
     pooled = con.execute("SELECT count(DISTINCT component) FROM member").fetchone()[0] > 1
     units = {r["name"]: r["unit"] for r in con.execute("SELECT name, unit FROM node_display")}
     for p in found:
@@ -3571,15 +3925,7 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
                     f", achieved {p['achieved_rho']:+.2f} "
                     f"(95% interval {p['achieved_low']:+.2f} to {p['achieved_high']:+.2f})")
         click.echo(f"{a} ~ {b}{where}: {p['kind']}, implied rho {p['implied_rho']:+.2f}{achieved}")
-        rows = con.execute(
-            "SELECT member_index, max(is_base) AS is_base, "
-            "max(CASE WHEN node = ? THEN value END) AS a_value, "
-            "max(CASE WHEN node = ? THEN z END) AS a_z, "
-            "max(CASE WHEN node = ? THEN value END) AS b_value, "
-            "max(CASE WHEN node = ? THEN z END) AS b_z "
-            "FROM draw_display WHERE component = ? AND node IN (?, ?) "
-            "GROUP BY member_index ORDER BY member_index",
-            (a, a, b, b, p["component"], a, b)).fetchall()
+        rows = _pair_rows(con, a, b, p["component"])
         _echo_table(["member", a, b, f"{a} score", f"{b} score"], [
             [f"{r['member_index']}{' (base)' if r['is_base'] else ''}",
              _draw_cell(units.get(a, ""), r["a_value"]), _draw_cell(units.get(b, ""), r["b_value"]),
@@ -3589,7 +3935,7 @@ def _echo_pair_draws(con: sqlite3.Connection, a: str, b: str) -> None:
 
 
 # Draws one of `sim ensemble sensitivity`'s figures (``_draw_figure``, bound
-# to the command's --chart or --chart-file).
+# to the command's --graph or --graph-file).
 # Draws a figure; given ``fit``, the figure ``fit`` draws at the terminal's size instead.
 _Draw = Callable[..., None]
 
@@ -3652,6 +3998,18 @@ def _report_attribution(
         except EnsembleError as exc:
             raise click.ClickException(str(exc)) from None
         draw(fig)
+    if output.machine():
+        # One row per year and key, a column per quantile, as each year's table.
+        # A key one quantile's table lacks is 0 there, as the table prints it;
+        # --relative's NaN (a base near zero) stays missing.
+        keys = list(dict.fromkeys(k for t in tables for k in t.columns))
+        frame = pd.concat({f"@{q:g}": t.reindex(columns=keys, fill_value=0.0)
+                           .loc[[y for y in years if y in t.index]].stack(future_stack=True)
+                           for q, t in by_quantile.items()}, axis=1)
+        frame.index.names = ["year", "key"]
+        output.emit(frame, title=f"attribution {scenario_name}", batch=batch_dir.name, row=row,
+                    by=by, dollars=dollar_mode.value, relative=relative)
+        return
     unit = "% of base" if relative else (
         "CPI-constant $" if dollar_mode == DollarMode.CPI_CONSTANT else "nominal $"
     )
@@ -3692,12 +4050,12 @@ def _report_correlation(
     table, by = report.table, report.by
     n = int(table["n"].iloc[0])
     years = _report_years(batch_dir, [int(y) for y in table["year"].unique()], years)
-    click.echo(
+    output.note(
         f"correlation {scenario_name} ({batch_dir.name}): {measure}, {n} drawn member(s) "
         "(member 0 excluded)"
     )
     if report.correlated:
-        click.echo(
+        output.note(
             "  note: this batch's rows are correlated (ADR-008), so a row's rho includes its "
             "correlates' effects; rows are ranked and pinned by SRRC, which holds the others fixed"
         )
@@ -3706,10 +4064,21 @@ def _report_correlation(
     # there's no fixed count to warn against; its intervals speak for it.
     needed = sensitivity.required_members(negligible)
     if by == "rho" and n < needed:
-        click.echo(
+        output.note(
             f"  warning: {n} members can't call a row negligible at {negligible:.0%}; "
             f"that needs about {needed} -- expect 'inconclusive'"
         )
+    if output.machine():
+        status = sensitivity.classify(table, negligible, by=by)
+        statuses = output.Rows(["row", "status"])
+        for name, value in status.items():
+            statuses.add(row=name, status=value)
+        output.emit({"rows": table[table["year"].isin(years)], "scores": report.scores,
+                     "status": statuses},
+                    title=f"correlation {scenario_name}", batch=batch_dir.name, measure=measure,
+                    dollars=dollar_mode.value, members=n, correlated=report.correlated,
+                    ranked_by=by, negligible=negligible)
+        return
     if not report.scores.empty:
         click.echo("\n  correlations achieved (rho from the scores' Kendall tau) vs expected:")
         for _, pair in report.scores.iterrows():
@@ -3786,6 +4155,18 @@ def _report_oat(
     failed = sorted(stem for stem, status in statuses.items() if status != "succeeded")
     years = _report_years(batch_dir, [int(y) for y in deltas["year"].unique()], years)
     factors = sensitivity.factor_rows(deltas)
+    if output.machine():
+        rows = pd.concat({year: sensitivity.oat_table(deltas, year, measure=measure, relative=relative)
+                          for year in years}, names=["year", "row"])
+        ranks = sensitivity.rank_by_year(deltas, measure=measure, relative=relative, value="rank")
+        ranks = ranks.rename_axis("row").rename(columns=str)
+        output.emit({"rows": rows, "ranks": ranks},
+                    title=f"sensitivity {scenario_name}", batch=batch_dir.name, measure=measure,
+                    dollars=dollar_mode.value, relative=relative,
+                    succeeded=len(statuses) - len(failed), failed={s: statuses[s] for s in failed},
+                    negligible=negligible,
+                    pin_candidates=sensitivity.pin_candidates(deltas, negligible, measure=measure))
+        return
     unit = "% of base" if relative else (
         "CPI-constant $" if dollar_mode == DollarMode.CPI_CONSTANT else "nominal $"
     )
@@ -3873,6 +4254,13 @@ def _report_row(
     )
     label = sensitivity.row_label(row, sensitivity.factor_rows(deltas))
     target = mine["target"].iloc[0]
+    if output.machine():
+        frame = grid.reindex(index=shown).rename_axis("year", axis=0).rename_axis(None, axis=1)
+        frame.columns = [f"@{q:g}" for q in frame.columns]
+        output.emit(frame, title=f"row {scenario_name}", batch=batch_dir.name, row=row,
+                    target=target, measure=measure, dollars=dollar_mode.value, relative=relative,
+                    moved_to={f"{q:g}": v for q, v in moved_to.items()})
+        return
     click.echo(f"row {scenario_name} ({batch_dir.name}): {label} ({target}), "
                f"{measure} vs. the base, {unit}")
     click.echo("  moved to: " + ", ".join(f"q={q:g} {v}" for q, v in moved_to.items()))
@@ -3893,7 +4281,7 @@ def _report_row(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -3912,7 +4300,7 @@ def _report_row(
 @click.option(
     "--run-by",
     default=None,
-    help="Identifier recorded in simulation_run.run_by (default: $USER)",
+    help="Identifier recorded in simulation_run.run_by (default: your login name)",
 )
 @click.option(
     "--force", is_flag=True, default=False,
@@ -3991,7 +4379,7 @@ def all_scenarios(
             try:
                 _run_pool(
                     name, resolved, _resolve_state_dir(intent_dir, DEFAULT_INTENT_DIR, resolved),
-                    resolved_runs_dir, run_by=run_by or os.environ.get("USER") or "unknown",
+                    resolved_runs_dir, run_by=run_by or login_name(),
                     allow_dirty_data=allow_dirty_data, allow_dirty_code=allow_dirty_code,
                     ensemble_size=None, jobs=_available_cpus(), built=built, failed=failed,
                 )
@@ -4045,19 +4433,18 @@ def _read_data_version(intent_path: Path) -> str | None:
     default=None,
     help="Default: data-repo state/runs when activated, else state/runs.",
 )
+@output.output_options
 def list_runs(runs_dir: Path | None) -> None:
     """List run files in --runs-dir with status, scenario, who, when."""
     resolved_runs_dir = _resolve_state_dir(runs_dir, DEFAULT_RUNS_DIR)
     if not resolved_runs_dir.exists():
-        click.echo(f"(no runs dir: {resolved_runs_dir})")
+        output.note(f"(no runs dir: {resolved_runs_dir})")
         return
     files = sorted(resolved_runs_dir.glob("*.sqlite3"))
     if not files:
-        click.echo(f"(no run files in {resolved_runs_dir})")
+        output.note(f"(no run files in {resolved_runs_dir})")
         return
-    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
-    click.echo(header)
-    click.echo("-" * len(header))
+    runs = output.Rows(["status", "scenario", "finished_at", "run_by", "file", "error"])
     for f in files:
         try:
             con = connect_sim_file(f"file:{f}?mode=ro", uri=True)
@@ -4069,15 +4456,23 @@ def list_runs(runs_dir: Path | None) -> None:
             finally:
                 con.close()
         except sqlite3.DatabaseError as exc:
-            click.echo(f"{'unreadable':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name} ({exc})")
+            runs.add(status="unreadable", file=f.name, error=str(exc))
             continue
         if row is None:
-            click.echo(f"{'empty':<10}  {'-':<24}  {'-':<20}  {'-':<16}  {f.name}")
+            runs.add(status="empty", file=f.name)
             continue
         status, name, finished, by = row
-        click.echo(
-            f"{status:<10}  {name:<24}  {(finished or '-'):<20}  {(by or '-'):<16}  {f.name}"
-        )
+        runs.add(status=status, scenario=name, finished_at=finished, run_by=by, file=f.name)
+    if output.machine():
+        output.emit(runs, title=f"runs ({resolved_runs_dir})")
+        return
+    header = f"{'status':<10}  {'scenario':<24}  {'finished_at':<20}  {'run_by':<16}  file"
+    click.echo(header)
+    click.echo("-" * len(header))
+    for r in runs.rows:
+        error = f" ({r['error']})" if r["error"] else ""
+        click.echo(f"{r['status']:<10}  {r['scenario'] or '-':<24}  {r['finished_at'] or '-':<20}  "
+                   f"{r['run_by'] or '-':<16}  {r['file']}{error}")
 
 
 def _scenario_argument(fn):
@@ -4123,7 +4518,7 @@ def _run_target_options(fn):
         click.option("--member", type=click.IntRange(min=0), default=None,
                      help="For an ensemble: this member of its latest batch (default: member 0)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
         click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path),
                      default=None, help="Directory to search for the latest run."),
     ]):
@@ -4188,6 +4583,7 @@ def _resolve_run_target(
 @click.argument("target", type=completion.SCENARIO_OR_RUNFILE, metavar="[SCENARIO | RUNFILE]", required=False)
 @_PRE_TAX_OPTION
 @_run_target_options
+@output.output_options
 def explain(
     target: str | None, pre_tax: bool, runfile: Path | None, data_dir: Path | None,
     runs_dir: Path | None,
@@ -4195,8 +4591,22 @@ def explain(
     """Dump scenario name, versions, counts, lots, year-end net worth (after
     tax unless --pre-tax), the scenario's load warnings, negative-balance
     warnings and basis step-ups at a death for a run: the scenario's latest (the current scenario's by
-    default), or a run file. Sanity dump."""
+    default), or a run file. Sanity dump.
+
+    With --json, each part under its own name, the lists as tables; --csv
+    prints the year-end net worth alone."""
     runfile = _resolve_run_target(target, runfile, data_dir, runs_dir)
+    with output.collecting() as collected:
+        facts = _explain(runfile, pre_tax, data_dir)
+    if output.machine():
+        net_worth = collected.pop("net_worth")
+        output.emit({"net_worth": net_worth, **collected}, **facts)
+
+
+def _explain(runfile: Path, pre_tax: bool, data_dir: Path | None) -> dict[str, Any]:
+    """``sim explain``'s dump, and with --csv or --json, what it says
+    outside its tables (the tables go to ``output.collect``)."""
+    facts: dict[str, Any] = {}
     con = connect_sim_file(f"file:{runfile}?mode=ro", uri=True)
     try:
         run = con.execute(
@@ -4209,6 +4619,12 @@ def explain(
             raise click.ClickException(f"no simulation_run row in {runfile}")
         (name, status, started, finished, failure, cv, cd, dv, dd,
          by, host, py) = run
+        facts["run"] = {
+            "file": str(runfile), "scenario": name, "status": status, "failure": failure,
+            "started": started, "finished": finished, "code_version": cv,
+            "code_dirty": bool(cd), "data_version": dv, "data_dirty": bool(dd),
+            "run_by": by, "host": host, "python": py,
+        }
         click.echo(f"file:           {_shown(runfile)}")
         click.echo(f"scenario:       {name}")
         click.echo(f"status:         {status}" + (f"  ({failure})" if failure else ""))
@@ -4221,6 +4637,7 @@ def explain(
         steps = con.execute("SELECT COUNT(*) FROM simulation_step").fetchone()[0]
         states = con.execute("SELECT COUNT(*) FROM account_state").fetchone()[0]
         xfers = con.execute("SELECT COUNT(*) FROM transfer_event").fetchone()[0]
+        facts["counts"] = {"steps": steps, "account_states": states, "transfers": xfers}
         click.echo(
             f"counts:         steps={steps}  account_states={states}  transfers={xfers}"
         )
@@ -4240,6 +4657,9 @@ def explain(
             ),
             sorted(INVESTMENT_ASSET_SUBKINDS),
         ).fetchall()
+        output.collect("lots", output.from_rows(
+            ["account", "subkind", "lot", "symbol", "quantity_micros", "balance_cents",
+             "cost_basis_cents"], lots))
         if lots:
             click.echo("")
             click.echo("lots at the final step:")
@@ -4257,18 +4677,32 @@ def explain(
         click.echo(f"{'':21}{'nominal':>18}  {'CPI-constant':>18}")
         rows = (_year_end_pre_tax_net_worth(con) if pre_tax
                 else _year_end_after_tax_net_worth(con, runfile))
+        facts["after_tax"] = not pre_tax
+        output.collect("net_worth", output.from_rows(
+            ["year", "nominal_cents", "cpi_constant_cents"],
+            [(int(year), nw, real) for year, nw, real in rows]))
         for year, nw, real in rows:
             click.echo(f"  {year}  {'':13}{_fmt_cents(nw)}  {_fmt_cents(real):>18}")
 
         click.echo("")
         _echo_recorded_load_warnings(con)
         _echo_negative_balance_warnings(con)
+        inherited_roth = _echo_inherited_roth_warnings(con)
         _echo_basis_step_ups(con)
         _echo_inheritances(con)
         _echo_strategies(con)
+        if output.machine():
+            found = load_warnings.read(con)
+            facts["load_warnings"] = list(found.warnings)
+            facts["unused"] = list(found.unused)
+            negative = shortfalls.negative_balances(con)
+            output.collect("negative_balances", output.from_items(negative, shortfalls.NegativeBalance))
+            facts["negative_balance_warnings"] = shortfalls.warning_lines(negative)
+            facts["inherited_roth_warnings"] = inherited_roth
     finally:
         con.close()
-    _echo_guard_rail_episodes(runfile, data_dir)
+    _echo_guard_rail_episodes(runfile, data_dir, facts)
+    return facts
 
 
 def _year_end_pre_tax_net_worth(con: sqlite3.Connection) -> list[tuple[str, int, int | None]]:
@@ -4306,7 +4740,8 @@ def _year_end_after_tax_net_worth(
     return rows
 
 
-def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
+def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None,
+                              facts: dict[str, Any] | None = None) -> None:
     """Each stretch of years the run spent past one of its scenario's guard
     rails (#305), annual and cumulative, in CPI-constant dollars. The rails
     are read from the data repo, so a run file read without one, or whose
@@ -4327,6 +4762,8 @@ def _echo_guard_rail_episodes(runfile: Path, data_dir: Path | None) -> None:
             return
         mode = DollarMode.CPI_CONSTANT if rc.cpi_index().notna().all() else DollarMode.NOMINAL
         lines = guard_rails.episode_lines(guard_rails.evaluate_run(rc, rails, mode))
+    if facts is not None:
+        facts["guard_rails_past"] = {"dollars": mode.value, "rails": len(rails), "episodes": lines}
     if not lines:
         click.echo(f"guard rails: never past any of {len(rails)}")
         return
@@ -4351,6 +4788,9 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
     ).fetchall()
     if not rows:
         return
+    output.collect("strategies", output.from_rows(
+        ["name", "kind", "chain", "decisions", "asked_cents", "chosen_cents", "chain_steps_cents"],
+        rows))
     year_end: dict[str, tuple[int, int]] = {
         name: (moved, gain) for name, moved, gain in con.execute(
             "SELECT s.name, SUM(d.chosen_cents), COALESCE(SUM(("
@@ -4359,8 +4799,12 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
             "FROM strategy_decision d JOIN strategy s ON s.id = d.strategy_id "
             "WHERE d.hook = 'year_end' GROUP BY s.id")
     }
+    output.collect("strategy_year_end", output.from_rows(
+        ["name", "moved_cents", "realized_gain_cents"],
+        [(name, moved, gain) for name, (moved, gain) in sorted(year_end.items())]))
     breach_lines: dict[str, list[str]] = {}
     told = strategy_guide.breaches(con)
+    output.collect("strategy_breaches", told)
     for key in sorted(set(zip(told["strategy"], told["rail"], told["margin_kind"], strict=True))):
         name, rail, kind = key
         group = told[(told["strategy"] == name) & (told["rail"] == rail) & (told["margin_kind"] == kind)]
@@ -4387,9 +4831,10 @@ def _echo_strategies(con: sqlite3.Connection) -> None:
 def _echo_basis_step_ups(con: sqlite3.Connection) -> None:
     """The run's basis step-ups at a death (#255): the month, the lot, whose
     death, its basis before and after, and the rule that applied (#434)."""
-    from zabob.retirement.sim.step_ups import basis_step_ups
+    from zabob.retirement.sim.step_ups import BasisStepUp, basis_step_ups
 
     found = basis_step_ups(con)
+    output.collect("basis_step_ups", output.from_items(found, BasisStepUp))
     if not found:
         click.echo("basis step-ups at a death: none")
         return
@@ -4408,9 +4853,10 @@ def _echo_inheritances(con: sqlite3.Connection) -> None:
     """What each death did with the household's accounts (#274): the month,
     the decedent, the account, where it went and how; nothing for a run
     with none."""
-    from zabob.retirement.sim.inheritances import inheritances
+    from zabob.retirement.sim.inheritances import Inheritance, inheritances
 
     found = inheritances(con)
+    output.collect("inheritances", output.from_items(found, Inheritance))
     if not found:
         return
     click.echo(f"accounts passed on at a death ({len(found)}):")
@@ -4453,6 +4899,21 @@ def _echo_negative_balance_warnings(con: sqlite3.Connection) -> None:
         click.echo(f"  {line}")
 
 
+def _echo_inherited_roth_warnings(con: sqlite3.Connection) -> list[str]:
+    """The run's recorded inherited Roth IRA warnings (#257, ADR-003 §1a):
+    money left past the ten-year deadline, moved in, or rolled over. Shown
+    only when there are any, and returned as the lines shown."""
+    raw = con.execute(
+        "SELECT json_extract(run_args_json, '$.inherited_roth_warnings') FROM simulation_run"
+    ).fetchone()
+    lines = [f"{e['month']}: {e['account']}: {e['message']}" for e in json.loads(raw[0] or "[]")] if raw else []
+    if lines:
+        click.echo(f"inherited Roth IRA warnings ({len(lines)}):")
+        for line in lines:
+            click.echo(f"  {line}")
+    return lines
+
+
 @sim_group_command.command("networth")
 @click.argument("scenario", type=completion.SCENARIO, required=False)
 @click.option("--monthly", "period", flag_value="monthly",
@@ -4467,6 +4928,7 @@ def _echo_negative_balance_warnings(con: sqlite3.Connection) -> None:
 @_year_range_options
 @_report_graph_options
 @_run_target_options
+@output.output_options
 def networth_command(
     scenario: str | None, period: str, dollars: str, pre_tax: bool,
     first_year: int | None, last_year: int | None,
@@ -4477,7 +4939,7 @@ def networth_command(
     current scenario's by default), or --runfile. As in net_worth.ipynb.
     It is after the tax still owed on it (#251) unless --pre-tax.
 
-    --chart draws it month by month, after tax with the pre-tax net worth
+    --graph draws it month by month, after tax with the pre-tax net worth
     dashed beside it (the gap is the tax still owed), or pre-tax alone.
     --start and --end limit the years shown."""
     years = _year_range(first_year, last_year)
@@ -4553,6 +5015,15 @@ def _echo_pre_tax_networth(runfile: Path, period: str, dollars: str,
                 f"{rows[0][0][:4]} to {rows[-1][0][:4]}")
         rows = shown
     label = DollarMode(dollars).label
+    if output.machine():
+        when = "month" if period == "monthly" else "year"
+        shown = output.Rows([when, "net_worth"])
+        for month, cents in rows:
+            shown.add(**{when: month if period == "monthly" else int(month[:4]),
+                         "net_worth": None if cents is None else cents / 100})
+        output.emit(shown, title="net worth", dollars=DollarMode(dollars).value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"net worth, {label} dollars ({name}, run {runfile.name}):")
     for month, cents in rows:
         when = month if period == "monthly" else month[:4]
@@ -4582,6 +5053,14 @@ def _echo_after_tax_networth(rc: RunConnection, runfile: Path, period: str, mode
         table = table.groupby(index_years(table)).tail(1)
     table = _shown_years(table, years)
     label = DollarMode(mode).label
+    if output.machine():
+        if period != "monthly":
+            table = table.set_axis(pd.Index(index_years(table), name="year"))
+        else:
+            table = table.rename_axis("month")
+        output.emit(table, title="after-tax net worth", dollars=mode.value,
+                    source=f"{name}, run {runfile.name}")
+        return
     click.echo(f"after-tax net worth, {label} dollars ({name}, run {runfile.name}):")
     _echo_table(
         ["month" if period == "monthly" else "year", *table.columns],
@@ -4598,7 +5077,7 @@ COMPARE_SECTIONS = (
 """``sim compare``'s sections, in the order it prints them (#188)."""
 
 _COMPARE_MAX_GRAPHED = 4
-"""The most variants ``sim compare --chart`` draws: more lines than that,
+"""The most variants ``sim compare --graph`` draws: more lines than that,
 and the chart can't be read (the notebook stops at four too)."""
 
 
@@ -4657,11 +5136,12 @@ def _compare_variants(data: Path, runs_dir: Path, baseline: str) -> list[str]:
 @click.option("--lot", type=completion.LotName("account"), default=None,
               help="With --account: one lot of the account instead of its total.")
 @_year_range_options
+@output.output_options
 @_graph_options("net worth (or --account's balance) and each variant's difference, or with "
                 "--section social-security or tax, that section's chart",
                 after="the tables", written="that chart (one chart only)")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path),
               default=None, help="Directory to find each scenario's latest run in.")
 def compare_command(
@@ -4686,7 +5166,7 @@ def compare_command(
     Social Security and final net worth (#336), when it differs, and with
     --account, that account's balance.
 
-    --chart draws net worth (or --account's balance); --section
+    --graph draws net worth (or --account's balance); --section
     social-security and --section tax draw their own charts instead, unless
     net-worth, break-even or account is asked for too, when it draws each.
 
@@ -4713,20 +5193,22 @@ def compare_command(
     working_set.use(data, baseline, *variants)
     if (as_graph or graph_file is not None) and len(variants) > _COMPARE_MAX_GRAPHED:
         raise click.UsageError(
-            f"--chart draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
-            "or leave --chart off for the tables")
+            f"--graph draws at most {_COMPARE_MAX_GRAPHED} variants; name fewer, "
+            "or leave --graph off for the tables")
     charts = _compare_charts(sections, account) if as_graph or graph_file is not None else []
     if graph_file is not None and len(charts) > 1:
         raise click.UsageError(
-            f"--chart-file writes one chart, and these sections draw {len(charts)} "
-            f"({', '.join(charts)}); ask for fewer, or use --chart")
+            f"--graph-file writes one chart, and these sections draw {len(charts)} "
+            f"({', '.join(charts)}); ask for fewer, or use --graph")
     _hold_tables()
     after_tax = not pre_tax
     shown = set(sections) or {*COMPARE_SECTIONS[:-1], *(["account"] if account else [])}
     mode = DollarMode(dollars)
     mode_label = DollarMode(mode).label
     scenarios = [baseline, *variants]
-    with ExitStack() as stack:
+    run_warnings: list[str] = []
+    rebased_to: dict[str, Any] | None = None
+    with output.collecting() as collected, ExitStack() as stack:
         connections: dict[str, RunConnection] = {}
         # Matched against the folder list, not joined onto a path, so a name
         # like "../x" can't reach outside scenarios/ or the runs directory.
@@ -4746,11 +5228,16 @@ def compare_command(
         rebased = compare.align_cpi(connections, baseline)
         click.echo(f"{', '.join(variants)} vs {baseline}, {mode_label} dollars")
         if rebased and mode == DollarMode.CPI_CONSTANT:
+            # Those whose CPI-constant dollars are the baseline's, from its start.
+            rebased_to = {"scenarios": list(rebased),
+                          "to": f"{connections[baseline].cpi_index().index[0]:%Y-%m}"}
             click.echo(f"  ({', '.join(rebased)} in {baseline}'s dollars: "
-                       f"{baseline} starts {connections[baseline].cpi_index().index[0]:%Y-%m})")
+                       f"{baseline} starts {rebased_to['to']})")
 
         if "runs" in shown:
             meta, warnings = compare.comparability(connections, scenarios)
+            run_warnings = list(warnings)
+            output.collect("runs", meta)
             click.echo("\nRuns:")
             _echo_table(
                 ["scenario", "status", "finished", "code", "data"],
@@ -4767,24 +5254,28 @@ def compare_command(
 
         if "differences" in shown:
             rules = compare.rule_differences(connections, scenarios, baseline)
+            output.collect("rules", rules)
             click.echo("\nRules that differ, as each run ended:")
             if rules.empty:
                 click.echo("  none")
             else:
                 _echo_frame(rules.map(_cell))
             events = compare.event_differences(connections, scenarios)
+            output.collect("events", events)
             click.echo("\nCalendar events that differ:")
             if events.empty:
                 click.echo("  none")
             else:
                 _echo_frame(events.set_index(["scenario", "date"]).map(_cell))
             accounts = compare.account_definition_differences(connections, scenarios, baseline)
+            output.collect("accounts", accounts)
             click.echo("\nAccounts and lots defined differently:")
             if accounts.empty:
                 click.echo("  none")
             else:
                 _echo_frame(accounts.map(_cell))
             ytd = compare.year_to_date_differences(connections, scenarios, baseline)
+            output.collect("year_to_date", ytd)
             click.echo("\nYear-to-date rows that differ:")
             if ytd.empty:
                 click.echo("  none")
@@ -4798,6 +5289,7 @@ def compare_command(
                 click.echo(f"\nNo variant starts after {baseline}, so there is no start to compare.")
             for name in later:
                 month, frame = compare.start_comparison(connections, baseline, name)
+                output.collect(f"start:{name}", frame)
                 click.echo(f"\nWhere {name} starts: {baseline}'s projection for {month:%Y-%m} "
                            f"against {name}'s opening balances (nominal):")
                 _echo_frame(frame.map(_cell))
@@ -4813,15 +5305,17 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant net worth; pass --dollars nominal")
         if "net-worth" in shown:
+            year_end = _shown_years(compare.year_end_comparison(nw, baseline, variants), years)
+            output.collect("net_worth", year_end)
             click.echo(f"\n{'After-tax net worth' if after_tax else 'Net worth'} "
                        f"at year end ({mode_label}):")
-            _echo_frame(_shown_years(compare.year_end_comparison(nw, baseline, variants),
-                                     years).map(_cell))
+            _echo_frame(year_end.map(_cell))
 
         if "break-even" in shown:
             delta = compare.variant_delta(nw, baseline, variants)
             summary = compare.breakeven_summary(nw, delta, baseline, variants)
             summary.index.name = "variant"
+            output.collect("break_even", summary)
             click.echo(f"\nBreak-even vs {baseline}: the month after which a variant stays ahead")
             _echo_frame(summary.map(_cell))
 
@@ -4856,9 +5350,11 @@ def compare_command(
                     f"no 'cpi' inflation index in the run of {', '.join(no_cpi)}, so no "
                     "CPI-constant balance; pass --dollars nominal")
             if "account" in shown:
+                year_end = _shown_years(compare.year_end_comparison(balances, baseline, variants),
+                                        years)
+                output.collect("account", year_end)
                 click.echo(f"\n{subject} at year end ({mode_label}):")
-                _echo_frame(_shown_years(compare.year_end_comparison(balances, baseline, variants),
-                                         years).map(_cell))
+                _echo_frame(year_end.map(_cell))
 
         if graphed:
             from zabob.retirement.sim.compare_charts import comparison_figure, ss_figure, tax_figure
@@ -4886,10 +5382,14 @@ def compare_command(
                         f"Net worth, {mode_label}", deaths=deaths)
                 _draw_figure(figure, graph_file,
                              f"compare-{chart}-" if len(charts) > 1 else "compare-")
+    if output.machine():
+        output.emit(collected, title=f"{', '.join(variants)} vs {baseline}", dollars=mode.value,
+                    baseline=baseline, variants=list(variants),
+                    after_tax=after_tax, warnings=run_warnings or None, rebased=rebased_to)
 
 
 def _compare_charts(sections: Sequence[str], account: str | None) -> list[str]:
-    """The charts ``sim compare --chart`` draws, in order: net worth, or
+    """The charts ``sim compare --graph`` draws, in order: net worth, or
     --account's balance; Social Security's and tax's (#335, #336) instead
     when those sections are asked for and no section of the first is."""
     first = "account" if account is not None else "net-worth"
@@ -4940,6 +5440,8 @@ def _echo_ss_comparison(
     label = DollarMode(mode).label
     click.echo(f"\nGross Social Security by year ({label}):")
     table = clip_years(yearly, years)
+    output.collect("social_security", table)
+    output.collect("social_security_summary", compare.ss_summary(ss, baseline))
     if table.empty:
         click.echo("  none in these years")
     else:
@@ -4972,6 +5474,7 @@ def _echo_tax_comparison(
     label = DollarMode(mode).label
     shown = clip_years(comparison, years)
     moved = shown[compare.tax_differs(shown)]
+    output.collect("tax", moved)
     click.echo(f"\nTotal tax by tax year ({label}), the {len(moved)} of {len(shown)} years "
                f"where a variant's differs from {baseline}'s (a negative Δ owes less):")
     if moved.empty:
@@ -4980,6 +5483,7 @@ def _echo_tax_comparison(
         _echo_frame(moved.map(_whole_dollars_cell))
     ss = compare.ss_gross_by_month(connections, scenarios, mode)
     summary = compare.tax_summary(tax, ss, nw, baseline)
+    output.collect("tax_summary", summary)
     click.echo(f"\nTax over the run ({label}), Δ against {baseline}; final net worth "
                f"{'after tax' if after_tax else 'pre-tax'}:")
     _echo_frame(summary.map(_whole_dollars_cell))
@@ -4995,12 +5499,14 @@ def _echo_strategy_differences(
     if not compare.uses_strategies(connections):
         return
     strategies = compare.strategy_differences(connections, scenarios, baseline)
+    output.collect("strategy_differences", strategies)
     click.echo("\nStrategies that differ (— where a scenario doesn't run it):")
     if strategies.empty:
         click.echo("  none")
     else:
         _echo_frame(strategies.map(_cell))
     targets = compare.target_differences(connections, scenarios, baseline)
+    output.collect("target_differences", targets)
     click.echo("\nTarget weights that differ (percent):")
     if targets.empty:
         click.echo("  none")
@@ -5023,6 +5529,7 @@ def _echo_strategy_comparison(
             click.echo("\nStrategies: none in these runs")
         return
     activity = compare.strategy_activity(connections, scenarios)
+    output.collect("strategy_activity", activity)
     click.echo("\nStrategies over the run (dollars asked of their chains, moved by the strategy, "
                "left to the chain's steps):")
     if activity.empty:
@@ -5046,6 +5553,7 @@ def _echo_strategy_comparison(
                           for name, frame in by_scenario.items()})
     table.index.name = "month"
     table = clip_years(table, years)
+    output.collect("drift", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else f"{v:.1f}")))
 
 
@@ -5074,9 +5582,11 @@ def _echo_spending_comparison(
     baseline, variants = scenarios[0], scenarios[1:]
     click.echo(f"\nSpending delivered by year ({DollarMode(mode).label}):")
     table = clip_years(compare.spending_comparison(found, baseline, variants), years)
+    output.collect("spending", table)
     _echo_frame(table.map(lambda v: _cell(v if pd.isna(v) else _whole_dollars(v))))
     click.echo("\nSpending against each scenario's plan over the run:")
     summary = compare.spending_summaries(found)
+    output.collect("spending_summary", summary)
     money = ("delivered", "budgeted", "rms", "lowest")
     shares = ("of_plan", "redirected")
     _echo_frame(summary.astype(object).assign(
@@ -5117,6 +5627,7 @@ def _echo_guard_rail_comparison(
     click.echo(f"\nGuard rail margins ({label}): negative is past the rail; cum is the years "
                "so far summed")
     for rail, frame in frames.items():
+        output.collect(f"guard_rail:{rail}", clip_years(frame, years))
         click.echo(f"\n{rail}:")
         _echo_frame(clip_years(frame, years).map(_cell))
 
@@ -5131,7 +5642,7 @@ def _echo_guard_rail_comparison(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 def commit_command(
     scenario_name: str | None, every: bool, message: str | None, data_dir: Path | None,
@@ -5188,7 +5699,7 @@ def commit_command(
               help="Leave the new files uncommitted (and DIR not a git repository).")
 @click.option("--no-builder", is_flag=True,
               help="Don't turn on background builds (for scripts and tests); "
-                   "ANALYSIS_NO_BUILDER=1 does the same.")
+                   "ZABOB_NO_BUILDER=1 does the same.")
 @click.option("--example", is_flag=True,
               help="Make a data repo of the prototype household, Alice and Bill, to try things on, "
                    "instead of your own.")
@@ -5211,7 +5722,7 @@ def init_command(
     paired with the code beside it.
 
     The data repo gets sim/ with persons.csv, the other shared CSVs,
-    activate-analysis, .retention.yaml and scenarios/base, made current,
+    activate-retirement, .retention.yaml and scenarios/base, made current,
     from the code repository's templates/. The template scenarios (t_*) and
     tax-law aux tables aren't copied: they're read from templates/ itself,
     so they stay current as the code changes. It is made a git repository
@@ -5220,7 +5731,7 @@ def init_command(
     Then it turns on background builds (ADR-004 §12), as `sim builder
     install` does, installing the data repo's git hooks. --no-builder
     installs no hooks and links no DIR to data/private, for scripts and
-    tests; so does ANALYSIS_NO_BUILDER set in the environment, as for
+    tests; so does ZABOB_NO_BUILDER set in the environment, as for
     setup.sh. With no DIR the data repo is still made at data/private,
     which is where one was asked for.
     --no-commit skips the builder, which needs a git repository.
@@ -5245,9 +5756,9 @@ def init_command(
     # not link or hook anything in the checkout it records from. (With no
     # DIR the data repo is the checkout's data/private whatever this says:
     # code and data are one to one, and that is where it was asked for.)
-    no_builder = no_builder or bool(os.environ.get("ANALYSIS_NO_BUILDER"))
+    no_builder = no_builder or bool(os.environ.get("ZABOB_NO_BUILDER"))
     # The checkout this is run in is the one the data repo is for (#654):
-    # activate-analysis activates the code its data repo was made by, so a
+    # activate-retirement activates the code its data repo was made by, so a
     # `sim` from another worktree's venv would pair it with the wrong code.
     code = data_repo.CODE_REPO_DIR
     here = checkout_of(Path.cwd())
@@ -5272,8 +5783,8 @@ def init_command(
         if os.path.lexists(private):
             raise click.ClickException(
                 f"{_shown(private, resolve=False)} is already there"
-                + (f", leading to {_shown(private.resolve())}" if private.is_symlink() else "")
-                + f". To use it: source {_shown(private / 'sim' / 'activate-analysis', resolve=False)}. For a new data "
+                + (f", leading to {_shown(private.resolve())}" if is_link(private) else "")
+                + f". To use it: sim switch --data {_shown(private, resolve=False)}. For a new data "
                 "repo elsewhere, give its DIR; to start over here, remove it first.")
         directory = private
     root = directory.expanduser().resolve()
@@ -5286,7 +5797,7 @@ def init_command(
     if not no_builder and not linked:
         if not os.path.lexists(private):
             private.parent.mkdir(exist_ok=True)
-            private.symlink_to(root)
+            link_dir(private, root)  # a junction where Windows refuses a symlink
             linked = True
             click.echo(f"linked {_shown(private, resolve=False)} to {_shown(root)}")
         else:
@@ -5299,9 +5810,9 @@ def init_command(
                 f"{_shown(code / 'scripts' / 'link-data.sh')} {root}", err=True)
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
-        else _shown(sim / "activate-analysis")
-    _next_steps(activate)
+    activate = _shown(private / "sim" / "activate-retirement", resolve=False) if linked \
+        else _shown(sim / "activate-retirement")
+    _next_steps(sim, activate, no_builder=no_builder)
 
 
 def _init_installed(
@@ -5315,22 +5826,58 @@ def _init_installed(
     root = (directory if directory is not None else DEFAULT_DATA_REPO).expanduser().resolve()
     sim, failed = _create_data_repo(root, person_id, display, birthdate, sex, filing_status,
                                     no_commit=no_commit, example=example, notebooks=True)
-    click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: analysis jupyter")
+    click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: sim jupyter start")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    _next_steps(_shown(sim / "activate-analysis"))
+    _next_steps(sim, _shown(sim / "activate-retirement"), no_builder=no_builder)
 
 
-def _next_steps(activate: str) -> None:
-    # Set apart and in bold: without it no later command finds the data
-    # repo, and after the lines above it was easy to miss.
+def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
+    # No activation step (#687): the commands find the data repo through
+    # the user's default, in any shell, PowerShell included. A script, test
+    # or recording (--no-builder) must leave a default it finds alone: a
+    # throwaway demo repo would otherwise become the user's data repo.
+    from zabob.retirement import user_config
+
+    if no_builder and (kept := user_config.default_data_dir()) is not None:
+        click.echo(f"left your data repo as {_shown_repo(kept)} (--no-builder); "
+                   f"`sim switch --data {_shown_repo(data_dir)}` switches to this one")
+    else:
+        _remember_default(data_dir)
     click.echo()
-    click.secho("Next, activate the data repo in this shell (the sim commands find it that way):", bold=True)
-    click.echo()
-    click.secho(f"    source {activate}", bold=True)
-    click.echo()
-    click.echo("Then add the rest of the household with `sim person add` and accounts to the base "
-               "scenario with `sim account add`.")
+    # Not logged in here (#773): whoever uses the data repo next, maybe not
+    # whoever made it, says who they are.
+    login = "Add" if user_config.current_user() else "`sim login` says who you are. Then add"
+    click.echo(f"Next: {login} the rest of the household with `sim person add` and accounts to the "
+               "base scenario with `sim account add`.")
+    if not WINDOWS:
+        click.echo(f"Optional: `source {activate}` in bash or zsh shows the data repo and you in the "
+                   "prompt and turns on TAB completion.")
+
+
+def _shown_repo(data_dir: Path) -> str:
+    """The data repo a data dir belongs to, as typed: its sim/ folder's
+    parent, or the data dir itself when it isn't named sim."""
+    return _shown(data_dir.parent if data_dir.name == "sim" else data_dir)
+
+
+def _remember_default(data_dir: Path) -> None:
+    """Make ``data_dir`` the user's default data repo and say so, warning
+    when this shell's $ZABOB_DATA_DIR still names another."""
+    from zabob.retirement import user_config
+
+    was = user_config.default_data_dir()
+    user_config.set_default_data_dir(data_dir)
+    if was is not None and was.resolve() != data_dir.resolve():
+        click.echo(f"made {_shown_repo(data_dir)} your data repo, in place of "
+                   f"{_shown_repo(was)} (`sim switch --data DIR` switches)")
+    else:
+        click.echo(f"made {_shown_repo(data_dir)} your data repo: the sim commands use it "
+                   "from any folder (`sim switch --data DIR` switches)")
+    env = os.environ.get("ZABOB_DATA_DIR")
+    if env and Path(env).resolve() != data_dir.resolve():
+        click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                   "first; `deactivate-retirement` or a new shell uses the default", err=True)
 
 
 def _create_data_repo(
@@ -5358,10 +5905,12 @@ def _create_data_repo(
     fields = _person_fields(
         {}, [], guided=display is None or birthdate is None,
         display=display, birthdate=birthdate, sex=sex, role="primary", meta_json="{}",
+        # A first setup asks only what every household needs; `sim person
+        # edit` sets a Roth clock that predates the scenario's Roth lots.
+        roth_clock_start="",
     )
     if filing_status is None:
-        filing_status = click.prompt("filing status", default="MFJ",
-                                     type=click.Choice(registries.FILING_STATUSES))
+        filing_status = _prompt_choice("filing status", registries.FILING_STATUSES, default="MFJ")
     try:
         failed = data_repo.create_data_repo(
             root, {"id": person_id, **fields}, filing_status, commit=not no_commit, notebooks=notebooks)
@@ -5382,6 +5931,9 @@ def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: st
     click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
     _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
     return sim
+
+
+sim_group_command.add_command(historical_command)  # #763
 
 
 @sim_group_command.group("notebooks")
@@ -5408,9 +5960,57 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
         click.echo(f"kept {len(kept)} already there (--replace to replace them)")
 
 
+sim_group_command.add_command(jupyter_group)
+
+
+@sim_group_command.group(name="completion")
+def completion_group() -> None:
+    """TAB completion for sim in your shell: install, show (#792).
+
+    bash, zsh, fish and PowerShell. `sim completion install` sets it up once;
+    no need to source the data repo's activate-retirement.
+    """
+
+
+def _completion_shell(shell: str | None) -> str:
+    if shell is None and (shell := shell_completion.detect_shell()) is None:
+        raise click.UsageError(f"name the shell: {', '.join(shell_completion.SHELLS)}")
+    return shell
+
+
+_SHELL_ARGUMENT = click.argument("shell", type=click.Choice(shell_completion.SHELLS), required=False)
+
+
+@completion_group.command(name="install")
+@_SHELL_ARGUMENT
+def completion_install(shell: str | None) -> None:
+    """Set up TAB completion for sim in SHELL (default: yours).
+
+    Writes the completion script and adds a line to the shell's startup file
+    (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that reads it; fish needs
+    no line. Running it again rewrites the script and adds nothing twice.
+    """
+    shell = _completion_shell(shell)
+    for done in shell_completion.install(shell):
+        click.echo(f"wrote {_shown(done.script, resolve=False)}")
+        if done.startup_file is not None:
+            click.echo(f"added a line reading it to {_shown(done.startup_file, resolve=False)}")
+        if done.note:
+            click.echo(done.note)
+    click.echo(f"Open a new {shell} to use it.")
+
+
+@completion_group.command(name="show")
+@_SHELL_ARGUMENT
+def completion_show(shell: str | None) -> None:
+    """Print the TAB completion script for sim in SHELL (default: yours),
+    to put somewhere of your own choosing."""
+    click.echo(shell_completion.source(_completion_shell(shell)), nl=False)
+
+
 # Set for the `sim init` that one run from another checkout's venv starts,
 # so that a checkout whose `sim` is somehow another's can't start a third.
-_INIT_AGAIN = "ANALYSIS_INIT_AGAIN"
+_INIT_AGAIN = "ZABOB_INIT_AGAIN"
 
 
 def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
@@ -5422,7 +6022,9 @@ def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
                "running that checkout's sim init, so the data repo is paired with it")
     # Another venv's VIRTUAL_ENV would have uv sync into that one.
     env = {name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"} | {_INIT_AGAIN: "1"}
-    its_sim = checkout / ".venv" / "bin" / "sim"
+    from zabob.retirement.resources import program_sim
+
+    its_sim = program_sim(str(checkout))
     if not its_sim.exists():
         if shutil.which("uv") is None:
             raise click.ClickException(
@@ -5432,7 +6034,7 @@ def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
             raise click.ClickException(f"uv sync failed in {_shown(checkout)}")
     if not its_sim.exists():
         raise click.ClickException(
-            f"{_shown(checkout)} has no .venv/bin/sim, even after uv sync: run scripts/setup.sh there")
+            f"{_shown(checkout)} has no .venv/{BIN_DIR}/{its_sim.name}, even after uv sync: run scripts/setup.sh there")
     try:
         raise SystemExit(subprocess.run([str(its_sim), "init", *args], env=env, check=False).returncode)
     except OSError as exc:
@@ -5456,34 +6058,97 @@ def _init_builder(sim: Path) -> None:
         return
     for line in done:
         click.echo(line)
-    click.echo(builder.notify(sim))
+    if (line := builder.notify(sim)) not in done:
+        click.echo(line)
+
+
+def _data_repo_option(value: Path) -> Path:
+    """A data repo, or its sim/ folder, as its data dir; a ClickException when it isn't one."""
+    root = value.expanduser().resolve()
+    data_dir = root if (root / "persons.csv").is_file() else root / "sim"
+    if not (data_dir / "persons.csv").is_file():
+        raise click.ClickException(f"{_shown(root)} isn't a data repo (no sim/persons.csv)")
+    return data_dir
+
+
+def _switch(login: str | None, data: Path | None, scenario: str | None, data_dir: Path | None = None) -> None:
+    """What `sim login` and `sim switch` share (#773): record who the user
+    is, their data repo and its current scenario, as given, then show all
+    three."""
+    from zabob.retirement import user_config
+
+    if data is not None:
+        data_dir = _data_repo_option(data)
+        was = user_config.default_data_dir()
+        if was is None or was.resolve() != data_dir.resolve():
+            user_config.set_default_data_dir(data_dir)
+            click.echo(f"Data repo is now {_shown_repo(data_dir)}"
+                       + (f" (was {_shown_repo(was)})" if was is not None else ""))
+        env = os.environ.get("ZABOB_DATA_DIR")
+        if env and Path(env).resolve() != data_dir.resolve():
+            click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                       "first; `deactivate-retirement` or a new shell uses this one", err=True)
+    if login is not None:
+        was_user = user_config.user_name()
+        if login != was_user:
+            user_config.set_user(login)
+            click.echo(f"Logged in as {login}" + (f" (was {was_user})" if was_user else ""))
+        if (env_user := os.environ.get("ZABOB_USER")) and env_user != login:
+            click.echo(f"  warning: this shell's ZABOB_USER, {env_user}, comes first", err=True)
+    setting = str(data_dir) if data_dir is not None else data_dir_setting()
+    data_dir_p = Path(setting).resolve() if setting else None
+    if scenario is not None:
+        if data_dir_p is None:
+            raise click.ClickException("no data repo to switch scenario in: give --data DIR")
+        previous = read_current_scenario(data_dir_p)
+        ref = _resolve_scenario(data_dir_p, scenario, remember=False)
+        working_set.use(data_dir_p, ref.name)
+        # Written even when unchanged: one read from the shared file before
+        # #773 becomes this user's own.
+        write_current_scenario(data_dir_p, ref.name)
+        if ref.name == previous:
+            click.echo(f"Unchanged: {ref.name}")
+        else:
+            click.echo(f"Switched to: {ref.name}" + (f" (was {previous})" if previous else ""))
+    user = user_config.current_user()
+    click.echo(f"User: {user or f'(not logged in: `sim login`; meanwhile {login_name()})'}")
+    click.echo(f"Data repo: {_shown_repo(data_dir_p) if data_dir_p else '(none: `sim init` makes one)'}")
+    if data_dir_p is not None:
+        click.echo(f"Current scenario: {read_current_scenario(data_dir_p) or '(none)'}")
+
+
+_DATA_HELP = "Make this data repo (or its sim/ folder) yours: the one every command uses from now on."
+
+
+@sim_group_command.command("login")
+@click.argument("name", required=False)
+@click.option("--scenario", type=completion.SCENARIO, default=None, help="Make this scenario current, too.")
+@click.option("--data", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help=_DATA_HELP)
+def login_command(name: str | None, scenario: str | None, data: Path | None) -> None:
+    """Say who you are (#773): NAME, by default your login name. It is the
+    same in every data repo, and names who made or changed things; it isn't
+    one of the household's people. Shows your data repo and current
+    scenario after."""
+    _switch(name or login_name(), data, scenario)
 
 
 @sim_group_command.command("switch")
 @click.argument("scenario", type=completion.SCENARIO, required=False)
-@click.option("--data-dir",
-              type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None)
-def switch_command(scenario: str | None, data_dir: Path | None) -> None:
-    """Show the current scenario, or make SCENARIO current (#236).
+@click.option("--login", "login", default=None, help="Say who you are, as `sim login NAME` does.")
+@click.option("--data", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help=_DATA_HELP)
+@click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Data repo for this command only, as on every command (default: yours).")
+def switch_command(scenario: str | None, login: str | None, data: Path | None, data_dir: Path | None) -> None:
+    """Show who you are, your data repo and its current scenario, or make
+    SCENARIO current (#236, #773).
 
-    With SCENARIO, prints the scenario that was current, then the new one.
-    Naming a scenario on any command makes it current too; this command does
-    only that, and says what changed.
+    With SCENARIO, says which was current before. Naming a scenario on any
+    command makes it current too; this command does only that, and says what
+    changed.
     """
-    data_dir_p = _resolve_data_dir(data_dir)
-    previous = read_current_scenario(data_dir_p)
-    click.echo(f"Current scenario: {previous or '(none)'}")
-    if scenario is None:
-        return
-    # It says what changed itself, in place of the usual notice.
-    ref = _resolve_scenario(data_dir_p, scenario, remember=False)
-    working_set.use(data_dir_p, ref.name)
-    if ref.name == previous:
-        click.echo(f"Unchanged: {ref.name}")
-    else:
-        write_current_scenario(data_dir_p, ref.name)
-        click.echo(f"Switched to: {ref.name}")
+    _switch(login, data, scenario, data_dir)
 
 
 @sim_group_command.command("items")
@@ -5514,9 +6179,10 @@ def switch_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario name used to find the latest run.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Directory to search for the latest run.")
+@output.output_options
 def items(
     accounts: tuple[str, ...],
     lot: str | None,
@@ -5595,14 +6261,22 @@ def items(
         )
     subkinds = known["subkind"].to_dict()
 
-    click.echo(f"run: {runfile}")
+    output.note(f"run: {runfile}")
     window = f"{first or 'start'} through {end or 'end'}"
     if len(accounts) == 1:
-        click.echo(f"account: {accounts[0]}{f' (lot {lot})' if lot else ''}  window: {window}")
+        output.note(f"account: {accounts[0]}{f' (lot {lot})' if lot else ''}  window: {window}")
     else:
-        click.echo(f"accounts: {', '.join(accounts) or 'all'}  window: {window}")
+        output.note(f"accounts: {', '.join(accounts) or 'all'}  window: {window}")
     if table.empty:
-        click.echo("(no matching ledger events)")
+        output.note("(no matching ledger events)")
+        return
+    if output.machine():
+        shown = table if not limit else table.head(limit)
+        output.emit(shown, title="ledger events", run=str(runfile), events=len(table),
+                    accounts=list(accounts), lot=lot, start=first and first.isoformat(), end=end)
+        if len(shown) < len(table):
+            output.note(f"gave the first {len(shown):,} of {len(table):,} events: narrow them "
+                        "with the filters, or pass --limit 0 for all")
         return
 
     from rich.table import Table
@@ -5702,12 +6376,17 @@ def _line_completions(line: str, word_start: int, choices: list[str]) -> list[st
 
 
 def _prompt_with_completion(text: str, choices: list[str] | None = None,
-                            default: str | None = None) -> str:
-    """Prompt with readline tab-completion over ``choices``."""
+                            default: str | None = None, *, choice: click.Choice | None = None) -> str:
+    """Prompt with readline tab-completion over ``choices``. With a
+    ``click.Choice`` ``choice``, its choices are listed, completed, and the
+    only answers taken (see ``_prompt_choice``)."""
+    if choice is not None and choices is None:
+        choices = [str(c) for c in choice.choices]
     try:
         import readline
     except ImportError:
-        return click.prompt(text, default=default, show_default=bool(default))
+        return click.prompt(text, default=default, show_default=bool(default), type=choice,
+                            err=output.machine())
     completer_choices = list(choices or [])
 
     def completer(prefix: str, state: int) -> str | None:  # noqa: ARG001
@@ -5727,10 +6406,22 @@ def _prompt_with_completion(text: str, choices: list[str] | None = None,
     else:
         readline.parse_and_bind("tab: complete")
     try:
-        return click.prompt(text, default=default, show_default=bool(default))
+        # With --csv or --json, stdout is for the data alone (#196).
+        return click.prompt(text, default=default, show_default=bool(default), type=choice,
+                            err=output.machine())
     finally:
         readline.set_completer(old)
         readline.set_completer_delims(old_delims)
+
+
+def _prompt_choice(text: str, choices: Iterable[str], *, default: str | None = None,
+                   case_sensitive: bool = True) -> str:
+    """One of ``choices``, asked for as ``click.prompt`` with a
+    ``click.Choice`` asks (listed, re-asked until valid), but completing over
+    them as a name prompt does (#260): a guided question with a fixed set of
+    answers uses this, not a bare ``click.Choice``."""
+    return _prompt_with_completion(
+        text, default=default, choice=click.Choice(list(choices), case_sensitive=case_sensitive))
 
 
 def _ask_name(what: str, choices: Iterable[str], *, prompt: str | None = None,
@@ -5743,11 +6434,11 @@ def _ask_name(what: str, choices: Iterable[str], *, prompt: str | None = None,
     listed = plural or (what if what.endswith("series") else f"{what}s")
     if not shown:
         raise click.ClickException(f"there are no {listed} to choose from")
-    click.echo(f"{listed}: {', '.join(shown)}")
+    output.note(f"{listed}: {', '.join(shown)}")
     while (answer := _prompt_with_completion(prompt or what, choices=shown).strip()) not in shown:
         if other is not None and answer and other(answer):
             break
-        click.echo(f"  one of: {', '.join(shown)}")
+        output.note(f"  one of: {', '.join(shown)}")
     return answer
 
 
@@ -5933,7 +6624,8 @@ _BACKFILLABLE_CALENDAR_COLUMNS = frozenset({
 
 # lifespan.csv's life_table (#315) is optional too.
 # #274 added accounts.csv beneficiary; an older file gains it, blank.
-_BACKFILLABLE_COLUMNS = _BACKFILLABLE_CALENDAR_COLUMNS | {"life_table", "beneficiary"}
+_BACKFILLABLE_COLUMNS = _BACKFILLABLE_CALENDAR_COLUMNS | {
+    "life_table", "beneficiary", registries.ROTH_CLOCK_COLUMN}
 
 
 def _append_csv_row(path: Path, header: tuple[str, ...],
@@ -7210,7 +7902,7 @@ def _ask_missing_arguments(
                    "(default: the current scenario).")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="For the guided mode: data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="For the guided mode: data repo (default: the one `sim switch` shows).")
 @click.pass_context
 def calendar_add_group_command(
     ctx: click.Context, scenario: str | None, data_dir: Path | None,
@@ -8908,7 +9600,7 @@ _SOURCE_OPTION_HELP = "Outside layout to read FILE as (default: the one the file
 @import_group_command.command("sources")
 @click.argument("files", nargs=-1, type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo, for its own sources (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo, for its own sources (default: the one `sim switch` shows).")
 def import_sources(files: tuple[Path, ...], data_dir: Path | None) -> None:
     """List the outside layouts `sim import` reads; with FILEs, say which
     one each file is in.
@@ -8919,7 +9611,7 @@ def import_sources(files: tuple[Path, ...], data_dir: Path | None) -> None:
     """
     # The built-in sources need no data repo, so the list works without one.
     imports = None
-    if data_dir is not None or os.environ.get("ANALYSIS_DATA_DIR"):
+    if data_dir is not None or data_dir_setting():
         imports = import_mapping.imports_dir(_resolve_data_dir(data_dir))
     try:
         known = import_sources_.table(imports)
@@ -10378,10 +11070,10 @@ def _budget_or_actual(
                            f"{use}, an amount having moved more than {import_budget_.MOVED:.0%} since")
             use = prefer
         elif open_again and _interactive():
-            answer = click.prompt(
+            answer = _prompt_choice(
                 f"{each.category}: budget {format_dollars(each.budget_cents)} or actual "
                 f"{format_dollars(each.actual_cents)} a month?",
-                type=click.Choice(_BUDGET_OR_ACTUAL), default=each.saved)
+                _BUDGET_OR_ACTUAL, default=each.saved)
             if answer.startswith("all-"):
                 answer = for_the_rest = answer.removeprefix("all-")
             use = answer
@@ -10423,7 +11115,7 @@ _LEFT_OUT = {
 def _sim_command() -> str:
     """The `sim` beside the running Python, for a script to run later: the
     PATH it is run with may have none, or another checkout's."""
-    beside = Path(sys.executable).parent / "sim"
+    beside = program(Path(sys.executable).parent, "sim")
     return str(beside) if beside.is_file() else shutil.which("sim") or "sim"
 
 
@@ -10734,8 +11426,10 @@ def import_budget(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List recurring scheduled transactions."""
+    """List recurring scheduled transactions. --csv and --json give every
+    field of each rule."""
     from rich.console import Console
     from rich.table import Table
 
@@ -10745,6 +11439,12 @@ def scheduled_list(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data_dir_p, _resolve_scenario(data_dir_p, scenario).name) as sc:
         scen_name = sc.name
         rows = scheduled_view(sc)
+    if output.machine():
+        # The view's "-" placeholders are for reading; missing is missing.
+        raw = rows.replace({c: {"-": None} for c in ("from_lot", "to_lot", "end", "description")
+                            if c in rows.columns})
+        output.emit(raw, title=f"scheduled ({data_dir_p.name} / {scen_name})", scenario=scen_name)
+        return
     table = Table(title=f"scheduled ({data_dir_p.name} / {scen_name})")
     for column, justify in (
         ("Name", "left"), ("Cadence", "left"), ("From", "left"), ("Lot", "left"),
@@ -11565,20 +12265,12 @@ def edit_account(
         beneficiary = beneficiary if beneficiary is not None else current.get("beneficiary", "")
     else:
         new_name = click.prompt("name", default=current.get("name", ""), show_default=True)
-        kind = click.prompt(
-            "kind",
-            default=current.get("kind", ""),
-            show_default=True,
-            type=click.Choice(sorted(registries.ACCOUNT_SUBKINDS), case_sensitive=False),
-        )
+        kind = _prompt_choice("kind", sorted(registries.ACCOUNT_SUBKINDS),
+                              default=current.get("kind", ""), case_sensitive=False)
         kind = kind.lower() if kind else kind
         allowed_subkinds = sorted(registries.ACCOUNT_SUBKINDS.get(kind, {current.get("subkind", "")}))
-        subkind = click.prompt(
-            "subkind",
-            default=current.get("subkind", ""),
-            show_default=True,
-            type=click.Choice(allowed_subkinds, case_sensitive=False),
-        )
+        subkind = _prompt_choice("subkind", allowed_subkinds,
+                                 default=current.get("subkind", ""), case_sensitive=False)
         subkind = subkind.lower() if subkind else subkind
         owner = click.prompt(
             "owner",
@@ -11587,12 +12279,9 @@ def edit_account(
         )
         owner = owner.strip() or "joint"
         # A retirement account's lots set its tax treatment (#217).
-        tax_treatment = "" if subkind == registries.RETIREMENT_SUBKIND else click.prompt(
-            "tax_treatment",
-            default=current.get("tax_treatment", ""),
-            show_default=True,
-            type=click.Choice(sorted(registries.TAX_TREATMENTS), case_sensitive=False),
-        )
+        tax_treatment = "" if subkind == registries.RETIREMENT_SUBKIND else _prompt_choice(
+            "tax_treatment", sorted(registries.TAX_TREATMENTS),
+            default=current.get("tax_treatment", ""), case_sensitive=False)
         opened = click.prompt("opened", default=current.get("opened", ""), show_default=True)
         if opened:
             opened = _validate_month_date(opened)
@@ -11794,6 +12483,7 @@ def _default_tax_treatment(kind: str, subkind: str) -> str:
               help="Filter to accounts of this kind (e.g. asset, liability).")
 @click.option("--owner", type=completion.OWNER, default=None,
               help="Filter to accounts owned by this person or 'joint'.")
+@output.output_options
 def list_accounts(
     scenario: str | None,
     data_dir: Path | None,
@@ -11822,6 +12512,9 @@ def list_accounts(
     if owner:
         title += f" / owner={owner}"
     title += ")"
+    if output.machine():
+        output.emit(output.from_items(rows, AccountRow, blank_is_missing=True), title=title)
+        return
     Console().print(render_accounts_table(rows, title=title))
 
 
@@ -11831,7 +12524,7 @@ def _holdings_options(fn):
         click.option("--scenario", type=completion.SCENARIO, default=None,
                      help="Scenario folder name (default: the current scenario)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
         click.option("--month", default=None,
                      help="Month of the run to show, YYYY-MM (default: the current month, "
                           "or the run's nearest one)."),
@@ -11841,7 +12534,7 @@ def _holdings_options(fn):
                      default=None, help="Run file (default: the scenario's latest run)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -11891,6 +12584,9 @@ def account_holdings_command(
         except (KeyError, ValueError) as exc:
             raise click.ClickException(exc.args[0]) from None
     title = f"holdings of {account} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, account=account, source=described)
+        return
     Console().print(render_holdings_table(frame, title=title))
 
 
@@ -11915,11 +12611,14 @@ def account_holders_command(
         except ValueError as exc:
             raise click.ClickException(str(exc)) from None
     if frame.empty:
-        click.echo(f"no lot holds {symbol!r} ({described})")
+        output.note(f"no lot holds {symbol!r} ({described})")
         return
     name = frame["name"].iloc[0]
     named = f"{symbol} ({name})" if isinstance(name, str) else symbol
     title = f"accounts holding {named} ({described}; {frame['as_of'].iloc[0]})"
+    if output.machine():
+        output.emit(frame, title=title, symbol=symbol, source=described)
+        return
     Console().print(render_holders_table(frame, title=title))
 
 
@@ -11956,7 +12655,7 @@ def allocation_command(
     With --drift, shows how far the run's portfolio strays from its target
     allocation (targets.csv) at each year-end instead.
 
-    --chart draws the asset classes as a pie; with --by, a bar per class
+    --graph draws the asset classes as a pie; with --by, a bar per class
     split by the group; with --drift, a line per class by year.
     """
     if drift:
@@ -11979,6 +12678,11 @@ def allocation_command(
     title = f"asset allocation ({described}; {as_of})"
     if excluded:
         title += f", excluding {', '.join(excluded)}"
+    if output.machine():
+        # A share, as every other report's, not the table's percent.
+        shares = table.assign(share=table["percent"] / 100).drop(columns="percent")
+        output.emit(shares, title=title, source=described, by=by, excluded=list(excluded) or None)
+        return
     _print_unclipped(allocation.render_allocation_table(table, title=title))
     if allocation.UNCLASSIFIED in table.index:
         click.echo("unclassified: lots whose symbol has no rows in allocations.csv"
@@ -12010,10 +12714,15 @@ def _allocation_drift(
     finally:
         con.close()
     whose = f"accounts tagged {portfolio}" if portfolio else "every asset lot"
-    click.echo(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
+    output.note(f"drift from target set {target_set}, percentage points ({whose}; {path.name})")
     if frame.empty:
-        click.echo("(no months in the run)")
+        output.note("(no months in the run)")
         _graph_nothing(graph_file, "drift", "drift-")
+        return
+    if output.machine():
+        output.emit(frame.rename_axis("month"), title=f"drift from target set {target_set}",
+                    target_set=target_set,
+                    portfolio=portfolio, units="percentage points", source=path.name)
         return
     click.echo(frame.to_string(float_format=lambda v: f"{v:+.1f}"))
 
@@ -12056,10 +12765,10 @@ def _report_options(fn):
         click.option("--scenario", type=completion.SCENARIO, default=None,
                      help="Scenario whose latest run to read (default: the current scenario)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
     ]):
         fn = option(fn)
-    return fn
+    return output.output_options(fn)
 
 
 @contextmanager
@@ -12088,10 +12797,14 @@ def _report_run(
 
 
 def _print_report(frame: pd.DataFrame, what: str, described: str, mode: DollarMode, *,
-                  total_row: bool = False) -> None:
+                  total_row: bool = False, **meta: Any) -> None:
     """Print a report: a line saying what it shows, in which dollars and from
     which run, then the table. Not the table's own title, which would wrap
-    over a narrow table."""
+    over a narrow table. With --csv or --json, the frame's rows instead, the
+    heading's parts (and ``meta``) as JSON's fields."""
+    if output.machine():
+        output.emit(frame, title=what, dollars=mode.value, source=described, **meta)
+        return
     click.echo(f"{what}, {_DOLLAR_LABELS[mode]} ({described})")
     _print_unclipped(reports.render_report_table(frame, total_row=total_row))
 
@@ -12119,7 +12832,7 @@ def account_history_command(
     flow. With --lot, an asset lot also shows its cost basis, unrealized gain
     and quantity where the run tracks them.
 
-    Without ACCOUNT, it is asked for. --chart draws the balance (and a lot's
+    Without ACCOUNT, it is asked for. --graph draws the balance (and a lot's
     cost basis) over the rows shown.
     """
     # A bare year, as every other report's --start/--end takes (#331).
@@ -12139,7 +12852,7 @@ def account_history_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no balances for {account} in that range ({described})")
+        output.note(f"no balances for {account} in that range ({described})")
         _graph_nothing(graph_file, "balances", "history-")
         return
     subject = f"{account}/{lot}" if lot else account
@@ -12161,9 +12874,9 @@ def _year_month(text: str, month: int) -> str:
 
 
 def _graph_nothing(graph_file: Path | None, what: str, prefix: str) -> None:
-    """On a report's nothing-to-show path, still write --chart-file: a chart
+    """On a report's nothing-to-show path, still write --graph-file: a chart
     saying there's no ``what`` to chart, so a script that asked for the file
-    finds one. (--chart draws nothing, so the message is shown even
+    finds one. (--graph draws nothing, so the message is shown even
     without --table.)"""
     if graph_file is not None:
         from zabob.retirement.sim.run_charts import nothing_figure
@@ -12179,7 +12892,7 @@ def _chart_deaths(rc: RunConnection, as_graph: bool, graph_file: Path | None) ->
 
 def _draw_report(as_graph: bool, graph_file: Path | None, figure: Callable[[], Any],
                  prefix: str) -> None:
-    """Draw a report's chart when --chart or --chart-file asks for one."""
+    """Draw a report's chart when --graph or --graph-file asks for one."""
     if as_graph or graph_file is not None:
         _draw_figure(figure(), graph_file, prefix)
 
@@ -12223,8 +12936,8 @@ def _flow_report(side: reports.FlowSide, year: int | None, by: str, untagged: bo
                                              reports.CASH_FLOW, *reports.NET_WORTH_COLUMNS])
     if by.startswith("tag:") and shown.empty:
         role = by.removeprefix("tag:")
-        click.echo(f"no {side}{period} is tagged in role {role} ({described});"
-                   " --untagged shows it all")
+        output.note(f"no {side}{period} is tagged in role {role} ({described});"
+                    " --untagged shows it all")
         _graph_nothing(graph_file, f"{side} tagged in role {role}", f"{side}-")
         return
     if year is None:
@@ -12305,7 +13018,7 @@ def report_income_command(
 
     A column that is zero in every year is left out.
 
-    --chart draws the groups stacked by year, over economic income carried
+    --graph draws the groups stacked by year, over economic income carried
     down to the change in net worth; with --year, a bar per group.
     """
     _flow_report("income", year, by, untagged, dollars, runfile, scenario, data_dir,
@@ -12334,7 +13047,7 @@ def report_expenses_command(
     By tag, expenses with no tag in the role are left out unless --untagged
     is given. A column that is zero in every year is left out.
 
-    --chart draws the groups stacked by year; with --year, a bar per group.
+    --graph draws the groups stacked by year; with --year, a bar per group.
     """
     _flow_report("expenses", year, by, untagged, dollars, runfile, scenario, data_dir,
                  years=_year_range(first_year, last_year),
@@ -12369,7 +13082,7 @@ def report_spending_command(
     --start and --end limit the years in the table; the lines below it
     still cover the whole run.
 
-    --chart draws delivered spending as a bar per year against the plan as
+    --graph draws delivered spending as a bar per year against the plan as
     a line, over the years in the table, as the notebook's spending widget
     does.
     """
@@ -12384,13 +13097,15 @@ def report_spending_command(
             raise click.ClickException(exc.args[0]) from None
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if delivered.empty and budgeted.empty:
-        click.echo(f"no spending in {described}")
+        output.note(f"no spending in {described}")
         _graph_nothing(graph_file, "spending", "spending-")
         return
     frame, summary = reports.spending_report(delivered, budgeted)
     frame = _shown_years(frame, years)
     what = f"spending against plan by {by.removeprefix('tag:')}"
-    _print_report(frame, what, described, mode)
+    _print_report(frame, what, described, mode, summary=summary)
+    if output.machine():
+        return
 
     def figure():
         from zabob.retirement.sim.spending_charts import spending_figure
@@ -12432,7 +13147,7 @@ def report_gains_command(
     exempt but perhaps taxed by the state); unrealized is growth that stayed
     invested. distribution_coverage is the cash part of realized_total
     (less the reinvested payouts) minus expenses: a negative year spent
-    principal. --chart draws the gains stacked by
+    principal. --graph draws the gains stacked by
     year, with the expenses as a line.
     """
     years = _year_range(first_year, last_year)
@@ -12477,7 +13192,7 @@ def report_tax_command(
     year the income was earned in; its balance due or refund settles the
     April after (see --reconciliation).
 
-    --chart draws federal, state and local tax stacked by year with the
+    --graph draws federal, state and local tax stacked by year with the
     effective rate; with --reconciliation, each April's balance due and refund.
 
     --return JURISDICTION shows every line its calculator wrote, a household
@@ -12492,7 +13207,7 @@ def report_tax_command(
             _hold_tables()
             frame = _shown_years(reports.tax_return(rc, jurisdiction, mode), years)
         if frame.empty:
-            click.echo(f"no {jurisdiction} tax was computed in this run ({described})")
+            output.note(f"no {jurisdiction} tax was computed in this run ({described})")
             return
         _print_report(frame.T.rename_axis("line"), f"the {jurisdiction} return", described, mode)
         return
@@ -12502,7 +13217,7 @@ def report_tax_command(
                              else reports.tax_by_year(rc, mode), years)
         deaths = _chart_deaths(rc, as_graph, graph_file)
     if frame.empty:
-        click.echo(f"no tax was computed in this run ({described})")
+        output.note(f"no tax was computed in this run ({described})")
         _graph_nothing(graph_file, "tax", "tax-")
         return
     _print_report(frame, "tax reconciliation" if reconciliation else "tax and taxable income",
@@ -12628,7 +13343,7 @@ def report_guard_rails_command(
     Rails are read from the scenario's guard_rails.csv now, not from the
     run, so a run file needs the data repo too.
 
-    --chart draws, per measure, the year's measure against each rail above
+    --graph draws, per measure, the year's measure against each rail above
     its cumulative margin, as net_worth.ipynb does (with --carried, the
     carried line dotted).
 
@@ -12648,8 +13363,8 @@ def report_guard_rails_command(
                     + (f"; it has {', '.join(sorted(known))}" if known else ""))
             rails = [known[n] for n in dict.fromkeys(rail_names)]
         if not rails:
-            click.echo(f"no guard rails in {rc.name!r} ({described}); "
-                       "`sim guard-rail add` adds one")
+            output.note(f"no guard rails in {rc.name!r} ({described}); "
+                        "`sim guard-rail add` adds one")
             _graph_nothing(graph_file, "guard rails", "guard-rails-")
             return
         if mode == DollarMode.CPI_CONSTANT and rc.cpi_index().isna().all():
@@ -12665,9 +13380,28 @@ def report_guard_rails_command(
     shown = [r for r in results if r.applies]
     for r in results:
         if not r.applies:
-            click.echo(f"  {r.rail.name} covers none of this run's years")
+            output.note(f"  {r.rail.name} covers none of this run's years")
     if not shown:
         _graph_nothing(graph_file, "guard rails", "guard-rails-")
+        return
+    if output.machine():
+        one = len(rail_names) == 1
+        frame = (guard_rails.rail_frame(shown[0]) if one
+                 else guard_rails.margins_frame(shown, carried=carried))
+        if one and not carried:
+            frame = frame.drop(columns="carried")
+        responses = output.from_rows(
+            ["strategy", "rail", "margin_kind", "first_year_past", "year_back_inside", "answered"],
+            [s for s in spells if s[1] in {r.rail.name for r in shown}])
+        output.emit(
+            {"margins": clip_years(frame, years),
+             "summary": guard_rails.summary_frame(shown),
+             "responses": responses},
+            title=f"guard rail {shown[0].rail.name}" if one else "guard rail margins",
+            dollars=mode.value, source=described,
+            rails=[{"name": r.rail.name, "rule": r.rail.describe(), "sense": r.rail.sense,
+                    "start": r.rail.start or None, "end": r.rail.end or None}
+                   for r in shown])
         return
     style = _margin_style(shown)
     if len(rail_names) == 1:
@@ -13360,6 +14094,7 @@ def lot_group_command() -> None:
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """List an account's lots, as the scenario's load order leaves them, or
     every account's without ACCOUNT. A column no listed lot uses is left out.
@@ -13367,6 +14102,8 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
     The last column says where each lot comes from: this scenario, a parent
     it inherits from, or this scenario's override of a parent's lot, and
     whether the lot is deleted (zeroed here).
+
+    --csv and --json give every value column, as account_lots.csv has it.
     """
     data_dir_p = _resolve_data_dir(data_dir)
     scenario_dir, scenario_name = _resolve_scenario_dir(data_dir_p, scenario)
@@ -13385,7 +14122,7 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
                 )
             # The loader gives an account with no account_lots.csv rows an
             # empty default lot; say so rather than list nothing.
-            click.echo(
+            output.note(
                 f"{account!r} has no lots in account_lots.csv, so it loads with an "
                 f"empty {registries.DEFAULT_LOT!r} lot"
             )
@@ -13398,6 +14135,13 @@ def lot_list(account: str | None, scenario: str | None, data_dir: Path | None) -
             return f"inherited from {one.inherited_from}"
         return f"overrides {one.inherited_from}" if one.inherited_from else scenario_name
 
+    if output.machine():
+        shown = output.Rows(["account", "lot", *lot_guide.VALUE_COLUMNS, "from"])
+        for one in lots:
+            shown.add(account=one.account, lot=one.lot, **{"from": source(one)},
+                      **{column: one.row[column] or None for column in lot_guide.VALUE_COLUMNS})
+        output.emit(shown, title=f"lots ({scenario_name})", scenario=scenario_name)
+        return
     columns = [column for column in lot_guide.VALUE_COLUMNS if any(one.row[column] for one in lots)]
     header = ["account", "lot", *columns, "from"]
     table = [[one.account, one.lot, *(one.row[column] for column in columns), source(one)] for one in lots]
@@ -14547,9 +15291,12 @@ def import_holdings(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
     """List one-time transfers: calendar one_off_transfer and transfer_balance
-    events, and scheduled rows with cadence one_off."""
+    events, and scheduled rows with cadence one_off. With --csv or --json,
+    amount is blank where amount_rule says how it is figured (balance: what
+    the lot holds when it fires)."""
     from rich.console import Console
     from rich.table import Table
 
@@ -14565,6 +15312,7 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
         table.add_column("Description")
 
         rows: list[tuple[str, ...]] = []
+        raw: list[dict[str, Any]] = []
         for row in con.execute(
             "SELECT ce.date, ce.kind, ce.amount, "
             "       COALESCE(ce.tax_character, '') AS tax_character, "
@@ -14595,6 +15343,16 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 amount,
                 row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "calendar",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount"] is None or row["kind"] == "transfer_balance"
+                else row["amount"] / 100,
+                "amount_rule": "balance" if row["kind"] == "transfer_balance" else "fixed_amount",
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
         for row in con.execute(
             "SELECT s.start AS date, s.amount_cents, s.amount_rule_kind, s.tax_character, "
             "       COALESCE(s.description, s.name) AS description, "
@@ -14619,6 +15377,23 @@ def list_transfers(scenario: str | None, data_dir: Path | None) -> None:
                 _account_with_lot(row["name_2"] or row["chain_2"], row["subkind_2"], row["lot_2"]),
                 amt, row["tax_character"], row["description"],
             ))
+            raw.append({
+                "date": row["date"], "source": "scheduled",
+                "from": row["name_1"] or row["chain_1"], "from_lot": row["lot_1"],
+                "to": row["name_2"] or row["chain_2"], "to_lot": row["lot_2"],
+                "amount": None if row["amount_cents"] is None else row["amount_cents"] / 100,
+                "amount_rule": row["amount_rule_kind"],
+                "tax_character": row["tax_character"] or None,
+                "description": row["description"] or None,
+            })
+        if output.machine():
+            shown = output.Rows(["date", "source", "from", "from_lot", "to", "to_lot", "amount",
+                                 "amount_rule", "tax_character", "description"])
+            for record in sorted(raw, key=lambda r: (r["date"], r["source"])):
+                shown.add(**record)
+            output.emit(shown, title=f"transfers ({data_dir_p.name} / {scen_name})",
+                        scenario=scen_name)
+            return
         for record in sorted(rows, key=lambda r: (r[0], r[1])):
             table.add_row(*record)
 
@@ -14698,7 +15473,7 @@ def prices_group_command() -> None:
 @prices_group_command.command("fetch")
 @click.argument("symbols", type=completion.SYMBOL, nargs=-1)
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="Earliest date to fetch (default: the December before the earliest scenario start's year).")
 @click.option("--provider", "provider_name", default="yahoo", show_default=True,
@@ -14814,7 +15589,8 @@ def _note_stale_prices(data: Path) -> None:
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="With SYMBOLS, show only prices from this date on.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
+@output.output_options
 def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_dir: Path | None) -> None:
     """Show the prices stored in prices/.
 
@@ -14846,7 +15622,10 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         held = prices.prices_in_use(scenarios_dir).symbols if scenarios_dir.is_dir() else []
         frame = prices.price_summary(prices_dir, {*held, *prices.known_symbols(data)})
         if frame.empty:
-            click.echo("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            output.note("no prices in prices/, and no symbol in securities.csv, allocations.csv or on a lot")
+            return
+        if output.machine():
+            output.emit(frame, title="stored prices")
             return
         table = Table(title="stored prices", header_style="bold")
         for name, justify in (("Symbol", "left"), ("Prices", "right"), ("From", "left"),
@@ -14869,12 +15648,16 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
     except ValueError:
         raise click.ClickException(f"--since {since_text!r} is not a YYYY-MM-DD date") from None
     missing = []
+    histories: dict[str, output.Table] = {}
     for symbol in _upper(symbols):
         history = prices.price_history(prices_dir, symbol, since)
         if history is None:
             missing.append(symbol)
             click.echo(f"{symbol}: no prices/security_price__{symbol}.csv; "
                        f"`sim prices fetch {symbol}` gets them", err=True)
+            continue
+        if output.machine():
+            histories[symbol] = history
             continue
         table = Table(title=f"{symbol} prices", header_style="bold")
         for name in ("Date", "Price", "Change"):
@@ -14884,6 +15667,8 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
         if not len(history):
             table.caption = f"no prices since {since}"
         console.print(table)
+    if output.machine() and histories:
+        output.emit(histories, title="prices", since=since)
     if missing:
         raise click.ClickException(f"no prices for {', '.join(missing)}")
 
@@ -14892,7 +15677,7 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @click.option("--tolerance", type=float, default=1.0, show_default=True,
               help="Percent difference between a stated balance and quantity x price that is flagged.")
 def prices_check_command(scenario: str | None, data_dir: Path | None, tolerance: float) -> None:
@@ -14955,7 +15740,8 @@ def chain_group_command() -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
+@output.output_options
 def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the chains with their steps, where each is defined, and what uses it.
 
@@ -14972,7 +15758,18 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     with open_scenario(data, ref.name, scenarios_dir=ref.scenarios_dir) as scn:
         cmap = chain_map.chain_map(scn)
     if not cmap.steps:
-        click.echo(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        return
+    if output.machine():
+        found = setup_listings.chain_origins(ref.scenarios_dir, ref.name)
+        shown = output.Rows(["chain", "role", "steps", "defined_in", "used_by"])
+        for name, steps in sorted(cmap.steps.items()):
+            shown.add(chain=name, role=cmap.roles[name],
+                      steps=[{**output.dollars(dataclasses.asdict(s)), "label": cmap.label(s.target)}
+                             for s in steps],
+                      defined_in=str(found.get(name, "")) or None,
+                      used_by=[dataclasses.asdict(u) for u in cmap.uses.get(name, [])])
+        output.emit(shown, title=f"chains ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"chains ({ref.name})", header_style="bold", show_lines=True)
     for column in ("Chain", "Role", "Steps", "Defined in", "Used by"):
@@ -15006,7 +15803,8 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.argument("names", type=completion.ENDPOINT, nargs=-1)
 @click.option("--mermaid", "as_mermaid", is_flag=True,
               help="Print the flowchart's Mermaid source (to paste into markdown) instead of a tree.")
-@_graph_options("the flowchart", written="the flowchart", file_note=" instead of showing it")
+@_graph_options("the flowchart", written="the flowchart", file_note=" instead of showing it",
+                after="the trees")
 @click.option("--rules", "with_rules", is_flag=True,
               help="With --mermaid, --graph or --graph-file, also draw the rules and calendar "
                    "transfers that use each chain.")
@@ -15016,7 +15814,8 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
+@output.output_options
 def chain_show_command(
     names: tuple[str, ...], as_mermaid: bool, as_graph: bool, graph_file: Path | None,
     with_rules: bool, depth: chain_map.Depth | None, scenario: str | None, data_dir: Path | None,
@@ -15035,6 +15834,9 @@ def chain_show_command(
         raise click.UsageError("use one of --mermaid, --graph and --graph-file")
     if depth is not None and not (as_mermaid or as_graph or graph_file is not None):
         raise click.UsageError("--depth needs --mermaid, --graph or --graph-file")
+    if as_mermaid and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the data alone; "
+                               "ask for the Mermaid source separately")
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, scenario)
     with open_scenario(data, ref.name, scenarios_dir=ref.scenarios_dir) as scn:
@@ -15060,14 +15862,17 @@ def chain_show_command(
     if not names:
         roots = sorted(cmap.steps)
     if not roots:
-        click.echo(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        output.note(f"no chains in {ref.name}; every lot is still a one-step chain of its own")
+        return
+    if output.machine():
+        output.emit(_chain_tables(cmap, roots), title=f"chains in {ref.name}", scenario=ref.name)
         return
     if as_mermaid:
         click.echo(chain_map.mermaid(cmap, roots, rules=with_rules, depth=depth or "all"))
         return
+    _hold_tables()
     if as_graph or graph_file is not None:
         _draw_chain_graph(chain_map.mermaid(cmap, roots, rules=with_rules, depth=depth or "all"), graph_file)
-        return
     console = Console()
     for i, root in enumerate(roots):
         if i:
@@ -15077,16 +15882,61 @@ def chain_show_command(
             console.print(f"  {chain_map.use_text(cmap, use)}", style="dim", markup=False)
 
 
+def _chain_tables(cmap: chain_map.ChainMap, roots: list[str]) -> dict[str, output.Table]:
+    """What ``sim chain show`` draws as trees, as tables (#682): the steps
+    of ``roots`` and every chain under them, the policies of the lots they
+    reach, and what uses each root. A share is a fraction of what's left."""
+    def label(chain: str | None) -> str | None:
+        return None if chain is None else cmap.label(chain)
+
+    def dollars(cents: int | None) -> float | None:
+        return None if cents is None else cents / 100
+
+    reached = list(dict.fromkeys(node for root in roots for node in cmap.descendants(root)))
+    steps = output.Rows(["chain", "role", "step", "target", "target_is_chain", "share",
+                         "maximum", "series", "cadence"])
+    lots = output.Rows(["lot_chain", "account", "lot", "minimum", "maximum", "refill_chain",
+                        "refill_target", "refill_amount", "overflow_chain"])
+    for node in reached:
+        for step in cmap.steps.get(node, ()):
+            steps.add(chain=node, role=cmap.roles.get(node), step=step.order,
+                      target=cmap.label(step.target), target_is_chain=cmap.is_interior(step.target),
+                      share=step.percent_micros / 1_000_000,
+                      maximum=dollars(step.maximum_cents), series=step.series, cadence=step.cadence)
+        if node in cmap.leaves:
+            account, lot = cmap.leaves[node]
+            policy = cmap.policies.get(node)
+            lots.add(lot_chain=cmap.label(node), account=account, lot=lot,
+                     **({} if policy is None else dict(
+                         minimum=policy.minimum_cents / 100, maximum=dollars(policy.maximum_cents),
+                         refill_chain=label(policy.refill_chain),
+                         refill_target=dollars(policy.refill_target_cents),
+                         refill_amount=dollars(policy.refill_amount_cents),
+                         overflow_chain=label(policy.overflow_chain))))
+    uses = output.Rows(["chain", "use", "by", "detail"])
+    for root in roots:
+        for use in cmap.uses.get(root, []):
+            uses.add(chain=root, use=use.kind, by=use.by,
+                     detail=(cmap.label(use.detail) if use.kind in ("draw", "sweep") else use.detail)
+                     or None)
+    return {"steps": steps, "lots": lots, "uses": uses}
+
+
 def _draw_chain_graph(source: str, graph_file: Path | None) -> None:
     """Draw the Mermaid ``source`` into ``graph_file``, or show it in the
     terminal; a terminal that can't show images gets a PNG file instead,
     and a pointer to one that can."""
     from zabob.retirement.sim import chain_graph
 
+    held = _CHART_FIRST.get()
+    if held is not None and held.printed is not None:
+        held.charts.append(lambda: _draw_chain_graph(source, graph_file))
+        return
+
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
     # Draw for the terminal's own cells, so the chart's text matches the
     # terminal's on a Retina screen and off it.
-    cell = chain_graph.cell_size() if protocol else None
+    cell = _terminal_cell(protocol)
     # As wide as the terminal, short of its last column, which some
     # terminals wrap at.
     fit_width = (shutil.get_terminal_size().columns - 1) * cell[0] if cell else None
@@ -15115,10 +15965,10 @@ def _draw_figure(
 
     held = _CHART_FIRST.get()
     if held is not None and held.printed is not None:
-        held.charts.append((fig, graph_file, prefix, fit))
+        held.charts.append(lambda: _draw_figure(fig, graph_file, prefix, fit))
         return
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
-    cell = chain_graph.cell_size() if protocol else None
+    cell = _terminal_cell(protocol)
     if fit is not None and cell is not None:
         fig = fit(_terminal_figure_size(cell))
     dpi = _figure_dpi(cell)
@@ -15196,13 +16046,31 @@ def _check_graph_file(graph_file: Path | None, file_flag: str = "--graph-file") 
         raise click.UsageError(f"{file_flag} {graph_file} must end in .png or .svg")
 
 
+def _terminal_cell(protocol: str | None) -> tuple[float, float] | None:
+    """The terminal's cell size in the pixels it draws images in, for a
+    terminal that takes an image ``protocol``. A Sixel terminal that doesn't
+    say gets Windows Terminal's: a Sixel image, unlike the others, can't be
+    told how many columns to fill, so it must be drawn to its width."""
+    from zabob.retirement.sim import chain_graph
+
+    if protocol is None:
+        return None
+    cell = chain_graph.cell_size()
+    if cell is None and protocol == "sixel":
+        cell = chain_graph.asked_cell_size() or chain_graph.SIXEL_CELL
+    return cell
+
+
 def _show_image(
     image: bytes, graph_file: Path | None, protocol: str | None,
     cell: tuple[float, float] | None, prefix: str,
 ) -> None:
     """Write ``image`` to ``graph_file``; else show it in the terminal with
     ``protocol``; else, when the terminal takes no image protocol, write it
-    to a temporary PNG named with ``prefix`` and say where."""
+    to a temporary PNG named with ``prefix``, say where, and open it in the
+    image viewer when someone is at this machine to see it
+    (``chain_graph.open_fallback``)."""
+    from zabob.retirement import oscompat
     from zabob.retirement.sim import chain_graph
 
     if graph_file is not None:
@@ -15223,14 +16091,20 @@ def _show_image(
                 Path(name).unlink(missing_ok=True)  # don't leave half a chart behind
             raise click.ClickException(f"couldn't write the chart to a temporary file: {error}") from error
         click.echo(f"wrote {name}")
-        click.echo("This terminal can't show images. iTerm2, kitty, Ghostty, WezTerm or "
-                   "VS Code's terminal draws the chart in place.", err=True)
+        if chain_graph.open_fallback() and oscompat.open_file(Path(name)):
+            click.echo("asked the image viewer to open it", err=True)
+        click.echo("This terminal can't show images. iTerm2, kitty, Ghostty, WezTerm, "
+                   "VS Code's terminal or Windows Terminal (1.22 or later) draws the chart in place.",
+                   err=True)
         return
+    oscompat.enable_vt_output()  # Windows: send the escapes on, not print them
     columns = chain_graph.fit_columns(chain_graph.png_size(image)[0],
                                       shutil.get_terminal_size().columns, cell and cell[0])
     if protocol == "kitty":
         click.echo(chain_graph.kitty_sequence(image, columns), nl=False)
         chain_graph.swallow_replies()
+    elif protocol == "sixel":
+        click.echo(chain_graph.sixel_sequence(image, columns, cell), nl=False)
     else:
         click.echo(chain_graph.iterm_sequence(image, columns), nl=False)
 
@@ -15266,7 +16140,7 @@ def _step_options(f):
 
 def _scenario_options(f):
     f = click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")(f)
+                     default=None, help="Data repo (default: the one `sim switch` shows)")(f)
     return click.option("--scenario", type=completion.SCENARIO, default=None,
                         help="Scenario folder name (default: the current scenario).")(f)
 
@@ -15923,7 +16797,7 @@ def symbol_group_command() -> None:
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="Earliest price to fetch (default: as for `sim prices fetch`).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_add_command(
     symbol: str | None, name: str | None, weight_specs: tuple[str, ...], as_of: str | None,
     fetch: bool, never_fetch: bool, provider_name: str, since_text: str | None, data_dir: Path | None,
@@ -16045,7 +16919,7 @@ def _ask_month(question: str) -> str | None:
               help="The month the --weight set describes: replaces that month's set, or adds a "
                    "new dated set beside the others.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_edit_command(
     symbol: str | None, name: str | None, no_fetch: bool | None,
     weight_specs: tuple[str, ...], as_of: str | None, data_dir: Path | None,
@@ -16115,7 +16989,7 @@ def symbol_edit_command(
                    "(default: asked; with --yes, kept).")
 @click.option("--yes", is_flag=True, help="Delete without asking anything.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_delete_command(
     symbol: str | None, delete_prices: bool | None, yes: bool, data_dir: Path | None,
 ) -> None:
@@ -16200,7 +17074,7 @@ def symbol_delete_command(
               help="Commit the bundle, and the weights it wrote, in the data repo. Uncommitted, "
                    "the bundle doesn't count as research for the builder's schedule.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_research_command(
     subject: str | None, ticker: str | None, kind: str | None, as_of: str | None, name: str | None,
     replace: bool, yes: bool, open_page: bool, from_bundle: Path | None, plugin_dir: Path | None,
@@ -16379,15 +17253,21 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         click.echo(f"Finished in {outcome.seconds / 60:.1f} minutes{cost}.")
         has_files = any(p.is_file() and p.suffix.lower() in research.KEPT_SUFFIXES for p in work.iterdir())
         if not has_files:
-            why = outcome.message if not outcome.ok else (
-                "the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
-                "in the plugin (--plugin-dir)?")
+            if not outcome.ok:
+                why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
+            else:
+                # Its final words, and what its folder does hold, say why (#800).
+                found = sorted(p.relative_to(work).as_posix() for p in work.rglob("*") if p.is_file())
+                why = (research.nothing_written(outcome.denied, outcome.tool_errors, outcome.message)
+                       + (f"; its folder holds {', '.join(found[:10])}" if found else "; its folder is empty")
+                       + ("" if outcome.denied or outcome.tool_errors else
+                          "; are the fund-tear-sheet and public-tear-sheet skills in the plugin (--plugin-dir)?"))
             raise click.ClickException(f"the research failed: {why}")
         bundle = research.bundle_dir(data, key)
         research.keep_bundle(work, bundle)
         if not outcome.ok:
-            raise click.ClickException(f"the research failed: {outcome.message}\n"
-                                       f"What it wrote is kept at {bundle}")
+            why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
+            raise click.ClickException(f"the research failed: {why}\nWhat it wrote is kept at {bundle}")
     return bundle
 
 
@@ -16459,9 +17339,14 @@ def _fill_research_name(data: Path, symbol: str, name: str | None) -> None:
         click.echo(f"{symbol}: named {name!r} in securities.csv")
 
 
+# The plugin `sim symbol research` runs (#763).
+symbol_group_command.add_command(research_plugin_command)
+
+
 @symbol_group_command.command("list")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
+@output.output_options
 def symbol_list_command(data_dir: Path | None) -> None:
     """List every symbol: its name, latest allocation, prices and the lots holding it.
 
@@ -16477,7 +17362,10 @@ def symbol_list_command(data_dir: Path | None) -> None:
     data = _resolve_data_dir(data_dir)
     frame = symbols.symbol_table(data)
     if frame.empty:
-        click.echo("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        output.note("no symbols in securities.csv, allocations.csv, prices/ or any lot")
+        return
+    if output.machine():
+        output.emit(frame, title="symbols")
         return
     table = Table(title="symbols", header_style="bold")
     for column, justify in (("Symbol", "left"), ("Name", "left"), ("Allocation (latest)", "left"),
@@ -16509,12 +17397,13 @@ def scenario_group_command() -> None:
 @scenario_group_command.command("list")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("-v", "--verbose", is_flag=True, default=False,
               help="Show a table with each scenario's parents, dates, seed, "
                    "ensemble size and description.")
 @click.option("-a", "--all", "all_", is_flag=True, default=False,
               help="Include the template scenarios (t_ names) read from the code repository.")
+@output.output_options
 def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     """List the data repo's scenarios.
 
@@ -16526,6 +17415,9 @@ def scenario_list(data_dir: Path | None, verbose: bool, all_: bool) -> None:
     from an ancestor; a blank size means the scenario is not an ensemble.
     --all adds the template scenarios a data repo reads from the code
     repository when it has no folder of that name.
+
+    --csv and --json give what --verbose shows, each inherited value
+    flagged in its own field.
     """
     _list_scenarios(data_dir, verbose, ensembles_only=False, templates=all_)
 
@@ -16537,7 +17429,7 @@ def _list_scenarios(
     ``templates`` adds the template scenarios (``--all``)."""
     data_dir_p = _resolve_data_dir(data_dir)
     try:
-        if not verbose and not ensembles_only:
+        if not verbose and not ensembles_only and not output.machine():
             for name in sc.scenario_list_names(data_dir_p, templates=templates):
                 click.echo(name)
             return
@@ -16548,7 +17440,10 @@ def _list_scenarios(
         summaries = [s for s in summaries if s.is_ensemble]
     kind = "ensembles" if ensembles_only else "scenarios"
     if not summaries:
-        click.echo(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        output.note(f"(no {kind} in {data_dir_p / 'scenarios'})")
+        return
+    if output.machine():
+        _emit_scenario_summaries(data_dir_p, summaries, kind)
         return
     if not verbose:
         for s in summaries:
@@ -16597,6 +17492,30 @@ def _list_scenarios(
     Console().print(table)
 
 
+def _emit_scenario_summaries(data_dir: Path, summaries: Sequence[sc.ScenarioSummary],
+                             kind: str) -> None:
+    """``scenario list``'s (or ``ensemble list``'s) --csv or --json."""
+    current = read_current_scenario(data_dir)
+    disabled = read_disabled_scenarios(data_dir)
+    shown = output.Rows([
+        "scenario", "current", "parents", "mixin_only", "pool", "start", "start_inherited",
+        "end", "end_inherited", "seed", "seed_inherited", "ensemble_size",
+        "ensemble_size_inherited", "description", "build",
+    ])
+    for s in summaries:
+        shown.add(
+            scenario=s.name, current=s.name == current, parents=list(s.parents),
+            mixin_only=s.mixin_only, pool=None if s.pool is None else list(s.pool),
+            start=s.start and s.start.month, start_inherited=bool(s.start and s.start.inherited),
+            end=s.end and s.end.month, end_inherited=bool(s.end and s.end.inherited),
+            seed=s.seed and s.seed.value, seed_inherited=bool(s.seed and s.seed.inherited),
+            ensemble_size=s.ensemble_size and s.ensemble_size.value,
+            ensemble_size_inherited=bool(s.ensemble_size and s.ensemble_size.inherited),
+            description=s.description, build=s.name not in disabled,
+        )
+    output.emit(shown, title=f"{kind} ({data_dir.name})")
+
+
 def _parents_cell(s: sc.ScenarioSummary) -> str:
     """``scenario list -v``'s parents: a mix-in only one's are marked, and
     one with none is just the mark."""
@@ -16608,11 +17527,16 @@ def _parents_cell(s: sc.ScenarioSummary) -> str:
     return f"{parents} (mix-in only)" if parents else "(mix-in only)"
 
 
-def _inherits_line(data: Path, parents: Sequence[str]) -> str:
-    """What ``create`` says a new scenario inherits."""
+def _inherits_line(data: Path, name: str, parents: Sequence[str]) -> str:
+    """What ``scenario create`` and ``ensemble create`` say the new scenario
+    ``name`` inherits."""
     if not parents:
         return "nothing (a mix-in only scenario)"
-    return " + ".join(_resolve_scenario(data, p, remember=False).name for p in parents)
+    line = " + ".join(_resolve_scenario(data, p, remember=False).name for p in parents)
+    if is_mixin_only(data / "scenarios", name):
+        # Built only on mix-ins, it is one too (#324): easy to miss.
+        line += " (a mix-in only scenario: nothing it builds on has a start or end)"
+    return line
 
 
 def _create_new_scenario(
@@ -16628,11 +17552,7 @@ def _create_new_scenario(
         sc.create_scenario(
             edit.data_dir, name, parent, description=description, mixins=mixins,
         )
-    line = _inherits_line(data, parents)
-    if parents and is_mixin_only(data / "scenarios", name):
-        # Built only on mix-ins, it is one too (#324): easy to miss.
-        line += " (a mix-in only scenario: nothing it builds on has a start or end)"
-    return line
+    return _inherits_line(data, name, parents)
 
 
 @scenario_group_command.command("create")
@@ -16712,6 +17632,7 @@ def scenario_create(
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
 @click.option("--role", default=None, help="Restrict to a single role.")
+@output.output_options
 def tags_group_command(
     ctx: click.Context,
     scenario: str | None,
@@ -16725,7 +17646,10 @@ def tags_group_command(
     with open_scenario(data_dir_p, _resolve_scenario(data_dir_p, scenario).name) as sc:
         df = sc.list_tags(role=role)
     if df.empty:
-        click.echo("(no tags)")
+        output.note("(no tags)")
+        return
+    if output.machine():
+        output.emit(df, title="tags", role=role)
         return
     click.echo(f"{'tag':<40}  {'accts':>5}  {'sched':>5}  {'cal':>4}")
     for r in named_rows(df, index=False):
@@ -16741,6 +17665,7 @@ def tags_group_command(
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               default=None)
+@output.output_options
 def tags_items(
     tag_token: str | None,
     scenario: str | None,
@@ -16756,7 +17681,7 @@ def tags_items(
     if tag_token is None:
         choices = names.tag_tokens(data_dir_p, scenario_name)
         while len(answer := _ask_tags((), choices)) != 1:
-            click.echo("  one tag: role:name, or role:* for the whole role")
+            output.note("  one tag: role:name, or role:* for the whole role")
         tag_token = answer[0]
     role, _, name = tag_token.partition(":")
     if name != "*":
@@ -16768,18 +17693,23 @@ def tags_items(
             raise click.ClickException("exactly one tag token expected")
     elif not role:
         raise click.ClickException("wildcard needs a role, e.g. 'estimate:*'")
+    shown = output.Rows(["item", "name", "date"])
     with open_scenario(data_dir_p, scenario_name) as sc:
-        found = False
         for it in ("account", "scheduled", "calendar_event"):
             df = sc.items(it, tags=tag_token)  # type: ignore[arg-type]
-            if df.empty:
-                continue
-            found = True
-            label_col = "date" if it == "calendar_event" else "name"
             for row in named_rows(df, index=False):
-                click.echo(f"{it:<14}  {getattr(row, label_col)}")
-        if not found:
-            click.echo(f"(tag {tag_token} not present)")
+                # A calendar event is known by its date (its name is optional).
+                shown.add(item=it, name=getattr(row, "name", None) or None,
+                          date=getattr(row, "date", None) if it == "calendar_event" else None)
+    if not shown:
+        output.note(f"(tag {tag_token} not present)")
+        return
+    if output.machine():
+        output.emit(shown, title=f"items tagged {tag_token}", scenario=scenario_name, tag=tag_token)
+        return
+    for row in shown.rows:
+        label = row["date"] if row["item"] == "calendar_event" else row["name"]
+        click.echo(f"{row['item']:<14}  {label}")
 
 
 # ---------- renames shared across scenarios (#177) ----------
@@ -16993,11 +17923,11 @@ def series_group_command() -> None:
 @_scenario_options
 def series_rename(old: str | None, new: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Rename series OLD to NEW in every scenario that shares it: its rate
-    files (series/<kind>__OLD.csv and a scenario's aux/<kind>__OLD.csv), and
+    files (series/<kind>__OLD.csv and a scenario's tables/<kind>__OLD.csv), and
     every column naming it -- accounts', lots', rules', calendar rows' and
     chain steps' series, and a scenario's own aux tables' growth series.
 
-    A series with a file in the shared aux/ folder (cpi), or one a shared
+    A series with a file in the shared tables/ folder (cpi), or one a shared
     aux table names (an IRMAA tier's growth), is read by every scenario and
     isn't renamed here, nor is an asset class's series, or one
     named for a symbol (or <symbol>.<class>), which lots read by name.
@@ -17029,7 +17959,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
             raise click.ClickException(f"{why}; it can't be renamed")
         if shared := rename.shared_series_files(data, name):
             raise click.ClickException(
-                f"series {name!r} has rates in the shared {', '.join(f'aux/{p.name}' for p in shared)}, "
+                f"series {name!r} has rates in the shared {', '.join(f'tables/{p.name}' for p in shared)}, "
                 "which every scenario reads; it can't be renamed")
     if named_by := rename.shared_series_references(data, old):
         raise click.ClickException(
@@ -17057,7 +17987,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
             if shared := rename.shared_series_files(data, old_yield):
                 raise click.ClickException(
                     f"{old!r}'s payout series {old_yield!r} has rates in the shared "
-                    f"{', '.join(f'aux/{p.name}' for p in shared)}, which every scenario reads; "
+                    f"{', '.join(f'tables/{p.name}' for p in shared)}, which every scenario reads; "
                     f"{old!r} can't be renamed")
             outside = {each: source for each, found in rename.sources(
                            scenarios, affected, rename.series_mentioned(old_yield)).items()
@@ -17072,7 +18002,7 @@ def series_rename(old: str | None, new: str | None, scenario: str | None, data_d
                     "rename or delete it first")
             if shared := rename.shared_series_files(data, new_yield):
                 raise click.ClickException(
-                    f"series {new_yield!r} has rates in the shared {', '.join(f'aux/{p.name}' for p in shared)}, "
+                    f"series {new_yield!r} has rates in the shared {', '.join(f'tables/{p.name}' for p in shared)}, "
                     f"which every scenario reads; {new!r}'s lots would start paying it")
             following.append((old_yield, new_yield, [
                 each for each in affected if rename.series_mentioned(old_yield)(scenarios / each)]))
@@ -17162,6 +18092,17 @@ def _scenario_start(data: Path, scenario: str) -> str | None:
     return summary.start.month if summary is not None and summary.start is not None else None
 
 
+def _rate_fraction(text: str) -> float | str | None:
+    """A rate as authored (``4.5%``) as --csv and --json give it, a fraction
+    (0.045); blank as None, and one that doesn't parse as written."""
+    if not text.strip():
+        return None
+    try:
+        return units.percent_to_micros(text, require_sign=False) / 1_000_000
+    except ValueError:
+        return text
+
+
 def _rate_at(rows: Sequence[Mapping[str, str]], month: str | None) -> str:
     """The rate in force in ``month``, from rows in date order: blank before
     the first row, or with no month to look at."""
@@ -17236,7 +18177,7 @@ def _own_series_path(ref_path: Path, file: series_files.SeriesFile) -> Path:
 def _series_unchanged(edit: StagedEdit, before: Mapping[Path, bytes | None]) -> None:
     """Refuse a series edit whose files changed since they were read, while
     its prompts waited: writing then would undo that change. A file outside
-    the scenarios (shared aux/, templates) isn't staged, so is compared on disk."""
+    the scenarios (shared tables/, templates) isn't staged, so is compared on disk."""
     for path, was in before.items():
         try:
             _require_unchanged(edit, path, was)
@@ -17269,6 +18210,7 @@ def _series_readers(data: Path, scenario: str, name: str) -> list[str]:
 @click.option("-a", "--all", "show_all", is_flag=True,
               help="Also list the series this scenario has emptied (sim series delete).")
 @_scenario_options
+@output.output_options
 def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the rate and inflation series the scenario reads: how many rows
     each has, its rate at the scenario's start, and the file it comes from.
@@ -17285,7 +18227,21 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
     listed = [series for (k, _), series in series_files.scenario_series(data, ref.name).items()
               if (kind is None or k == kind) and (show_all or not series.empty)]
     if not listed:
-        click.echo(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        output.note(f"no {kind + ' ' if kind else ''}series for {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["series", "kind", "rows", "empty", "rate_at_start", "start",
+                             "files", "defined_in", "overrides"])
+        for series in listed:
+            parts = [part for part in series.parts if not part.read.empty] or [series]
+            belows = [part.below for part in parts if part.own and part.below is not None]
+            shown.add(series=series.name, kind=series.kind, rows=len(series.rows),
+                      empty=series.empty, rate_at_start=_rate_fraction(_rate_at(series.rows, start)),
+                      start=start and start[:7],
+                      files=[f"{part.read.folder}/{part.read.filename}" for part in parts],
+                      defined_in=list(dict.fromkeys(part.read.defined_in for part in parts)),
+                      overrides=list(dict.fromkeys(below.defined_in for below in belows)))
+        output.emit(shown, title=f"series ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"series ({ref.name})", header_style="bold")
     for column, justify in (("Series", "left"), ("Kind", "left"), ("Rows", "right"),
@@ -17311,10 +18267,12 @@ def series_list(kind: str | None, show_all: bool, scenario: str | None, data_dir
 @click.argument("series", required=False, type=completion.SeriesName(kind_param="kind"))
 @_SERIES_KIND_OPTION
 @_scenario_options
+@output.output_options
 def series_show(series: str | None, kind: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show SERIES's rows, the file they come from, and what names it.
 
-    Without SERIES, it is asked for.
+    Without SERIES, it is asked for. --json gives each file's rows as a
+    table named by the file, the rate a fraction.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -17322,6 +18280,20 @@ def series_show(series: str | None, kind: str | None, scenario: str | None, data
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, scenario)
     found = _pick_series(data, ref.name, series, kind, wanted=lambda s: not s.empty)
+    if output.machine():
+        tables: dict[str, output.Table] = {}
+        for part in found.parts:
+            file = part.read
+            extra = [c for c in file.header if c not in series_files.HEADER]
+            rows = output.Rows(["from", "annual_rate", *extra])
+            for row in file.rows:
+                rows.add(**{"from": _series_row_month(row)[:7],
+                            "annual_rate": _rate_fraction(row.get("annual_rate", ""))},
+                         **{c: row.get(c) or None for c in extra})
+            tables[f"{file.folder}/{file.filename}"] = rows
+        output.emit(tables, title=_series_label(found), series=found.name, kind=found.kind,
+                    scenario=ref.name, named_by=_series_readers(data, ref.name, found.name))
+        return
     # The loader reads the name's file in each folder that has one, so each
     # is shown, with where it comes from.
     for part in found.parts:
@@ -17592,7 +18564,7 @@ def series_delete(
         raise click.ClickException(
             "cpi can't be deleted: CPI-constant dollars need it (`sim series edit cpi` "
             "gives this scenario its own rates)")
-    # The loader reads a name's series/ and aux/ files both, so each folder
+    # The loader reads a name's series/ and tables/ files both, so each folder
     # that still has rates for it is emptied, or its file removed.
     parts = [s for s in found.parts if not s.empty]
     below = next((s.below for s in parts if s.below is not None), None)
@@ -17785,6 +18757,12 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
     # Only a folder's own name: anything else (a path, '..') could reach
     # outside scenarios/.
     if old not in list_scenario_names(data):
+        if _is_template(data / "scenarios", old):
+            # The code repository's: renaming it would leave every data repo
+            # naming it with a missing parent (#297).
+            raise click.ClickException(
+                f"{old} is a template scenario, from the code repository, not the data repo's; "
+                f"it can't be renamed here (`sim {what} copy` makes a copy of it to rename)")
         raise click.ClickException(f"scenario not found: {data / 'scenarios' / old}")
     if not registries.SCENARIO_NAME_RE.match(new):
         raise click.ClickException(
@@ -17804,7 +18782,8 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
         shutil.rmtree(leftover)
     _echo_renamed("scenario", old, new, changed)
     working_set.use(data, new)  # renaming a scenario is working on it (#322)
-    if rename.CURRENT_SCENARIO_FILE in changed:
+    # Outside the staged edit: the records are in the user's home (#773).
+    if forget_current_scenario(data, old, new):
         _announce_current(new, old)
     runs = find_state_dir(data, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
     if latest_run_path(runs, old, wait=False) or (runs / old).is_dir():
@@ -17812,11 +18791,11 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
 
 
 @scenario_group_command.command("rename")
-@click.argument("old", required=False, type=completion.SCENARIO)
+@click.argument("old", required=False, type=completion.OWN_SCENARIO)
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_rename(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Rename scenario OLD to NEW: its folder and scenario.csv name, every
     scenario naming it as a parent or mix-in, the current scenario if it is
@@ -17828,11 +18807,11 @@ def scenario_rename(old: str | None, new: str | None, data_dir: Path | None) -> 
 
 
 @ensemble_group_command.command("rename")
-@click.argument("old", required=False, type=completion.ENSEMBLE)
+@click.argument("old", required=False, type=completion.OWN_ENSEMBLE)
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_rename(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Rename ensemble OLD to NEW; the same as `sim scenario rename`.
 
@@ -17861,7 +18840,7 @@ def _copy_scenario(old: str | None, new: str | None, data_dir: Path | None, *, w
     # Preflights OLD, then copies it and checks the copy loads, in a staged copy.
     with _scenario_edit(data, old, remember=False, template_parent=True) as edit:
         try:
-            written = rename.copy_scenario(edit.data_dir, old, new, created_by=sc.current_user())
+            written = rename.copy_scenario(edit.data_dir, old, new, created_by=sc.current_user(edit.data_dir))
         except (OSError, ValueError) as exc:
             raise click.ClickException(str(exc).replace(str(edit.data_dir), str(data))) from None
     target = data / "scenarios" / new
@@ -17881,7 +18860,7 @@ def _copy_scenario(old: str | None, new: str | None, data_dir: Path | None, *, w
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_copy(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Copy scenario OLD to a new scenario NEW, and make NEW current.
 
@@ -17902,7 +18881,7 @@ def scenario_copy(old: str | None, new: str | None, data_dir: Path | None) -> No
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_copy(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Copy ensemble OLD to a new ensemble NEW; the same as `sim scenario
     copy`, but OLD must be an ensemble. NEW keeps OLD's seed and size, so
@@ -17975,7 +18954,7 @@ def _ask_shares(prompt: str, default: float | None, accept: bool) -> str:
                    "rolled: its lots, and with a start of its own, that start and its rows. "
                    "With an inherited start, START must be given.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_roll(name: str | None, start: str | None, keep: str | None, no_keep: bool,
                   accept: bool, own: bool, data_dir: Path | None) -> None:
     """Bring scenario NAME up to date: start it again at START (YYYY-MM),
@@ -18161,7 +19140,7 @@ def scenario_roll(name: str | None, start: str | None, keep: str | None, no_keep
                     "Nothing was written; start again.")
         if keep is not None:
             try:
-                rename.copy_scenario(edit.data_dir, name, keep, created_by=sc.current_user())
+                rename.copy_scenario(edit.data_dir, name, keep, created_by=sc.current_user(edit.data_dir))
             except (OSError, ValueError) as exc:
                 raise click.ClickException(str(exc).replace(str(edit.data_dir), str(data))) from None
         staged_dir = edit.path(scenario_dir)
@@ -18487,7 +19466,7 @@ _SCENARIO_CHECKERS: dict[str, Callable[[str], object]] = {
 
 
 def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_seed: bool,
-                   **fields: str | None) -> None:
+                   yes: bool = False, **fields: str | None) -> None:
     """``sim scenario edit`` and ``sim ensemble edit`` (``what``): with any
     option, the change at once; with none, a guided edit of every field."""
     data = _resolve_data_dir(data_dir)
@@ -18512,20 +19491,26 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
     # Named or picked at the prompt, it becomes current, even if nothing changes.
     _resolve_scenario(data, name)
     if new_seed or any(value is not None for value in fields.values()):
-        _apply_scenario_edit(data, name, new_seed=new_seed, **fields)
+        _apply_scenario_edit(data, name, new_seed=new_seed, yes=yes, **fields)
         return
 
     spec = scenario_guide.spec([n for n in _parent_choices(data) if n != name])
     before = scenario_guide.answers_of(sc._scenario_row(data / "scenarios" / name))
     answers = dict(before)
     _echo_guided_scenario(name, data / "scenarios" / name / "scenario.csv", defaulted=False)
+    # Asked here already, so not again before writing.
+    confirmed: set[str] = set()
 
     def ask_parents(current: str | None) -> str:
+        # Only the latest answer counts: one built only on mix-ins is asked about later.
+        confirmed.discard(name)
         chosen = _walk_parents(data, parse_parents(current), itself=name)
         if chosen or not current:
             return ":".join(chosen)
         dated = bool(answers.get("start", "").strip() or answers.get("end", "").strip())
         if _confirm_no_parent(name, "Make it build on nothing?", mixin_only=not dated):
+            if not dated:
+                confirmed.add(name)
             return ""
         click.echo("  parents unchanged")
         return current
@@ -18546,18 +19531,22 @@ def _edit_scenario(name: str | None, data_dir: Path | None, *, what: str, new_se
         fresh = changed.get("seed") == scenario_guide.NEW_SEED
         if fresh:
             del changed["seed"]
-        _apply_scenario_edit(data, name, new_seed=fresh, **changed)
+        _apply_scenario_edit(data, name, confirmed, new_seed=fresh, yes=yes, **changed)
 
     guide.review(spec, calendar_guide.GuideContext(), answers, submit, show_command=False)
 
 
 def _apply_scenario_edit(
-    data: Path, name: str, *, description: str | None = None, start: str | None = None,
+    data: Path, name: str, confirmed: Collection[str] = (), /, *, description: str | None = None,
+    start: str | None = None,
     end: str | None = None, parents: str | None = None, seed: str | None = None,
     new_seed: bool = False, size: str | None = None, reserve: str | None = None,
-    roll: str | None = None,
+    roll: str | None = None, yes: bool = False,
 ) -> None:
-    """Set the given fields of scenario ``name``'s scenario.csv; see ``_edit_scenario``."""
+    """Set the given fields of scenario ``name``'s scenario.csv; see ``_edit_scenario``.
+    An edit leaving it, or a scenario built on it, newly mix-in only is
+    confirmed first (``yes`` skips that), except for the scenarios in
+    ``confirmed``, which the guided edit has already asked about."""
     if seed is not None and new_seed:
         raise click.UsageError("--seed and --new-seed are exclusive")
     values: dict[str, str] = {}
@@ -18585,10 +19574,14 @@ def _apply_scenario_edit(
             # describes the parent.
             builds_on = parse_parents(values["parent_scenario"]) if "parent_scenario" in values \
                 else read_parents(data / "scenarios" / name)
-            if not builds_on:
+            if builds_on:
+                values["description"] = default_description(builds_on)
+            elif _own_dates(data / "scenarios" / name, values):
                 raise click.BadParameter("a root scenario has no default description; give one",
                                          param_hint="--description")
-            values["description"] = default_description(builds_on)
+            else:
+                # Building on nothing, with no dates, it is mix-in only (#347).
+                values["description"] = MIXIN_ONLY_DESCRIPTION
     if seed is not None:
         parsed = _blank_or(seed, _whole_number, "--seed")
         values["seed"] = "" if parsed is None else str(parsed)
@@ -18606,7 +19599,8 @@ def _apply_scenario_edit(
         raise click.UsageError("nothing to change: give at least one option (see --help)")
 
     readme: bool | str | None = None
-    runnable = [n for n in sc.list_scenario_names(data) if not is_mixin_only(data / "scenarios", n)]
+    # Only the edited scenario and those built on it can change (#347).
+    runnable = [n for n in _self_and_users(data, name) if not is_mixin_only(data / "scenarios", n)]
     # Validates this scenario and every scenario built on it before writing.
     with _scenario_edit(data, name) as edit:
         folder = edit.scenario_dir
@@ -18616,6 +19610,18 @@ def _apply_scenario_edit(
         except LoadError as exc:
             raise click.ClickException("; ".join(exc.issues)) from None
         now_mixin_only = _new_mixin_only(edit.data_dir / "scenarios", runnable)
+        unasked = [n for n in now_mixin_only if n not in confirmed]
+        if unasked and not yes:
+            removed = bool(parse_parents(old_row.get("parent_scenario"))) and not parse_parents(
+                sc._scenario_row(folder).get("parent_scenario"))
+            if not _interactive():
+                # No one to ask: say what would happen, and how to go ahead.
+                raise click.ClickException(
+                    f"this edit makes {', '.join(unasked)} mix-in only (no start or end anywhere in "
+                    "the lineage); run it at a terminal to confirm, or pass --yes. Nothing was written.")
+            if not _confirm_mixin_only(name, unasked, removed_parents=removed):
+                # Leaving the staged copy by an exception writes nothing (#347).
+                raise click.ClickException("nothing was written")
         new_row = sc._scenario_row(folder)
         builds_on = parse_parents(new_row.get("parent_scenario"))
         # A blank description reads as the default, as `--description ''` sets it.
@@ -18632,9 +19638,6 @@ def _apply_scenario_edit(
     click.echo(f"edited scenario {name}")
     for change in changes:
         click.echo(f"  {change.field}: {change.old or '(inherited)'} -> {change.new or '(inherited)'}")
-    if now_mixin_only:
-        click.echo(f"NOTE: now mix-in only (no start or end anywhere in the lineage), so "
-                   f"`sim run` refuses and `sim all` skips: {', '.join(now_mixin_only)}", err=True)
     if readme == "written":
         click.echo(f"  README.md: written; edit {data / 'scenarios' / name / 'README.md'} "
                    "to say what the scenario is for")
@@ -18645,11 +19648,49 @@ def _apply_scenario_edit(
                    "and it has been edited by hand; update it to match", err=True)
 
 
+def _self_and_users(data: Path, name: str) -> list[str]:
+    """``name`` and every scenario built on it, directly or not, sorted;
+    each ``scenario.csv`` read once."""
+    users: dict[str, list[str]] = {}
+    for other in sc.list_scenario_names(data):
+        for parent in read_parents(data / "scenarios" / other):
+            users.setdefault(parent, []).append(other)
+    found = {name}
+    pending = [name]
+    while pending:
+        for user in users.get(pending.pop(), ()):
+            if user not in found:
+                found.add(user)
+                pending.append(user)
+    return sorted(found)
+
+
 def _new_mixin_only(scenarios_dir: Path, runnable: Sequence[str]) -> list[str]:
     """Which ``runnable`` scenarios an edit left with no dates anywhere in
     their lineage, so mix-in only (#324): allowed, since that may be the
-    point, but said, since they stop running by themselves."""
+    point, but asked about, since they stop running by themselves."""
     return [n for n in runnable if is_mixin_only(scenarios_dir, n)]
+
+
+def _confirm_mixin_only(name: str, now: Sequence[str], *, removed_parents: bool) -> bool:
+    """Whether an edit of ``name`` that leaves the scenarios ``now`` mix-in
+    only is meant (#347). Asked whether the edit was guided or given as
+    options: the answer is part of what a guided command asks for (Bob,
+    2026-10-28)."""
+    others = [n for n in now if n != name]
+    if name in now and removed_parents:
+        also = f"; so will {', '.join(others)}, built on it" if others else ""
+        return _confirm_no_parent(name, f"Make it build on nothing{also}?")
+    return click.confirm(
+        f"{', '.join(now)} will have no start or end anywhere in the lineage, so mix-in only: "
+        "`sim run` refuses and `sim all` skips them. Go ahead?", default=False)
+
+
+def _own_dates(folder: Path, values: Mapping[str, str]) -> bool:
+    """Whether scenario ``folder`` has a start or end of its own once
+    ``values`` are set."""
+    row = {**sc._scenario_row(folder), **values}
+    return bool(row.get("start", "").strip() or row.get("end", "").strip())
 
 
 def _edit_options(what: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
@@ -18681,8 +19722,11 @@ def _add_edit_options(command: Callable[..., None], *, name_type: click.ParamTyp
                      help="monthly: the background builder rolls the start forward a month "
                           "each night the start month is over (meta_json roll, #564); off: "
                           "it doesn't, though a parent does; '' inherits it."),
+        click.option("--yes", is_flag=True, default=False,
+                     help="Don't ask before making a scenario mix-in only (no start or end "
+                          "anywhere in its lineage); needed off a terminal."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
     ]
     for option in reversed(options):
         command = option(command)
@@ -18703,7 +19747,9 @@ def scenario_edit(name: str | None, data_dir: Path | None, **fields: Any) -> Non
 
     The change is written only if NAME and every scenario built on it still
     load. A README.md that `scenario create` wrote follows the description
-    and parents. Same as `sim ensemble edit`."""
+    and parents. A change leaving NAME, or a scenario built on it, mix-in
+    only (no start or end anywhere in its lineage) is asked about first;
+    --yes skips that, and is needed off a terminal. Same as `sim ensemble edit`."""
     _edit_scenario(name, data_dir, what="scenario", **fields)
 
 
@@ -18746,8 +19792,7 @@ def _delete_scenario(name: str | None, data_dir: Path | None, yes: bool, *, what
     shutil.rmtree(folder)
     click.echo(f"deleted scenario {name}")
     working_set.remove(data, name)
-    if read_current_scenario(data) == name:
-        current_scenario_path(data).unlink(missing_ok=True)
+    if forget_current_scenario(data, name):
         _announce_current(None, name)
     for path in mentions:
         click.echo(f"  {path.relative_to(data)} still mentions it")
@@ -18760,7 +19805,7 @@ def _delete_scenario(name: str | None, data_dir: Path | None, yes: bool, *, what
 @click.argument("name", required=False, type=completion.SCENARIO)
 @click.option("--yes", is_flag=True, help="Don't ask before deleting.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
     """Delete scenario NAME's folder. Refused while another scenario names
     it as its parent or a mix-in, or a pool as a component. Clears the current scenario if it is NAME;
@@ -18774,7 +19819,7 @@ def scenario_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
 @click.argument("name", required=False, type=completion.ENSEMBLE)
 @click.option("--yes", is_flag=True, help="Don't ask before deleting.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
     """Delete ensemble NAME; the same as `sim scenario delete`.
 
@@ -18832,7 +19877,7 @@ def _enable_command(group: click.Group, what: str, *, enabled: bool) -> None:
     @click.argument("name", required=False,
                     type=completion.ENSEMBLE if what == "ensemble" else completion.SCENARIO)
     @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                  default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).")
+                  default=None, help="Data repo (default: the one `sim switch` shows).")
     def command(name: str | None, data_dir: Path | None) -> None:
         _set_enabled(name, data_dir, enabled=enabled, what=what)
 
@@ -18850,7 +19895,7 @@ _LISTING_SCENARIO_OPTION = click.option(
 )
 _LISTING_DATA_DIR_OPTION = click.option(
     "--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=None, help="Data repo (default: $ANALYSIS_DATA_DIR).",
+    default=None, help="Data repo (default: the one `sim switch` shows).",
 )
 
 
@@ -18890,6 +19935,7 @@ _CALENDAR_LIST_KINDS = sorted({*registries.CALENDAR_EVENT_KINDS, *_CALENDAR_COMM
               help="Also show each row's description and params_json.")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def calendar_list(
     kind: str | None, tag: str | None, verbose: bool,
     scenario: str | None, data_dir: Path | None,
@@ -18904,6 +19950,10 @@ def calendar_list(
 
     Latent factors, which only shape an ensemble's variation, are counted
     rather than listed unless --kind or --tag asks for them.
+
+    --csv and --json give every calendar.csv column of each row, as
+    written there (amounts in dollars, rates with their %), after #, and
+    the target and defined_in.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -18928,9 +19978,21 @@ def calendar_list(
     factor_note = (f"{factors} latent factor(s), for ensemble variation, not shown: "
                    "--kind latent_factor lists them")
     if not rows:
-        click.echo(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
+        output.note(f"no calendar rows in {ref.name}" + (" match" if kind or tag else ""))
         if factors:
-            click.echo(factor_note)
+            output.note(factor_note)
+        return
+    if output.machine():
+        shown = output.Rows(["#", *registries.CALENDAR_HEADER, "target", "defined_in"])
+        for entry in rows:
+            shown.add(**{"#": entry.number,
+                         **{c: entry.row.get(c) or None for c in registries.CALENDAR_HEADER},
+                         "target": setup_listings.calendar_target(entry.row) or None,
+                         "defined_in": entry.defined_in})
+        output.emit(shown, title=f"calendar ({ref.name})", scenario=ref.name,
+                    latent_factors_not_shown=factors or None)
+        if factors:
+            output.note(factor_note)
         return
     table = Table(title=f"calendar ({ref.name})", header_style="bold")
     columns = ["#", "Date", "Kind", "Name", "Target", "Amount", "Varies", "Tags", "Defined in"]
@@ -18973,17 +20035,18 @@ def _life_tables(data: Path) -> list[tuple[Any, str, dict[str, Any], dict[str, l
         found.append((each, effective, by_sex,
                       {sex: lifespan_tables.expected_ages(t) for sex, t in by_sex.items()}))
     if not found:
-        raise click.ClickException(f"no life tables under templates/aux or {data}")
+        raise click.ClickException(f"no life tables under templates/tables or {data}")
     return found
 
 
 @lifespan_tables_group_command.command("tables")
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def lifespan_tables_command(data_dir: Path | None) -> None:
     """List every life table and its values at each age.
 
-    The tables are the code repository's templates/aux/, the data repo's
-    aux/ and each scenario's aux/ life_table.csv (default) and
+    The tables are the code repository's templates/tables/, the data repo's
+    tables/ and each scenario's tables/ life_table.csv (default) and
     life_table__<name>.csv files, each at its latest vintage. For each sex,
     q is the chance of dying before the next birthday, and expected is the
     expected age at death for someone who has just reached that age, as the
@@ -18995,6 +20058,20 @@ def lifespan_tables_command(data_dir: Path | None) -> None:
     from zabob.retirement.sim.lifespan_tables import SEXES
 
     found = _life_tables(_resolve_data_dir(data_dir))
+    if output.machine():
+        # The values one row per table, sex and age, rather than a column
+        # per table and sex: the fields stay the same whatever tables there are.
+        listed = output.Rows(["table", "location", "effective", "ages"])
+        by_age = output.Rows(["table", "location", "sex", "age", "q", "expected"])
+        for each, effective, by_sex, expected in found:
+            listed.add(table=each.label, location=each.location, effective=effective,
+                       ages=max(len(t.q) for t in by_sex.values()))
+            for sex, table in by_sex.items():
+                for age, q in enumerate(table.q):
+                    by_age.add(table=each.label, location=each.location, sex=SEXES[sex], age=age, q=q,
+                               expected=expected[sex][age])
+        output.emit({"files": listed, "values": by_age}, title="life tables")
+        return
     files = Table(title="life tables", header_style="bold")
     for column in ("Table", "Location", "Effective", "Ages"):
         files.add_column(column)
@@ -19023,6 +20100,7 @@ def lifespan_tables_command(data_dir: Path | None) -> None:
 @lifespan_tables_group_command.command("check")
 @click.argument("age", type=float, required=False)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def lifespan_check_command(age: float | None, data_dir: Path | None) -> None:
     """Show each life table's values at AGE, for each sex.
 
@@ -19038,13 +20116,20 @@ def lifespan_check_command(age: float | None, data_dir: Path | None) -> None:
 
     data = _resolve_data_dir(data_dir)
     if age is None:
-        age = click.prompt("age", type=float)
+        age = click.prompt("age", type=float, err=output.machine())
     if not 0 <= age <= registries.MAX_AGE_AT_DEATH:
         raise click.BadParameter(f"must be from 0 to {registries.MAX_AGE_AT_DEATH:g}",
                                  param_hint="AGE")
     frame = at_age_frame(data, age)
     if frame.empty:
-        raise click.ClickException(f"no life tables under templates/aux or {data}")
+        raise click.ClickException(f"no life tables under templates/tables or {data}")
+    if output.machine():
+        # A row per table and sex: the fields stay the same whatever sexes a table has.
+        shown = (frame.stack("sex", future_stack=True).dropna(how="all")
+                 .rename(columns={"years left": "years_left"}).rename_axis(None, axis=1))
+        output.emit(shown[["q", "expected", "years_left"]], title=f"life tables at age {age:g}",
+                    age=age)
+        return
     table = Table(title=f"life tables at age {age:g}", header_style="bold")
     for column in ("Table", "Location"):
         table.add_column(column)
@@ -19080,7 +20165,7 @@ def lifespan_blend_command(
     a table's last age its death rate is 1, so the blend ends where the
     shortest does.
 
-    It is written to the scenario's aux/, where the scenario and those built
+    It is written to the scenario's tables/, where the scenario and those built
     on it (a mix-in's, wherever it is mixed in) find it, and is used by a
     lifespan whose lifespan.csv life_table is NAME (`sim person lifespan set
     PERSON AGE --vary life_table --life-table NAME`). A table of that name
@@ -19100,7 +20185,7 @@ def lifespan_blend_command(
         raise click.ClickException(problem)
     if name == lifespan_tables.DEFAULT_NAME:
         raise click.ClickException(f"{name!r} is the unnamed life_table.csv; give the blend a name")
-    folder = ref.path / "aux"
+    folder = ref.path / "tables"
     path = folder / table_file(name)
     if not replace:
         if path.exists():
@@ -19179,6 +20264,7 @@ def person_group_command() -> None:
 @person_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_list(scenario: str | None, data_dir: Path | None) -> None:
     """List persons.csv's persons, with each one's lifespan in the scenario.
 
@@ -19195,7 +20281,18 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     persons = setup_listings.person_listing(data, ref.path)
     if not persons:
-        click.echo(f"no persons in {data / 'persons.csv'}")
+        output.note(f"no persons in {data / 'persons.csv'}")
+        return
+    if output.machine():
+        shown = output.Rows(["id", "display", "birthdate", "sex", "role", "age_at_death",
+                             "final_month", "varies", "defined_in"])
+        for person in persons:
+            row = person.row
+            shown.add(**{c: row.get(c) or None for c in ("id", "display", "birthdate", "sex", "role")},
+                      age_at_death=float(person.age_at_death) if person.age_at_death else None,
+                      final_month=person.final_month or None, varies=person.varies or None,
+                      defined_in=person.lifespan_defined_in or None)
+        output.emit(shown, title=f"persons ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"persons ({ref.name})", header_style="bold")
     for column in ("Id", "Display", "Birthdate", "Sex", "Role", "Age at death", "Final month",
@@ -19213,9 +20310,11 @@ def person_list(scenario: str | None, data_dir: Path | None) -> None:
 
 @person_group_command.command("show")
 @click.argument("person", required=False, type=completion.PERSON)
-@_graph_options("the chart", how=", filling it less three lines for the prompt")
+@_graph_options("the chart", how=", filling it less three lines for the prompt",
+                after="the tables")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def person_show(
     person: str | None, as_graph: bool, graph_file: Path | None,
     scenario: str | None, data_dir: Path | None,
@@ -19233,7 +20332,7 @@ def person_show(
     chance that at least one is still alive each year, taking the lifespans
     as independent. --graph and --graph-file draw each person's chance of
     dying at each age and of having died by it, shaded like the ensemble
-    fan chart, and the household's curve.
+    fan chart, and the household's curve, instead of the tables.
     """
     from rich.table import Table
 
@@ -19261,6 +20360,10 @@ def person_show(
         raise click.ClickException(f"no person in {name!r} has a sex for the life table to read")
 
     quantiles = (0.05, 0.2, 0.4, 0.5, 0.6, 0.8, 0.95)
+    if output.machine():
+        _emit_person_lifespans(persons, quantiles, name)
+        return
+    _hold_tables()
     for p in persons:
         table = f"{p.table} " if p.table else ""  # a named table (#315)
         if p.centered:
@@ -19299,6 +20402,37 @@ def person_show(
                      fit=lambda size: lifespan_figure(persons, size=size))
 
 
+def _emit_person_lifespans(persons: list[PersonLifespan], quantiles: Sequence[float],
+                           scenario: str) -> None:
+    """``person show``'s --csv or --json: each person's lifespan, the ages
+    at death by percentile, and each year of age's chance of having died
+    by its end (every year, not every fifth); with several, the household."""
+    from zabob.retirement.sim.lifespan_curves import household
+
+    columns = [f"p{round(q * 100):02d}" for q in quantiles]
+    about = output.Rows(["person", "display", "sex", "table", "age_now", "age_at_death",
+                         "set_forward", "table_median", "vary"])
+    ages = output.Rows(["person", *columns])
+    by_age = output.Rows(["person", "age", "year", "died_this_year", "died_by_then",
+                          "still_alive"])
+    for p in persons:
+        about.add(person=p.person, display=p.display, sex=p.sex, table=p.table or None,
+                  age_now=p.age_now, age_at_death=p.age_at_death if p.centered else None,
+                  set_forward=p.set_forward if p.centered else None,
+                  table_median=p.table_median if p.centered else None, vary=p.vary)
+        ages.add(person=p.person, **{c: p.quantile(q) for c, q in zip(columns, quantiles, strict=True)})
+        for age, chance, by_end in p.yearly():
+            by_age.add(person=p.person, age=age + 1, year=p.birthdate.year + age + 1,
+                       died_this_year=chance, died_by_then=by_end, still_alive=1 - by_end)
+    tables: dict[str, output.Table] = {"age_at_death": ages, "persons": about, "by_age": by_age}
+    if len(persons) > 1:
+        h = household(persons)
+        last = output.Rows(columns)
+        last.add(**{c: h.last_death_quantile(q).year for c, q in zip(columns, quantiles, strict=True)})
+        tables["household_last_death_year"] = last
+    output.emit(tables, title=f"lifespans ({scenario})", scenario=scenario)
+
+
 # ---------- person add|edit, lifespan set|clear (#192) ----------
 
 # Conventional roles (ADR-003 §4.1), offered at the role prompt along with
@@ -19322,6 +20456,9 @@ def _read_persons(path: Path) -> pd.DataFrame:
     if "kind" not in df.columns:
         # #274 added kind (person, trust, charity); an older file gains it, blank.
         df["kind"] = ""
+    if registries.ROTH_CLOCK_COLUMN not in df.columns:
+        # #257 added roth_clock_start; an older file gains it, blank.
+        df[registries.ROTH_CLOCK_COLUMN] = ""
     missing = [c for c in registries.PERSONS_CSV_HEADER if c not in df.columns]
     if missing:
         raise click.ClickException(
@@ -19368,18 +20505,31 @@ def _check_person_kind(text: str) -> str:
     return kind
 
 
+def _check_roth_clock(text: str) -> str:
+    """Blank, or a year (a date's year) a Roth IRA clock could start (#257)."""
+    try:
+        year = roth_clock_year(text)
+    except ValueError as e:
+        raise click.ClickException(f"{registries.ROTH_CLOCK_COLUMN} {e}") from None
+    return "" if year is None else str(year)
+
+
 def _person_fields(
     current: dict[str, str], roles: list[str], *, guided: bool,
     display: str | None, birthdate: str | None, role: str | None, meta_json: str | None,
     sex: str | None = None, default_role: str = "", kind: str | None = None,
+    roth_clock_start: str | None = None,
 ) -> dict[str, str]:
-    """A person's display, birthdate, sex, role, kind and meta_json: each
+    """A person's display, birthdate, sex, role, kind, roth_clock_start and
+    meta_json: each
     one given, or when ``guided``, asked for with ``current``'s value as the
     default; or else ``current``'s. A blank role is no role (asked for as
     ``none``; ``default_role`` is what a new person's question offers):
     someone outside the household (#274), who may have no birthdate and
     whose kind (person, trust or charity; blank is person) is asked for. A
-    blank sex is none (only a life_table lifespan needs one)."""
+    blank sex is none (only a life_table lifespan needs one). A household
+    member is asked for the year their Roth IRA clock started (#257); blank
+    leaves it to their Roth IRA lots."""
     if guided:
         if display is None:
             display = click.prompt("display", default=current.get("display") or None)
@@ -19414,6 +20564,11 @@ def _person_fields(
                 "blank for a stand-in such as joint)", list(registries.PERSON_KINDS),
                 default=current.get("kind") or "",
             )
+        if roth_clock_start is None and role.strip() not in ("", _NO_ROLE):
+            roth_clock_start = click.prompt(
+                "Roth IRA clock start (year of the first Roth IRA contribution or conversion, "
+                "if before every Roth IRA lot here; blank for none)",
+                default=current.get(registries.ROTH_CLOCK_COLUMN) or "", show_default=False)
         if meta_json is None:
             meta_json = click.prompt("meta_json", default=current.get("meta_json") or "{}")
     if role is not None and role.strip() == _NO_ROLE:
@@ -19428,6 +20583,9 @@ def _person_fields(
         "sex": _check_sex(sex if sex is not None else current.get("sex", "")),
         "role": role,
         "kind": _check_person_kind(kind if kind is not None else current.get("kind", "")),
+        registries.ROTH_CLOCK_COLUMN: _check_roth_clock(
+            roth_clock_start if roth_clock_start is not None
+            else current.get(registries.ROTH_CLOCK_COLUMN, "")),
         # An edit leaves a meta_json it wasn't given exactly as it is, blank included.
         "meta_json": _check_meta_json(meta_json) if meta_json is not None
         else current.get("meta_json", "{}"),
@@ -19452,6 +20610,9 @@ _PERSON_OPTIONS = (
     click.option("--kind", default=None,
                  help="person, trust or charity: someone outside the household (an heir), "
                       "with no role; '' for someone in it."),
+    click.option("--roth-clock-start", default=None,
+                 help="Year of the person's first Roth IRA contribution or conversion, "
+                      "when before every Roth IRA lot in the scenario; '' for none."),
     click.option("--meta-json", default=None, help="JSON metadata (default {})."),
     click.option("--scenario", type=completion.SCENARIO, default=None,
                  help="Scenario checked first (default: the current one); "
@@ -19496,8 +20657,8 @@ def _write_persons(
 @_person_options
 def person_add(
     person_id: str | None, display: str | None, birthdate: str | None, sex: str | None,
-    role: str | None, kind: str | None, meta_json: str | None, scenario: str | None,
-    data_dir: Path | None,
+    role: str | None, kind: str | None, roth_clock_start: str | None, meta_json: str | None,
+    scenario: str | None, data_dir: Path | None,
 ) -> None:
     """Add a person to persons.csv, asking for a display name and birthdate
     not given (and then the sex, role, kind and meta_json). Someone with no
@@ -19522,6 +20683,7 @@ def person_add(
     fields = _person_fields(
         {}, _role_choices(df), guided=display is None or birthdate is None,
         display=display, birthdate=birthdate, role=role, meta_json=meta_json, sex=sex, kind=kind,
+        roth_clock_start=roth_clock_start,
         # The usual answer, until the household has its two spouses.
         default_role="primary" if (df["role"] == "primary").sum() < 2 else "",
     )
@@ -19535,8 +20697,8 @@ def person_add(
 @_person_options
 def person_edit(
     person_id: str | None, display: str | None, birthdate: str | None, sex: str | None,
-    role: str | None, kind: str | None, meta_json: str | None, scenario: str | None,
-    data_dir: Path | None,
+    role: str | None, kind: str | None, roth_clock_start: str | None, meta_json: str | None,
+    scenario: str | None, data_dir: Path | None,
 ) -> None:
     """Change a person in persons.csv. With no options, asks for each field
     with its current value as the default; options change just those fields.
@@ -19558,10 +20720,11 @@ def person_edit(
             f"unknown person {person_id!r}; persons: {sorted(df['id'])}")
     idx = matches[0]
     current = {c: str(df.at[idx, c]) for c in df.columns}
-    guided = all(v is None for v in (display, birthdate, sex, role, kind, meta_json))
+    guided = all(v is None for v in (display, birthdate, sex, role, kind, roth_clock_start, meta_json))
     fields = _person_fields(
         current, _role_choices(df), guided=guided,
         display=display, birthdate=birthdate, role=role, meta_json=meta_json, sex=sex, kind=kind,
+        roth_clock_start=roth_clock_start,
     )
     if all(fields[k] == current.get(k, "") for k in fields):
         click.echo(f"person '{current['id']}' unchanged")
@@ -19617,9 +20780,8 @@ def _lifespan_fields(
             age = click.prompt("age at death (years, e.g. 84.5)",
                                default=current.get("age_at_death") or None)
         if vary is None:
-            vary = click.prompt(
-                "vary across ensemble members",
-                type=click.Choice([_NO_VARY, *registries.LIFESPAN_DISTRIBUTIONS]),
+            vary = _prompt_choice(
+                "vary across ensemble members", [_NO_VARY, *registries.LIFESPAN_DISTRIBUTIONS],
                 default=current.get("vary_distribution") or _NO_VARY,
             )
         if vary != _NO_VARY:
@@ -19741,7 +20903,7 @@ def lifespan_set(
     is drawn from the aux life table for the person's sex, shifted so its
     median is AGE (no --low, --high or --mode); the shift and the
     percentile ages it gives are printed. --life-table reads another
-    population's table, aux/life_table__<name>.csv, for this person in this
+    population's table, tables/life_table__<name>.csv, for this person in this
     scenario; AGE is then the median on that table.
 
     With no AGE and no options, asks for each field with its current value
@@ -19866,6 +21028,7 @@ def ytd_group_command() -> None:
 @ytd_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     """List year_to_date.csv's rows, then the scheduled rows carrying a
     ytd_amount or ytd_preroll.
@@ -19881,7 +21044,11 @@ def ytd_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = setup_listings.ytd_listing(ref.path)
     if not rows:
-        click.echo(f"no year-to-date rows in {ref.name}")
+        output.note(f"no year-to-date rows in {ref.name}")
+        return
+    if output.machine():
+        output.emit(output.from_items(rows, setup_listings.YtdListing),
+                    title=f"year to date ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"year to date ({ref.name})", header_style="bold")
     for column in ("Name", "Source", "From", "To", "Amount", "Tax", "Year",
@@ -20311,8 +21478,11 @@ def guard_rail_group_command() -> None:
 @guard_rail_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
-    """List the scenario's guard rails, its own and inherited."""
+    """List the scenario's guard rails, its own and inherited. With --csv or
+    --json, the threshold is dollars a year, or a fraction for a percent
+    basis."""
     from rich.markup import escape
     from rich.table import Table
 
@@ -20323,7 +21493,20 @@ def guard_rail_list(scenario: str | None, data_dir: Path | None) -> None:
     for issue in [*issues, *more]:
         click.echo(f"  error: {issue}", err=True)
     if not rails:
-        click.echo(f"no guard rails in {ref.name}")
+        output.note(f"no guard rails in {ref.name}")
+        return
+    if output.machine():
+        shown = output.Rows(["name", "rail", "measure", "side", "threshold", "basis", "sense",
+                             "select", "portfolio", "start", "end", "description", "defined_in"])
+        for rail in rails:
+            shown.add(name=rail.name, rail=rail.describe(), measure=rail.measure,
+                      side=str(rail.side),
+                      threshold=rail.threshold / (1_000_000 if rail.is_percent else 100),
+                      basis=rail.basis, sense=rail.sense, select=str(rail.select) or None,
+                      portfolio=str(rail.portfolio) or None, start=rail.start or None,
+                      end=rail.end or None, description=rail.description or None,
+                      defined_in=rail.defined_in)
+        output.emit(shown, title=f"guard rails ({ref.name})", scenario=ref.name)
         return
     table = Table(title=f"guard rails ({ref.name})", header_style="bold")
     for column in ("Name", "Rail", "Sense", "Start", "End", "Description", "Defined in"):
@@ -20707,6 +21890,7 @@ def _fmt_total(item: setup_listings.Itemization) -> str:
 @itemization_group_command.command("list")
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     """List the itemizations the scenario can reference, with their totals.
 
@@ -20722,9 +21906,18 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     items = setup_listings.itemizations(data, ref.path)
     if not items:
-        click.echo(f"no itemizations for {ref.name}")
+        output.note(f"no itemizations for {ref.name}")
         return
     references = setup_listings.itemization_references(data, ref.path)
+    if output.machine():
+        shown = output.Rows(["name", "rows", "total", "refs", "defined_in", "path", "error"])
+        for item in items:
+            shown.add(name=item.name, rows=len(item.rows),
+                      total=None if item.total_cents is None else item.total_cents / 100,
+                      refs=len(references.get(item.name, [])), defined_in=item.defined_in,
+                      path=str(item.path), error=item.error or None)
+        output.emit(shown, title=f"itemizations ({ref.name})", scenario=ref.name)
+        return
     table = Table(title=f"itemizations ({ref.name})", header_style="bold")
     for column, justify in (("Name", "left"), ("Rows", "right"), ("Total", "right"),
                             ("Refs", "right"), ("Defined in", "left")):
@@ -20744,6 +21937,7 @@ def itemization_list(scenario: str | None, data_dir: Path | None) -> None:
 @click.argument("name", required=False, type=completion.ITEMIZATION)
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def itemization_show(name: str | None, scenario: str | None, data_dir: Path | None) -> None:
     """Show itemization NAME's rows, its total, and what references it.
 
@@ -20761,6 +21955,20 @@ def itemization_show(name: str | None, scenario: str | None, data_dir: Path | No
     item = next((i for i in found if i.name == name), None)
     if item is None:
         raise click.ClickException(f"no itemization {name!r} for {ref.name}")
+    if output.machine():
+        columns = list(item.rows[0]) if item.rows else ["Value"]
+        rows = output.Rows(columns)
+        for row in item.rows:
+            rows.add(**{c: row.get(c) or None for c in columns})
+        output.emit(rows, title=f"@{item.name}", itemization=item.name,
+                    defined_in=item.defined_in, path=str(item.path),
+                    total=None if item.total_cents is None else item.total_cents / 100,
+                    error=item.error or None,
+                    referenced_by=[{"path": str(found.path), "line": found.line,
+                                    "column": found.column}
+                                   for found in setup_listings.itemization_references(
+                                       data, ref.path).get(name, [])])
+        return
     click.echo(f"@{item.name} ({item.defined_in}): {item.path}")
     table = Table(header_style="bold")
     columns = list(item.rows[0]) if item.rows else ["Value"]
@@ -20791,12 +21999,12 @@ def itemization_show(name: str | None, scenario: str | None, data_dir: Path | No
 @sim_group_command.group(name="deduction")
 def deduction_group_command() -> None:
     """See and change the scenario's hand-typed itemized deductions: one
-    total per tax year, federal (aux/federal_deductions.csv) or, with
-    --state, the state's (aux/state_deductions.csv). ADR-003 §4.4.
+    total per tax year, federal (tables/federal_deductions.csv) or, with
+    --state, the state's (tables/state_deductions.csv). ADR-003 §4.4.
 
     The total adds to the itemized lines figured from the year's spending
     (property and income taxes, mortgage interest, charity, medical; see
-    aux/itemized_limits.csv), so leave those out of it. A year's deduction
+    tables/itemized_limits.csv), so leave those out of it. A year's deduction
     is the larger of the itemized total and the standard deduction. A total
     counts for its own tax year only.
     """
@@ -20924,14 +22132,14 @@ class _DeductionEdit(NamedTuple):
     kind: str
     found: deductions.InForce
     rows: list[dict[str, str]]  # the rows in force, to start the scenario's own file from
-    own: Path  # the scenario's own aux/<kind>.csv
+    own: Path  # the scenario's own tables/<kind>.csv
 
 
 def _deduction_edit(scenario_dir: Path, data_dir: Path, state: bool) -> _DeductionEdit:
     kind = deductions.KINDS[state]
     found = deductions.in_force(data_dir, scenario_dir, kind)
     return _DeductionEdit(kind, found, deductions.read_rows(found.path),
-                          scenario_dir / "aux" / f"{kind}.csv")
+                          scenario_dir / "tables" / f"{kind}.csv")
 
 
 def _deduction_row(rows: list[dict[str, str]], year: int) -> int | None:
@@ -21002,12 +22210,13 @@ def _deduction_origin(target: _DeductionEdit) -> str:
 @_STATE_OPTION
 @_LISTING_SCENARIO_OPTION
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> None:
     """List the hand-typed itemized deductions, one row per tax year, with
     the total each counts (an @itemization summed).
 
     Without any rows, a year itemizes only what it figures from spending
-    (aux/itemized_limits.csv), when that beats the standard deduction.
+    (tables/itemized_limits.csv), when that beats the standard deduction.
     """
     from rich.markup import escape
     from rich.table import Table
@@ -21019,12 +22228,18 @@ def deduction_list(state: bool, scenario: str | None, data_dir: Path | None) -> 
     which = "state" if state else "federal"
     if not listed:
         if state:
-            click.echo(f"no state itemized deductions in {ref.name}; the state uses the "
-                       "federal ones (`sim deduction list`)")
+            output.note(f"no state itemized deductions in {ref.name}; the state uses the "
+                        "federal ones (`sim deduction list`)")
         else:
-            click.echo(f"no hand-typed federal itemized deductions in {ref.name}; a year "
-                       "itemizes only what it figures from spending, when that beats the "
-                       "standard deduction")
+            output.note(f"no hand-typed federal itemized deductions in {ref.name}; a year "
+                        "itemizes only what it figures from spending, when that beats the "
+                        "standard deduction")
+        return
+    if output.machine():
+        output.emit(output.from_items(listed, deductions.Deduction),
+                    title=f"{which} itemized deductions ({ref.name})", scenario=ref.name,
+                    path=None if found.path is None else str(found.path),
+                    defined_in=found.defined_in)
         return
     table = Table(title=f"{which} itemized deductions ({ref.name})", header_style="bold")
     for column, justify in (("Year", "left"), ("Amount", "left"), ("Total", "right")):
@@ -21226,6 +22441,7 @@ def deduction_delete(
 @_LISTING_DATA_DIR_OPTION
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Where run files are (default: state/runs beside the data repo).")
+@output.output_options
 def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None) -> None:
     """Show scenario NAME (default: the current one): its description,
     lineage, dates, seed, ensemble size, reserve, and latest run.
@@ -21235,6 +22451,9 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     data = _resolve_data_dir(data_dir)
     ref = _resolve_scenario(data, name)
     shown = setup_listings.scenario_show(data, ref.path, _resolve_runs_dir(runs_dir, data))
+    if output.machine():
+        _emit_scenario_show(shown)
+        return
 
     def mark(value: object, inherited: bool) -> str:
         return f"{value} (inherited)" if inherited else str(value)
@@ -21254,7 +22473,7 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     size = shown.ensemble_size
     click.echo(f"  ensemble size: {mark(size.value, size.inherited) if size else '0 (not an ensemble)'}")
     reserve = shown.reserve
-    click.echo(f"  reserve: {mark(*reserve) if reserve else '(not set)'}")
+    click.echo(f"  reserve: {mark(setup_listings.reserve_text(reserve[0]), reserve[1]) if reserve else '(not set)'}")
     if shown.latest_run is None:
         click.echo("  latest run: none")
     else:
@@ -21266,6 +22485,37 @@ def scenario_show(name: str | None, data_dir: Path | None, runs_dir: Path | None
     if shown.description:
         click.echo()
         click.echo(readme.relevel_heading(shown.description, 1))
+
+
+def _emit_scenario_show(shown: setup_listings.ScenarioShow) -> None:
+    """``scenario show``'s --csv or --json: one row, its fields named as
+    ``scenario list``'s are (#682)."""
+    reserve, reserve_inherited = shown.reserve or (None, False)
+    row = output.Rows([
+        "scenario", "folder", "parent", "mixins", "load_order", "start", "start_inherited",
+        "end", "end_inherited", "seed", "seed_inherited", "ensemble_size",
+        "ensemble_size_inherited", "reserve", "reserve_inherited", "latest_run",
+        "latest_run_time", "latest_batch", "latest_batch_time", "description",
+    ])
+    run, run_time = shown.latest_run or (None, None)
+    batch, batch_time = shown.latest_batch or (None, None)
+    row.add(
+        scenario=shown.name, folder=str(shown.path), parent=shown.parent, mixins=shown.mixins,
+        load_order=shown.load_order,
+        start=shown.start and shown.start.month, start_inherited=bool(shown.start and shown.start.inherited),
+        end=shown.end and shown.end.month, end_inherited=bool(shown.end and shown.end.inherited),
+        seed=shown.seed and shown.seed.value, seed_inherited=bool(shown.seed and shown.seed.inherited),
+        ensemble_size=shown.ensemble_size and shown.ensemble_size.value,
+        ensemble_size_inherited=bool(shown.ensemble_size and shown.ensemble_size.inherited),
+        # An amount in dollars; one that isn't an amount, as written.
+        reserve=None if reserve is None else
+        (dollars if (dollars := setup_listings.reserve_dollars(reserve)) is not None else str(reserve)),
+        reserve_inherited=reserve_inherited,
+        latest_run=run and str(run), latest_run_time=run_time,
+        latest_batch=batch and str(batch), latest_batch_time=batch_time,
+        description=shown.description or None,
+    )
+    output.emit(row, title=f"scenario {shown.name}")
 
 
 # ---------- sim invest (#217) ----------
@@ -21570,9 +22820,9 @@ def builder_group() -> None:
     named another). It also fetches prices after each weekday's close, on a
     branch merged into the data repo's main when that is checked out and
     clean. It rolls marked scenarios forward at night, and each morning
-    researches the symbol whose research is oldest. ANALYSIS_BUILDER=off
-    turns it off; ANALYSIS_PRICE_FETCH=off, ANALYSIS_ROLL=off and
-    ANALYSIS_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
+    researches the symbol whose research is oldest. ZABOB_BUILDER=off
+    turns it off; ZABOB_PRICE_FETCH=off, ZABOB_ROLL=off and
+    ZABOB_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
     ``--no-research``) turn off only those.
     """
 
@@ -21583,8 +22833,44 @@ def _builder_data_dir(data_dir: Path | None) -> Path:
 
 _BUILDER_DATA_DIR = click.option(
     "--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=None, help="Data repo (default: $ANALYSIS_DATA_DIR)",
+    default=None, help="Data repo (default: the one `sim switch` shows)",
 )
+
+
+@builder_group.command(name="writer")
+@click.option("--here", "here", is_flag=True, default=False,
+              help="Make this machine the one that writes (this login on this host).")
+@click.option("--machine", "machine", default=None, metavar="LOGIN@HOST",
+              help="Make another machine the one that writes, by the name its `sim builder writer` shows.")
+@click.option("--anyone", "anyone", is_flag=True, default=False,
+              help="Name no machine: every builder writes, as a lone clone does.")
+@_BUILDER_DATA_DIR
+def builder_writer(here: bool, machine: str | None, anyone: bool, data_dir: Path | None) -> None:
+    """Which machine's builder fetches prices, rolls scenarios forward and
+    researches symbols for this data repo (#785), or with an option, change
+    it. Every other clone's builder only builds runs and catches up with
+    origin. The choice is sim/.builder.toml, committed, so every clone
+    agrees once it has pulled.
+    """
+    from zabob.retirement.sim import shared_writer
+
+    if here + bool(machine) + anyone > 1:
+        raise click.UsageError("give one of --here, --machine and --anyone")
+    resolved = _builder_data_dir(data_dir)
+    me = shared_writer.machine(resolved)
+    if machine is not None and not shared_writer.valid(machine):
+        raise click.BadParameter(f"{machine!r} isn't LOGIN@HOST", param_hint="--machine")
+    if here or machine or anyone:
+        click.echo(shared_writer.set_writer(resolved, None if anyone else machine or me))
+        return
+    writer = shared_writer.read_writer(resolved)
+    if writer is None:
+        click.echo(f"no machine is named: every builder writes (this machine is {me})")
+    elif writer == me:
+        click.echo(f"this machine ({me}) writes for this data repo")
+    else:
+        click.echo(f"{writer} writes for this data repo; this machine ({me}) only builds runs "
+                   "(`sim builder writer --here` moves it here)")
 
 
 @builder_group.command(name="install")
@@ -21612,7 +22898,8 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
     change it.
 
     Unless --no-prices, it also installs an hourly timer (a launchd agent on
-    macOS, a crontab line elsewhere) that wakes the builder, so prices are
+    macOS, a Task Scheduler task on Windows, a crontab line elsewhere) that
+    wakes the builder, so prices are
     fetched after each weekday's close. They are committed on the data repo's
     builder/prices branch and merged into main when main is checked out and
     has no uncommitted changes; main is then pushed if it is strictly ahead of
@@ -21630,8 +22917,14 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
     weights are written as a new dated set only when some class moved more
     than 0.5 points from its latest set. A run takes several minutes and
     about 150k tokens on Claude Code's login.
+
+    Where the data repo is shared through a remote, only one machine does
+    these three (#785): the one sim/.builder.toml names, which this names
+    when no machine is named yet. The others only build runs, and catch up
+    with origin hourly to get what it pushed. `sim builder writer` changes
+    which machine it is.
     """
-    from zabob.retirement.sim import builder, price_schedule, roll_schedule
+    from zabob.retirement.sim import builder, price_schedule, roll_schedule, shared_writer
 
     resolved = _builder_data_dir(data_dir)
     if roll_window is not None:
@@ -21643,16 +22936,20 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         done = builder.install(resolved, branch, fetch_prices, roll, roll_window, research_daily)
     except ValueError as exc:
         raise click.ClickException(f"not a workspace pair: {exc}") from None
-    for line in done:
-        click.echo(line)
-    # By the recorded choice alone: ANALYSIS_PRICE_FETCH=off is for one shell
-    # (an agent's, a test's), so install_timer then leaves the timer as it is.
     config = builder.read_config(builder.BuilderPaths.for_data(resolved)) or {}
-    if config.get("prices", True) or config.get("roll", True) or config.get("research", True):
+    for line in [*done, *shared_writer.claim(resolved, config)]:
+        click.echo(line)
+    # By the recorded choice alone: ZABOB_PRICE_FETCH=off is for one shell
+    # (an agent's, a test's), so install_timer then leaves the timer as it is.
+    # A clone that does none of the three still catches up with origin
+    # hourly (#785), which with no daemon running only the timer does.
+    if config.get("prices", True) or config.get("roll", True) or config.get("research", True) \
+            or price_schedule.has_upstream(resolved):
         click.echo(price_schedule.install_timer(resolved, _builder_sim(resolved)))
     elif line := price_schedule.uninstall_timer(resolved):
         click.echo(line)
-    click.echo(builder.notify(resolved))
+    if (line := builder.notify(resolved)) not in done:
+        click.echo(line)
 
 
 def _builder_sim(data_dir: Path) -> Path:
@@ -21663,7 +22960,7 @@ def _builder_sim(data_dir: Path) -> Path:
 
     code = (builder.read_config(builder.BuilderPaths.for_data(data_dir)) or {}).get("code_dir")
     sim = program_sim(code) if code else None
-    return sim if sim is not None and sim.exists() else Path(sys.executable).parent / "sim"
+    return sim if sim is not None and sim.exists() else program(Path(sys.executable).parent, "sim")
 
 
 @builder_group.command(name="uninstall")
@@ -21706,17 +23003,11 @@ def builder_start(data_dir: Path | None) -> None:
 def builder_stop(data_dir: Path | None) -> None:
     """Stop the builder, cancelling the build in progress. The next commit
     or opened run starts it again."""
-    import signal as signals
-
     from zabob.retirement.sim import builder
 
-    paths = builder.BuilderPaths.for_data(_builder_data_dir(data_dir))
-    pid = builder.read_status(paths).get("pid")
-    if not builder.daemon_alive(paths) or not isinstance(pid, int):
-        click.echo("the builder isn't running")
-        return
-    os.kill(pid, signals.SIGTERM)
-    click.echo(f"stopping the builder (pid {pid})")
+    pid = builder.stop_daemon(builder.BuilderPaths.for_data(_builder_data_dir(data_dir)))
+    click.echo("the builder isn't running" if pid is None else
+               f"stopping the builder{f' (pid {pid})' if pid else ''}")
 
 
 @builder_group.command(name="run", hidden=True)
@@ -21752,6 +23043,8 @@ def builder_prices(if_due: bool, data_dir: Path | None) -> None:
         raise click.ClickException("background builds aren't installed here (sim builder install)")
     if price_schedule.switched_off():
         click.echo(f"price fetches are off ({price_schedule.SWITCH_ENV}=off)")
+        return
+    if _refuse_elsewhere(resolved, config, "fetches prices", quiet=if_due):
         return
     if if_due and not (price_schedule.enabled(config) and price_schedule.due(
             price_schedule.read_state(resolved), datetime.now(UTC))):
@@ -21807,6 +23100,8 @@ def builder_roll(if_due: bool, data_dir: Path | None) -> None:
     if roll_schedule.switched_off():
         click.echo(f"rolls are off ({roll_schedule.SWITCH_ENV}=off)")
         return
+    if _refuse_elsewhere(resolved, config, "rolls scenarios forward", quiet=if_due):
+        return
     if if_due and not roll_schedule.due(resolved, config, datetime.now(UTC)):
         click.echo("no roll due")
         return
@@ -21858,6 +23153,8 @@ def builder_research(symbol: str | None, if_due: bool, data_dir: Path | None) ->
     if research_schedule.switched_off():
         click.echo(f"research is off ({research_schedule.SWITCH_ENV}=off)")
         return
+    if _refuse_elsewhere(resolved, config, "researches symbols", quiet=if_due):
+        return
     if if_due and not research_schedule.due(resolved, config, datetime.now(UTC)):
         click.echo("no research due")
         return
@@ -21899,7 +23196,22 @@ def builder_tick(ctx: click.Context, data_dir: Path | None) -> None:
     """What the hourly timer runs: `sim builder prices --if-due`, then
     `sim builder roll --if-due`, then `sim builder research --if-due`. One
     that fails doesn't keep the next from its turn: it is reported, and the
-    tick fails, after the last."""
+    tick fails, after the last. First, when no daemon runs to do it, it
+    catches up with ``main``'s upstream (#785)."""
+    from zabob.retirement.sim import builder, price_schedule
+    from zabob.retirement.sim.builder_log import LogWriter
+
+    resolved = _builder_data_dir(data_dir)
+    paths = builder.BuilderPaths.for_data(resolved)
+    if builder.read_config(paths) is not None and not builder.daemon_alive(paths) and not builder.held(paths):
+        writer = LogWriter(paths.log_dir)
+        try:
+            lines = price_schedule.catch_up_if_due(resolved)
+        except (price_schedule.PriceScheduleError, OSError) as exc:
+            lines = [f"not caught up with origin: {exc}"]
+        for line in lines:
+            click.echo(line)
+            writer.event(line)
     failed: click.ClickException | None = None
     for step in (builder_prices, builder_roll, builder_research):
         try:
@@ -21938,6 +23250,7 @@ def builder_series(scenario_name: str | None, data_dir: Path | None) -> None:
 
 @builder_group.command(name="status")
 @_BUILDER_DATA_DIR
+@output.output_options
 def builder_status(data_dir: Path | None) -> None:
     """What the builder is doing: running or not, why it's off, the build in
     progress, the queue, what waits on dirty data, and recent failures."""
@@ -21945,65 +23258,122 @@ def builder_status(data_dir: Path | None) -> None:
 
     resolved = _builder_data_dir(data_dir)
     paths = builder.BuilderPaths.for_data(resolved)
+    jobs = output.Rows(["job", "state", "since", "detail"])
     if builder.read_config(paths) is None:
+        if output.machine():
+            output.emit({"jobs": jobs}, title="builder status", installed=False)
+            return
         click.echo("background builds aren't installed here (sim builder install)")
         return
-    if builder.switched_off():
-        click.echo("background builds are off here (ANALYSIS_BUILDER=off)")
+    switched_off = builder.switched_off()
+    if switched_off:
+        output.note("background builds are off here (ZABOB_BUILDER=off)")
     config = builder.read_config(paths) or {}
     from zabob.retirement.resources import home_checkout
 
     code = home_checkout(config.get("code_dir") or "")
     trees, reason = builder.main_check(builder.config_branch(config), code)
     if trees is None:
-        click.echo(f"disabled: {reason}")
+        output.note(f"disabled: {reason}")
     # Said whether or not it is on: pulling is what brings the newer code (#306).
     if behind := builder.behind_upstream(builder.config_branch(config), code):
-        click.echo(f"behind: {behind.describe()} (git pull, on {behind.branch}, to build with it)")
+        output.note(f"behind: {behind.describe()} (git pull, on {behind.branch}, to build with it)")
     status = builder.read_status(paths)
     alive = builder.daemon_alive(paths)
+    if alive:
+        if current := status.get("current"):
+            jobs.add(job=current.get("job") or current["scenario"], state="building",
+                     since=datetime.fromtimestamp(current["started"], UTC))
+        for queued in status.get("queue") or []:
+            jobs.add(job=queued, state="queued")
+    for name, why in sorted((status.get("waiting") or {}).items()):
+        jobs.add(job=name, state="waiting", detail=why)
+    for name, failed in sorted((status.get("failed") or {}).items()):
+        jobs.add(job=name, state="failed", detail=failed.get("message"))
+    schedules = _builder_schedules(config, resolved)
+    if output.machine():
+        output.emit(
+            {"jobs": jobs}, title="builder status", installed=True, switched_off=switched_off,
+            disabled=reason if trees is None else None,
+            behind=behind.describe() if behind else None, running=alive,
+            state=status.get("state", "running") if alive else "not running",
+            pid=status.get("pid") if alive else None, **schedules, log=str(paths.log_dir))
+        return
     state = f"{status.get('state', 'running')}, pid {status.get('pid')}" if alive else "not running"
     click.echo(f"builder: {state}")
     if alive:
-        current = status.get("current")
-        if current:
-            started = datetime.fromtimestamp(current["started"], UTC).strftime("%H:%M:%SZ")
-            click.echo(f"building: {current.get('job') or current['scenario']} (since {started})")
-        queue = status.get("queue") or []
+        for job in jobs.rows:
+            if job["state"] == "building":
+                started = datetime.fromisoformat(job["since"]).strftime("%H:%M:%SZ")
+                click.echo(f"building: {job['job']} (since {started})")
+        queue = [job["job"] for job in jobs.rows if job["state"] == "queued"]
         click.echo(f"queue: {', '.join(queue) if queue else '(empty)'}")
-    for name, why in sorted((status.get("waiting") or {}).items()):
-        click.echo(f"waiting: {name} ({why})")
-    for name, failed in sorted((status.get("failed") or {}).items()):
-        click.echo(f"failed: {name}: {failed.get('message')}")
-    from zabob.retirement.sim import price_schedule
-
-    if price_schedule.enabled(config):
-        for line in price_schedule.describe(price_schedule.read_state(resolved), datetime.now(UTC)):
+    for job in jobs.rows:
+        if job["state"] in ("waiting", "failed"):
+            click.echo(f"waiting: {job['job']} ({job['detail']})" if job["state"] == "waiting"
+                       else f"failed: {job['job']}: {job['detail']}")
+    for lines in schedules.values():
+        for line in lines:
             click.echo(line)
-    elif price_schedule.switched_off():
-        click.echo(f"prices: not fetched ({price_schedule.SWITCH_ENV}=off)")
-    else:
-        click.echo("prices: not fetched (sim builder install --prices to start)")
-    from zabob.retirement.sim import roll_schedule
-
-    if roll_schedule.enabled(config):
-        for line in roll_schedule.describe(roll_schedule.read_state(resolved), config, resolved):
-            click.echo(line)
-    elif roll_schedule.switched_off():
-        click.echo(f"roll: off ({roll_schedule.SWITCH_ENV}=off)")
-    else:
-        click.echo("roll: off (sim builder install --roll to start)")
-    from zabob.retirement.sim import research_schedule
-
-    if research_schedule.enabled(config):
-        for line in research_schedule.describe(research_schedule.read_state(resolved), resolved,
-                                               datetime.now(UTC), claude=config.get("claude")):
-            click.echo(line)
-    elif research_schedule.switched_off():
-        click.echo(f"research: off ({research_schedule.SWITCH_ENV}=off)")
-    else:
-        click.echo("research: off (sim builder install --research to start)")
     click.echo(f"log: {paths.log_dir} (sim builder log)")
+
+
+def _refuse_elsewhere(data_dir: Path, config: dict[str, Any], what: str, *, quiet: bool) -> bool:
+    """Stop a fetch, roll or research when another machine writes for the
+    data repo (#785): what it committed here would wait for good, and the
+    writer does it too. With ``quiet`` (``--if-due``, the timer's) it only
+    says so, and True means the command stops."""
+    from zabob.retirement.sim import shared_writer
+
+    if (other := shared_writer.elsewhere(data_dir, config)) is None:
+        return False
+    said = f"{other}'s builder {what} for this data repo; `sim builder writer --here` moves that here"
+    if quiet:
+        click.echo(f"not due here: {said}")
+        return True
+    raise click.ClickException(said)
+
+
+def _builder_schedules(config: dict[str, Any], data: Path) -> dict[str, list[str]]:
+    """``builder status``'s lines on fetching prices, rolling and research,
+    by schedule."""
+    from zabob.retirement.sim import price_schedule, research_schedule, roll_schedule, shared_writer
+
+    named = shared_writer.read_writer(data)
+    writer = [] if named is None else [
+        f"writer: {named}{' (this machine)' if named == shared_writer.machine(data, config) else ''} "
+        "fetches, rolls and researches for this data repo (sim builder writer)"]
+    if (other := shared_writer.elsewhere(data, config)) is not None:
+        def waiting(what: str, schedule: Any) -> list[str]:
+            # Committed here before the writer moved: still merged (#785).
+            return [f"  {what} committed here before {other} wrote waits to merge into main"] \
+                if schedule.configured(config) and schedule.read_state(data).get("pending") else []
+
+        return {"writer": writer,
+                "prices": [f"prices: fetched by {other}'s builder; this one catches up with origin hourly",
+                           *waiting("a fetch", price_schedule)],
+                "roll": [f"roll: by {other}'s builder", *waiting("a roll", roll_schedule)],
+                "research": [f"research: by {other}'s builder", *waiting("research", research_schedule)]}
+    if price_schedule.enabled(config):
+        prices = list(price_schedule.describe(price_schedule.read_state(data), datetime.now(UTC)))
+    elif price_schedule.switched_off():
+        prices = [f"prices: not fetched ({price_schedule.SWITCH_ENV}=off)"]
+    else:
+        prices = ["prices: not fetched (sim builder install --prices to start)"]
+    if roll_schedule.enabled(config):
+        roll = list(roll_schedule.describe(roll_schedule.read_state(data), config, data))
+    elif roll_schedule.switched_off():
+        roll = [f"roll: off ({roll_schedule.SWITCH_ENV}=off)"]
+    else:
+        roll = ["roll: off (sim builder install --roll to start)"]
+    if research_schedule.enabled(config):
+        research = list(research_schedule.describe(research_schedule.read_state(data), data,
+                                                   datetime.now(UTC), claude=config.get("claude")))
+    elif research_schedule.switched_off():
+        research = [f"research: off ({research_schedule.SWITCH_ENV}=off)"]
+    else:
+        research = ["research: off (sim builder install --research to start)"]
+    return {"writer": writer, "prices": prices, "roll": roll, "research": research}
 
 
 @builder_group.command(name="log")
@@ -22018,6 +23388,7 @@ def builder_status(data_dir: Path | None) -> None:
               help="Show each build's output (the indented lines).")
 @click.option("-f", "--follow", is_flag=True, default=False,
               help="Oldest first, then print what is added until Ctrl-C.")
+@output.output_options
 def builder_log(
     data_dir: Path | None, count: int | None, since: str | None,
     show_all: bool, verbose: bool, follow: bool,
@@ -22034,6 +23405,9 @@ def builder_log(
 
     if show_all and (count is not None or since is not None):
         raise click.UsageError("--all shows every record; leave out -n and --since")
+    if follow and output.machine():
+        raise click.UsageError(f"--{output.current()} prints the records there are; "
+                               "--follow waits for more")
     window = None
     if not show_all and (since is not None or count is None):
         try:
@@ -22050,11 +23424,19 @@ def builder_log(
     if count is not None:
         chosen = chosen[-count:]
     if not records and not follow:
-        click.echo(f"(no log yet: {paths.log_dir})")
+        output.note(f"(no log yet: {paths.log_dir})")
         return
     if not chosen and not follow:
         older = "-n N or -a" if window is not None else "-a"
-        click.echo(f"(nothing in the log since {since or '1 hour'} ago; {older} shows older records)")
+        output.note(f"(nothing in the log since {since or '1 hour'} ago; {older} shows older records)")
+        return
+    if output.machine():
+        shown = output.Rows(["at", "event", "output"])
+        for i, record in reversed(chosen):
+            # The lines the table shows under the event, without its indent.
+            lines = blog.render(record, verbose, tails.get(i))[1:]
+            shown.add(at=record.at, event=record.text, output=[ln.removeprefix(blog.INDENT) for ln in lines])
+        output.emit(shown, title="builder log", log=str(paths.log_dir))
         return
     for i, record in (chosen if follow else reversed(chosen)):
         for line in blog.render(record, verbose, tails.get(i)):
@@ -22084,22 +23466,45 @@ def _strategy_kinds(data: Path) -> strategy_code.StrategyKinds:
 @strategy_group_command.command("kinds")
 @click.argument("kind", required=False, type=completion.STRATEGY_KIND)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def strategy_kinds_command(kind: str | None, data_dir: Path | None) -> None:
     """List the strategy kinds: the built-ins and the data repo's
     strategies/ modules, each with what it does and its parameters. With
     KIND, just that one."""
     kinds = _strategy_kinds(_resolve_data_dir(data_dir))
     _echo_kinds(kinds, kind, "strategy",
-                lambda cls: f"hooks: {', '.join(sorted(cls.hooks))}")
+                lambda cls: f"hooks: {', '.join(sorted(cls.hooks))}",
+                lambda cls: {"hooks": sorted(cls.hooks)})
 
 
-def _echo_kinds(kinds: Any, kind: str | None, what: str, about: Callable[[Any], str]) -> None:
+def _echo_kinds(kinds: Any, kind: str | None, what: str, about: Callable[[Any], str],
+                facts: Callable[[Any], dict[str, Any]]) -> None:
     """``sim strategy kinds`` and ``sim tax kinds``: each kind, where it
-    comes from, ``about`` it, its docstring and its parameters."""
+    comes from, ``about`` it, its docstring and its parameters. With --csv
+    or --json, ``facts`` about it are its fields beside those."""
     chosen = [kind] if kind else sorted(kinds.kinds)
-    for i, name in enumerate(chosen):
+    for name in chosen:
         if name not in kinds.kinds:
             raise click.ClickException(f"no {what} kind {name!r}; kinds: {', '.join(sorted(kinds.kinds))}")
+    if output.machine():
+        listed: output.Rows | None = None
+        params = output.Rows(["kind", "name", "unit", "default", "required", "doc"])
+        for name in chosen:
+            cls = kinds.kinds[name]
+            extra = facts(cls)
+            if listed is None:
+                listed = output.Rows(["kind", "origin", *extra, "description"])
+            listed.add(kind=name, origin=kinds.origin[name], **extra,
+                       description=strategy_guide.describe_kind(cls) or None)
+            for p in strategy_guide.kind_params(cls):
+                # "blank" is how the table says an optional one has no default.
+                params.add(kind=name, name=p.name, unit=p.unit,
+                           default=None if p.default in (None, "blank") else p.default,
+                           required=p.default is None, doc=p.doc or None)
+        output.emit({"kinds": listed or output.Rows(["kind", "origin", "description"]),
+                     "parameters": params}, title=f"{what} kinds")
+        return
+    for i, name in enumerate(chosen):
         cls = kinds.kinds[name]
         if i:
             click.echo("")
@@ -22125,13 +23530,22 @@ def _strategy_dir(data: Path, scenario: str | None) -> tuple[Path, str]:
 @strategy_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def strategy_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's strategies: kind, chain, dates, parameters, and
     the scenario each is inherited from."""
     folder, name = _strategy_dir(_resolve_data_dir(data_dir), scenario)
     rows = _strategy_rows(folder)
     if not rows:
-        click.echo(f"no strategies in {name} (`sim strategy add` adds one)")
+        output.note(f"no strategies in {name} (`sim strategy add` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["name", *registries.STRATEGY_CSV_HEADER, "inherited_from"])
+        for strategy_name, found in sorted(rows.items()):
+            shown.add(name=strategy_name,
+                      **{c: found.row.get(c) or None for c in registries.STRATEGY_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"strategies ({name})", scenario=name)
         return
     width = max(len(n) for n in rows)
     for strategy_name, found in sorted(rows.items()):
@@ -22436,6 +23850,7 @@ def strategy_delete_command(name: str | None, yes: bool, scenario: str | None, d
 @click.option("--breaches", is_flag=True, default=False,
               help="List the guard-rail breaches strategies were told of instead (#441).")
 @_run_target_options
+@output.output_options
 def strategy_log_command(
     target: str | None, strategy_name: str | None, year: int | None, hooks: tuple[str, ...],
     breaches: bool, runfile: Path | None, data_dir: Path | None, runs_dir: Path | None,
@@ -22462,7 +23877,10 @@ def strategy_log_command(
             if year is not None:
                 told = told[told["year"] == year]
             if told.empty:
-                click.echo(f"no breaches in {path.name}")
+                output.note(f"no breaches in {path.name}")
+                return
+            if output.machine():
+                output.emit(told, title="strategy breaches", source=path.name, dollars="cpi_constant")
                 return
             for column in ("measure", "threshold", "margin"):
                 told[column] = told[column].map(lambda d: f"{'-' if d < 0 else ''}${abs(d):,.0f}")
@@ -22492,8 +23910,12 @@ def strategy_log_command(
             frame = frame[frame["month"].str.startswith(f"{year:04d}")]
     hidden_note = f"{hidden} monthly scale lines not shown; --hook scale lists them"
     if frame.empty:
-        click.echo(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
-                   else f"no strategy decisions in {path.name}")
+        output.note(f"no other strategy decisions in {path.name} ({hidden_note})" if hidden
+                    else f"no strategy decisions in {path.name}")
+        return
+    if output.machine():
+        output.emit(frame, title="strategy decisions", source=path.name,
+                    hidden_scale_lines=hidden or None)
         return
     # The note last and left-aligned: it is a sentence, often the widest column.
     notes = frame.pop("note")
@@ -22580,13 +24002,22 @@ def target_group_command() -> None:
 @target_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def target_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's target sets, each dated set's weights, and the
     scenario each is inherited from."""
     ref = _resolve_scenario(_resolve_data_dir(data_dir), scenario)
     rows = strategy_guide.lineage_targets(ref.scenarios_dir, ref.name)
     if not rows:
-        click.echo(f"no target sets in {ref.name} (`sim target set` adds one)")
+        output.note(f"no target sets in {ref.name} (`sim target set` adds one)")
+        return
+    if output.machine():
+        shown = output.Rows(["target_set", "as_of", "asset_class", "weight", "defined_in"])
+        for row, where in rows:
+            shown.add(target_set=row["target_set"], as_of=row["as_of"] or None,
+                      asset_class=row["asset_class"], weight=_rate_fraction(row["weight"]),
+                      defined_in=where)
+        output.emit(shown, title=f"target sets ({ref.name})", scenario=ref.name)
         return
     grouped: dict[tuple[str, str], list[tuple[dict[str, str], str]]] = {}
     for row, where in rows:
@@ -22867,6 +24298,7 @@ def tax_group_command() -> None:
 @tax_group_command.command("list")
 @click.argument("scenario", required=False, type=completion.SCENARIO)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the scenario's tax jurisdictions, in the order they settle, and
     the scenario each is inherited from."""
@@ -22874,7 +24306,16 @@ def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
     ref = _resolve_scenario(data, scenario)
     rows = _tax_rows(ref.path)
     if not rows:
-        click.echo(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        output.note(f"no income taxes in {ref.name} (`sim tax add federal` adds the federal one)")
+        return
+    if output.machine():
+        shown = output.Rows(["jurisdiction", *registries.TAX_CSV_HEADER, "inherited_from"])
+        for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
+            found = rows[name]
+            shown.add(jurisdiction=name,
+                      **{c: found.row.get(c) or None for c in registries.TAX_CSV_HEADER},
+                      inherited_from=found.inherited_from if found.index is None else None)
+        output.emit(shown, title=f"income taxes ({ref.name})", scenario=ref.name)
         return
     for name in (n for n in registries.TAX_JURISDICTIONS if n in rows):
         found = rows[name]
@@ -22885,6 +24326,7 @@ def tax_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @tax_group_command.command("kinds")
 @click.argument("kind", required=False, type=completion.TAX_KIND)
 @_LISTING_DATA_DIR_OPTION
+@output.output_options
 def tax_kinds_command(kind: str | None, data_dir: Path | None) -> None:
     """List the tax calculator kinds: the built-ins and the data repo's
     taxes/ modules, each with the tax it computes, the returns it builds
@@ -22897,7 +24339,8 @@ def tax_kinds_command(kind: str | None, data_dir: Path | None) -> None:
         built_on = f", on {', '.join(cls.upstream)}" if cls.upstream else ""
         return f"the {cls.jurisdiction} tax{built_on}"
 
-    _echo_kinds(kinds, kind, "tax calculator", about)
+    _echo_kinds(kinds, kind, "tax calculator", about,
+                lambda cls: {"jurisdiction": cls.jurisdiction, "upstream": list(cls.upstream)})
 
 
 @tax_group_command.command("check")
@@ -23164,9 +24607,9 @@ def _state_series(data_dir: Path, scenario: str, state: states.State) -> str | N
     if series == state.code and not has_tables:
         raise click.ClickException(
             f"{states.label(state.code)} has no tax tables here yet. Add "
-            f"aux/state_brackets__{state.code}.csv and "
-            f"aux/state_standard_deduction__{state.code}.csv to your data repo (the "
-            "code repository's templates/aux/README.md says how), then run this again. "
+            f"tables/state_brackets__{state.code}.csv and "
+            f"tables/state_standard_deduction__{state.code}.csv to your data repo (the "
+            "code repository's templates/tables/README.md says how), then run this again. "
             "Nothing was written.")
     return series
 
@@ -23281,7 +24724,7 @@ def _checked_county(data: Path, scenario: str, county: str | None) -> str:
     county = (county or "").strip()
     if county and county not in names.series_names(data, scenario, registries.STATE_LOCAL_TAX):
         raise click.ClickException(
-            f"no aux/{registries.STATE_LOCAL_TAX}__{county}.csv: add the county's local tax "
+            f"no tables/{registries.STATE_LOCAL_TAX}__{county}.csv: add the county's local tax "
             "bands first (one 0% band per filing status for a county without one). "
             "Nothing was written.")
     return county
@@ -23291,7 +24734,7 @@ def _checked_county(data: Path, scenario: str, county: str | None) -> str:
 @click.argument("state", required=False, type=completion.STATE)
 @click.option("--county", type=completion.COUNTY, default=None,
               help="The county, for its local income tax: the <county> of an "
-                   "aux/state_local_tax__<county>.csv.")
+                   "tables/state_local_tax__<county>.csv.")
 @click.option("--here", is_flag=True,
               help="Change this scenario only (an override), not the scenario where "
                    "the residence is defined.")
@@ -23394,7 +24837,7 @@ def tax_state_command(
 @click.argument("state", required=False, type=completion.STATE)
 @click.option("--county", type=completion.COUNTY, default=None,
               help="The county moved to, for its local income tax: the <county> of an "
-                   "aux/state_local_tax__<county>.csv. A move within a state names the "
+                   "tables/state_local_tax__<county>.csv. A move within a state names the "
                    "same state.")
 @click.option("--yes", is_flag=True, help="Don't ask before writing.")
 @click.option("--scenario", type=completion.SCENARIO, default=None,

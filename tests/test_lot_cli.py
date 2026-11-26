@@ -369,7 +369,7 @@ def test_deleting_a_chains_only_step_is_refused(
     retire_alice_csv: Callable[[str], Path],
 ) -> None:
     (retire_alice_csv("chains/source") / "roth_only.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Roth_Bill,default,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Roth_Bill,default,,,,\n", encoding="utf-8")
     before = values()
 
     result = lot("delete", "Asset_Roth_Bill", "default", "--yes")
@@ -385,7 +385,8 @@ def test_a_chain_without_a_lot_column_names_the_default_lot(
     check: Callable[[str], None], new_lot: str | None,
 ) -> None:
     chain = retire_alice_csv("chains/source") / "cash_only.csv"
-    chain.write_text("account_name,maximum,percent,series,cadence\nAsset_Savings,,,,\nAsset_Checking,,,,\n")
+    chain.write_text("account_name,maximum,percent,series,cadence\nAsset_Savings,,,,\nAsset_Checking,,,,\n",
+                     encoding="utf-8")
 
     if new_lot is None:
         result = lot("delete", "Asset_Savings", "default", "--yes")
@@ -408,10 +409,10 @@ def test_renaming_or_deleting_a_lot_follows_it_into_inheriting_scenarios(
     test_scenarios_dir: Path, check: Callable[[str], None],
 ) -> None:
     child = test_scenarios_dir / "child"
-    calendar = (test_scenarios_dir / "retire_alice" / "calendar.csv").read_text().splitlines()[0]
+    calendar = (test_scenarios_dir / "retire_alice" / "calendar.csv").read_text(encoding="utf-8").splitlines()[0]
     (child / "calendar.csv").write_text(
         calendar + "\n2030-01-31,one_off_transfer,,Asset_Checking,,Asset_Brokerage_Joint,default,,"
-        + "100000,,none" + "," * (calendar.count(",") - 10) + "\n")
+        + "100000,,none" + "," * (calendar.count(",") - 10) + "\n", encoding="utf-8")
     assert lot("edit", BROKERAGE, "default", "--opening-balance", "1", scenario="child").exit_code == 0
 
     renamed = lot("edit", BROKERAGE, "default", "--new-lot", "core")

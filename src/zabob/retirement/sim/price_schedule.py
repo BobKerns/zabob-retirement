@@ -35,14 +35,15 @@ weekday's US market close, without touching the user's checkout (Bob):
 - A fetch is due when the last good one came before the latest weekday
   17:30 in New York, after the close is final. Nothing keeps the builder
   running, so ``sim builder install`` adds an hourly OS timer (a launchd agent
-  on macOS, a crontab line elsewhere) that runs ``sim builder tick``: a look
+  on macOS, a Task Scheduler task on Windows, a crontab line elsewhere) that
+  runs ``sim builder tick``: a look
   at the state, and a fetch when one is due (and a roll, #564), which pokes
   the builder when it commits. The daemon also checks on starting, and on
   each rescan.
 - A symbol that fails is recorded, with when it first failed, and doesn't
   stop the others. A fetch where every symbol failed (no network, say) is
   tried again an hour later, not counted as done.
-- Never under ``ANALYSIS_PRICE_FETCH=off`` (the tests set it) or
+- Never under ``ZABOB_PRICE_FETCH=off`` (the tests set it) or
   ``sim builder install --no-prices``, nor without a builder config: so
   never for ``--no-builder`` repos, CI or agents.
 
@@ -53,7 +54,6 @@ outcome) is in git's common directory: ``analysis-prices.json`` and its lock.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -69,12 +69,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal
+from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
+from zabob.retirement.sim import flock, shared_writer
+
 __all__ = [
-    "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
-    "describe", "due", "enabled", "fetch", "install_timer", "last_close", "merge_pending",
-    "read_state", "stale_held", "switched_off", "uninstall_timer",
+    "CATCH_UP_ENV", "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
+    "catch_up", "catch_up_if_due", "catch_up_off", "configured", "describe", "due", "enabled", "fetch",
+    "has_upstream", "install_timer",
+    "last_close", "merge_pending", "read_state", "stale_held", "switched_off", "uninstall_timer",
 ]
 
 PRICES_BRANCH = "builder/prices"
@@ -96,7 +100,7 @@ HOOK_GIT_ENV = (
     "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
     "GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_QUARANTINE_PATH",
 )
-SWITCH_ENV = "ANALYSIS_PRICE_FETCH"
+SWITCH_ENV = "ZABOB_PRICE_FETCH"
 MARKET = ZoneInfo("America/New_York")
 # After the 16:00 close, once the provider's close is final.
 AFTER_CLOSE = time(17, 30)
@@ -108,18 +112,32 @@ STATE_LOCK_FILE = "analysis-prices-state.lock"
 IDENTITY = {"GIT_AUTHOR_NAME": "sim builder", "GIT_AUTHOR_EMAIL": "builder@analysis.local",
             "GIT_COMMITTER_NAME": "sim builder", "GIT_COMMITTER_EMAIL": "builder@analysis.local"}
 TIMER_MARKER = "# analysis sim builder prices (#560)"
+# Task Scheduler's folder for the hourly tasks on Windows (#748).
+TASK_FOLDER = "Zabob Retirement"
+TASK_DESCRIPTION = ("The Zabob Retirement background builder: fetches prices, rolls scenarios forward "
+                    "and researches symbols when they are due")
 # Minutes past the hour the crontab line runs, away from the crowded :00.
 CRON_MINUTE = 7
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_PRICE_FETCH=off`` (or 0/no/false): no fetch, no timer."""
+    """``ZABOB_PRICE_FETCH=off`` (or 0/no/false): no fetch, no timer."""
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
+
+
+def configured(config: dict[str, Any] | None) -> bool:
+    """Whether a workspace with builder ``config`` was installed to fetch prices,
+    and isn't switched off: as :func:`enabled`, whichever clone writes. What
+    it committed before another clone became the writer is merged while
+    this holds (#785)."""
+    return config is not None and bool(config.get("prices", True)) and not switched_off()
 
 
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` fetches prices."""
-    return config is not None and bool(config.get("prices", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and configured(config) \
+        and shared_writer.writes_here(config.get("data_dir"), config)
 
 
 def last_close(now: datetime) -> datetime:
@@ -206,7 +224,7 @@ def read_state_file(data_dir: Path, name: str) -> dict[str, Any]:
     or the nightly roll's); {} before the first write, or outside a git
     repository."""
     try:
-        return json.loads((_common_dir(_top(data_dir)) / name).read_text())
+        return json.loads((_common_dir(_top(data_dir)) / name).read_text(encoding="utf-8"))
     except (OSError, ValueError, PriceScheduleError):
         return {}
 
@@ -224,13 +242,13 @@ def update_state_file(top: Path, name: str, lock_name: str, **changes: Any) -> d
     path = _common_dir(top) / name
     fd = os.open(path.with_name(lock_name), os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        flock.lock(fd)
         try:
-            state = json.loads(path.read_text())
+            state = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             state = {}
         state.update(changes)
-        with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f"{name}.",
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f"{name}.",
                                          suffix=".tmp", delete=False) as tmp:
             tmp.write(json.dumps(state, indent=2, sort_keys=True) + "\n")
         os.replace(tmp.name, path)
@@ -251,7 +269,7 @@ def locked_file(top: Path, name: str) -> Generator[bool]:
     fd = os.open(_common_dir(top) / name, os.O_RDWR | os.O_CREAT, 0o644)
     try:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock.lock(fd, block=False)
         except BlockingIOError:
             yield False
             return
@@ -592,13 +610,111 @@ def _push(top: Path) -> str:
     return f"pushed {DATA_BRANCH} to {name}"
 
 
+# -- catching up with origin (#785) ------------------------------------------------------
+
+CATCH_UP_ENV = "ZABOB_CATCH_UP"
+# How often the daemon (or, with none running, the hourly timer) looks.
+CATCH_UP_SECONDS = 3600.0
+
+
+def _upstream(top: Path) -> tuple[str, str] | None:
+    """``main``'s remote and upstream branch (``origin``, ``origin/main``),
+    or None when it has none on a remote."""
+    remote = _git(top, "config", f"branch.{DATA_BRANCH}.remote").stdout.strip()
+    upstream = _git(top, "rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{DATA_BRANCH}@{{upstream}}")
+    if remote in ("", ".") or upstream.returncode:
+        return None
+    return remote, upstream.stdout.strip()
+
+
+def has_upstream(data_dir: Path) -> bool:
+    """Whether the data repo's ``main`` tracks a branch on a remote: whether
+    other clones may share it (#785)."""
+    try:
+        return _upstream(_top(data_dir)) is not None
+    except PriceScheduleError:
+        return False
+
+
+def catch_up_off() -> bool:
+    """``ZABOB_CATCH_UP=off`` (or 0/no/false): never fetch from or move to
+    ``origin`` (the tests set it)."""
+    return os.environ.get(CATCH_UP_ENV, "").strip().lower() in {"off", "0", "no", "false"}
+
+
+def catch_up(data_dir: Path) -> list[str]:
+    """Fetch ``main``'s upstream and fast-forward ``main`` to it, when it is
+    checked out and clean here and the upstream is strictly ahead (#785):
+    the same conditions the builder merges its own branches under. So a
+    clone whose builder doesn't write (``shared_writer``) still gets the
+    prices, rolls and weights another one pushed, and one that does stays
+    strictly ahead, so its pushes go through. The fast-forward runs the data
+    repo's ``post-merge`` hook, which pokes the builder. Only the daemon
+    calls this, between builds, or the timer when no daemon runs. Lines for
+    the log: none when there was nothing new."""
+    if catch_up_off():
+        return []
+    try:
+        top = _top(data_dir)
+    except PriceScheduleError:
+        return []
+    found = _upstream(top)
+    if found is None:
+        return []  # nothing to catch up with
+    remote, name = found
+    try:
+        # No terminal to ask on: a fetch that wants a password fails, not hangs.
+        done = subprocess.run(
+            ["git", "-C", str(top), "fetch", "-q", remote],
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+            timeout=PUSH_SECONDS, env=git_environ({"GIT_TERMINAL_PROMPT": "0"}),
+        )
+    except subprocess.TimeoutExpired:
+        return [f"fetch from {remote} failed: no answer in {PUSH_SECONDS}s"]
+    except OSError as exc:
+        return [f"fetch from {remote} failed: {exc}"]
+    if done.returncode:
+        said = [line for line in (done.stderr or done.stdout).splitlines() if line.strip()]
+        return [f"fetch from {remote} failed: {said[0] if said else 'git fetch failed'}"]
+    ours, theirs = _ref(top, _MAIN_REF), _ref(top, name)
+    if ours is None or theirs is None or ours == theirs or _is_ancestor(top, theirs, ours):
+        return []
+    if not _is_ancestor(top, ours, theirs):
+        return [f"not catching up: {DATA_BRANCH} and {name} have diverged; git pull on {DATA_BRANCH} merges them"]
+    if (why := _why_not(top)) is not None:
+        return [f"not catching up with {name} yet: {why}"]
+    count = _git(top, "rev-list", "--count", f"{ours}..{theirs}").stdout.strip()
+    moved = _git(top, "merge", "--ff-only", "-q", name)
+    if moved.returncode:
+        said = [line for line in (moved.stderr or moved.stdout).splitlines() if line.strip()]
+        return [f"couldn't catch up with {name}: {said[0] if said else 'git merge failed'}"]
+    return [f"caught up with {name} ({count} commit{'' if count == '1' else 's'})"]
+
+
+
+def catch_up_if_due(data_dir: Path) -> list[str]:
+    """:func:`catch_up`, when no daemon or timer of this data repo has in the
+    last :data:`CATCH_UP_SECONDS`: the time is kept in the shared state
+    (``caught_up``), so a daemon started by every commit and the hourly
+    tick fetch once an hour between them, not once each."""
+    if catch_up_off() or not has_upstream(data_dir):
+        return []
+    last = read_state(data_dir).get("caught_up")
+    if isinstance(last, (int, float)) and 0 <= clock.time() - last < CATCH_UP_SECONDS:
+        return []
+    # Recorded first, so another one starting meanwhile doesn't fetch too.
+    _update_state(_top(data_dir), caught_up=clock.time())
+    return catch_up(data_dir)
+
 # -- the timer -----------------------------------------------------------------------------
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def _run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, capture_output=True, text=True, check=False, **kwargs)
+    # errors="replace": schtasks writes a pipe in the OEM code page, which on
+    # some non-English Windows has bytes the ANSI one (text=True's) lacks.
+    return subprocess.run(args, capture_output=True, text=True, errors="replace", check=False, **kwargs)
 
 
 def timer_label(data_dir: Path) -> str:
@@ -610,11 +726,77 @@ def _plist_path(data_dir: Path) -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{timer_label(data_dir)}.plist"
 
 
-def _timer_command(sim: Path, data_dir: Path) -> list[str]:
+def _timer_command(sim: Path, data_dir: Path, platform: str = sys.platform) -> list[str]:
     """What the timer runs: only a look at the state unless a fetch or a
     roll (#564) is due, so the hourly wake costs no scan; one that commits
-    pokes the builder, which merges between builds."""
-    return [str(sim), "builder", "tick", "--data-dir", str(data_dir.resolve())]
+    pokes the builder, which merges between builds. On Windows, the
+    ``pythonw`` beside ``sim`` (#748): ``sim.exe`` would open a console
+    window each hour (``__main__`` then runs it under a windowless one)."""
+    tick = ["builder", "tick", "--data-dir", str(data_dir.resolve())]
+    if platform == "win32" and (pythonw := sim.with_name("pythonw.exe")).exists():
+        return [str(pythonw), "-m", "zabob.retirement", "sim", *tick]
+    return [str(sim), *tick]
+
+
+def _task_name(data_dir: Path) -> str:
+    """The Task Scheduler task's name, in a folder of its own (#748)."""
+    return f"\\{TASK_FOLDER}\\{timer_label(data_dir)}"
+
+
+def _task_xml(command: list[str]) -> str:
+    """A task that runs ``command`` hourly at :07 (:data:`CRON_MINUTE`)
+    while the user is logged in, with no password kept and nothing to
+    approve (#748). One that is still running when the next hour comes is
+    left alone, an hour missed asleep runs on waking, and the battery doesn't
+    stop it (no more than launchd or cron would)."""
+    program, arguments = (escape(part) for part in (command[0], subprocess.list2cmdline(command[1:])))
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{TASK_DESCRIPTION}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>2026-01-01T00:{CRON_MINUTE:02d}:00</StartBoundary>
+      <Repetition><Interval>PT1H</Interval></Repetition>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT4H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{program}</Command>
+      <Arguments>{arguments}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def _install_task(data_dir: Path, command: list[str], run: Runner) -> str:
+    """Task Scheduler's hourly task (#748): from an XML file, since the
+    command line ``schtasks /TR`` takes is limited to 261 characters."""
+    with tempfile.TemporaryDirectory() as folder:
+        xml = Path(folder) / "task.xml"
+        xml.write_text(_task_xml(command), encoding="utf-16")
+        done = run(["schtasks", "/Create", "/F", "/TN", _task_name(data_dir), "/XML", str(xml)])
+    if done.returncode:
+        return f"couldn't add the scheduled task: {(done.stderr or done.stdout).strip()}"
+    return (f"added the scheduled task {_task_name(data_dir)}: the builder wakes hourly to fetch prices "
+            "and roll scenarios when due")
 
 
 def _cron_marker(data_dir: Path) -> str:
@@ -636,7 +818,9 @@ def install_timer(data_dir: Path, sim: Path, *, run: Runner = _run,
     this data dir if there is one. Returns a line saying what it did."""
     if switched_off():
         return f"price fetches are off here ({SWITCH_ENV}=off): the timer is left as it is"
-    command = _timer_command(sim, data_dir)
+    command = _timer_command(sim, data_dir, platform)
+    if platform == "win32":
+        return _install_task(data_dir, command, run)
     if platform == "darwin":
         plist = _plist_path(data_dir)
         plist.parent.mkdir(parents=True, exist_ok=True)
@@ -665,6 +849,13 @@ def install_timer(data_dir: Path, sim: Path, *, run: Runner = _run,
 
 def uninstall_timer(data_dir: Path, *, run: Runner = _run, platform: str = sys.platform) -> str | None:
     """Remove this data dir's timer; a line saying so, or None if it had none."""
+    if platform == "win32":
+        if run(["schtasks", "/Query", "/TN", _task_name(data_dir)]).returncode:
+            return None
+        done = run(["schtasks", "/Delete", "/F", "/TN", _task_name(data_dir)])
+        if done.returncode:
+            return f"couldn't remove the scheduled task {_task_name(data_dir)}: {(done.stderr or done.stdout).strip()}"
+        return f"removed the scheduled task {_task_name(data_dir)}"
     if platform == "darwin":
         plist = _plist_path(data_dir)
         if not plist.exists():

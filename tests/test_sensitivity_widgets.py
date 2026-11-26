@@ -331,6 +331,7 @@ def test_attribution_view_relative_divides_by_base() -> None:
     plt.close("all")
 
 
+@pytest.mark.slow
 def test_sensitivity_widget_attribution_follows_delta_scale(
     oat_batch: Path, runs_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

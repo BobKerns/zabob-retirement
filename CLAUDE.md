@@ -7,12 +7,17 @@ shared with Copilot; edit it there, not here:
 
 ## Branches and worktrees
 
-- Branch only when the live branch (`git branch --show-current`) is `main`;
-  otherwise the current branch is the one to use.
+- Branch only when the live branch (`git branch --show-current`) is `main`
+  or `dev`; otherwise the current branch is the one to use.
 - A branch for a GitHub issue is `issue/<number>-<brief-kebab-description>`
-  (e.g. `issue/40-cert-verify`). Never name a branch plain `issue`.
-- Base new branches on `origin/main` after `git fetch`, not local `main`, and
-  don't update local `main`.
+  (e.g. `issue/40-cert-verify`). Never name a branch plain `issue`. A hotfix
+  branch is `hotfix/<number>-<brief-kebab-description>`, and the branch that
+  carries the same fix into `dev` is `issue/<number>-<...>`, even when it is
+  the same commit: the name says where the branch merges.
+- Base new branches on `origin/dev` after `git fetch`, not local `main` or
+  `dev`, and don't update local `main`. Pull requests target `dev`; see "The
+  dev branch" in the shared guidance. A hotfix, the one exception, branches
+  from `origin/main` and targets `main`.
 - Keep branches after their PR merges, locally and on GitHub.
 - Work in a worktree at `../zabob-retirement-worktrees/<branch with / flattened to ->`,
   not in the main checkout. Remove the worktree (not the branch) once its PR
@@ -34,7 +39,7 @@ lacks, so bypass the filter for the initial checkout only:
 git fetch origin
 git -c filter.nbstripout.clean=cat -c filter.nbstripout.smudge=cat \
     -c filter.nbstripout.required=false \
-    worktree add --no-track -b <branch> ../zabob-retirement-worktrees/<flattened-branch> origin/main
+    worktree add --no-track -b <branch> ../zabob-retirement-worktrees/<flattened-branch> origin/dev
 cd ../zabob-retirement-worktrees/<flattened-branch> && env -u VIRTUAL_ENV uv sync && npm ci
 # data/private: the main checkout's data repo, or template data where it has none
 main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")

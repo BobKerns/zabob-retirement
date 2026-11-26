@@ -32,7 +32,7 @@ third scenario mixes the two.
 commands, as video 4's does, then makes the what-ifs the way the scenes do,
 tagging the data repo before each scene (`stage/<scene>`) so a tape can make
 on camera what later scenes already have. Every scenario is run once at the
-end, with fixed times. The tapes work in `~/retirement/data/sim`, as in
+end, with fixed times. The tapes work in `~/zabob-retirement/sim`, as in
 videos 3 and 4.
 
 ## Scene `title`: Title card
@@ -95,9 +95,9 @@ every what-if picks it up the next time it runs.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/create && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/create && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -133,9 +133,9 @@ longer, with the new end date. That one row is the whole scenario.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/claim-early && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/claim-early && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -161,9 +161,9 @@ sooner means smaller checks, but three more years of them.
 ```tape
 Set FontSize 22
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/mix-in && cd ~/retirement/data/sim && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/mix-in && cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -191,9 +191,9 @@ seed, all from base.
 ```tape
 Set FontSize 22
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/run-all && cd ~/retirement/data/sim && rm ../state/runs/*_work-longer_* ../state/runs/*_claim-early_* ../state/runs/*_both_* && clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/run-all && cd ~/zabob-retirement/sim && rm ../state/runs/*_work-longer_* ../state/runs/*_claim-early_* ../state/runs/*_both_* && clear"
 Enter
 Sleep 2s
 Show
@@ -213,9 +213,9 @@ date. Sim list then shows a run for each of the four.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -239,9 +239,9 @@ early pulls ahead too, but its lead shrinks every year after Bill turns
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -295,9 +295,9 @@ single.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -321,9 +321,9 @@ Bill is working anyway.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "cd ~/retirement/data/sim && clear"
+Type "cd ~/zabob-retirement/sim && clear"
 Enter
 Sleep 2s
 Show
@@ -343,7 +343,7 @@ With two more years of salary, they're never touched.
 ## Scene `nb-compare`: The comparison notebook
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "scenario_compare.ipynb"
 RunAll

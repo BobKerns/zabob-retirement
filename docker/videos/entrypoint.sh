@@ -19,7 +19,8 @@ if [ ! -x "$UV_PROJECT_ENVIRONMENT/bin/python" ]; then
     echo "Setting up the video environment volume (first time: several minutes)..." >&2
 fi
 # Output to stderr: `check` and the build print their own results on stdout.
-uv sync --quiet --frozen --no-dev >&2 || exit
+# --project: `shell` starts in /data, not the checkout (#756).
+uv sync --project /repo --quiet --frozen --no-dev >&2 || exit
 python -m playwright install chromium >&2 || exit
 # The builder and VHS find Chromium through this link (see the Dockerfile).
 chrome=$(python -c 'from playwright.sync_api import sync_playwright

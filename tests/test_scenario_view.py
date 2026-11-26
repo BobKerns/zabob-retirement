@@ -50,7 +50,7 @@ def _steps(test_data_dir: Path):
 
 def test_description_view_relevels_the_readme_heading(test_data_dir: Path) -> None:
     (test_data_dir / "scenarios" / "retire_alice" / "README.md").write_text(
-        "# Retirement baseline\n\nAlice and Bill's main plan.\n"
+        "# Retirement baseline\n\nAlice and Bill's main plan.\n", encoding="utf-8"
     )
     with open_scenario(test_data_dir, "retire_alice") as scenario:
         md = description_view(scenario)
@@ -68,7 +68,7 @@ def test_description_view_regenerates_the_more_link_against_data_dir(
     it was generated under (ADR-003 §4.1e); passing the connection's own
     data_dir back in repoints it rather than leaving it stale."""
     (test_data_dir / "scenarios" / "retire_alice" / "README.md").write_text(
-        "# Retirement baseline\n\nAlice and Bill's main plan.\n\nMore detail here.\n"
+        "# Retirement baseline\n\nAlice and Bill's main plan.\n\nMore detail here.\n", encoding="utf-8"
     )
     with open_scenario(test_data_dir, "retire_alice") as scenario:
         md = description_view(scenario, data_dir=test_data_dir)
@@ -98,7 +98,7 @@ def test_lots_are_spelled_out_where_an_account_has_several(
         "account_name,lot,maximum,percent,series,cadence\n"
         "Asset_Roth_Alice,default,,,,\n"    # one of two lots, and it is named default
         "Asset_Roth_Alice,b,,,,\n"
-        "Asset_Savings,,,,,\n"
+        "Asset_Savings,,,,,\n", encoding="utf-8"
     )
     _, steps = _steps(test_data_dir)
     rows = steps.loc["roth_first"]
@@ -111,7 +111,7 @@ def test_a_step_that_draws_from_another_chain_has_no_lot(
     test_data_dir: Path, retire_alice_csv: Callable[[str], Path],
 ) -> None:
     (retire_alice_csv("chains/source") / "outer.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nasset_checking_liquidity,,,,,\n"
+        "account_name,lot,maximum,percent,series,cadence\nasset_checking_liquidity,,,,,\n", encoding="utf-8"
     )
     _, steps = _steps(test_data_dir)
     assert steps.loc[("outer", 1), "draw_from"] == "asset_checking_liquidity"
@@ -146,7 +146,7 @@ def _outer_chain(retire_alice_csv: Callable[[str], Path]) -> None:
     (retire_alice_csv("chains/source") / "outer.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence\n"
         "Asset_Savings,,500.00,,cpi,annual\n"
-        "asset_checking_liquidity,,,,,\n"
+        "asset_checking_liquidity,,,,,\n", encoding="utf-8"
     )
 
 
@@ -444,11 +444,12 @@ def overriding_child(
     """``child`` of retire_alice overriding one scheduled rule, one account
     and the chain, and adding a calendar row of its own."""
     parent = test_data_dir / "scenarios" / "retire_alice"
-    (test_child_scenario / "scheduled.csv").write_text(scheduled_override(healthcare="1500.00"))
-    (test_child_scenario / "accounts.csv").write_text(retire_alice_rows("accounts.csv", "Asset_Savings"))
+    (test_child_scenario / "scheduled.csv").write_text(scheduled_override(healthcare="1500.00"), encoding="utf-8")
+    (test_child_scenario / "accounts.csv").write_text(retire_alice_rows("accounts.csv", "Asset_Savings"),
+                                                      encoding="utf-8")
     chain = Path("chains/source/asset_checking_liquidity.csv")
     (test_child_scenario / chain).parent.mkdir(parents=True, exist_ok=True)
-    (test_child_scenario / chain).write_text((parent / chain).read_text())
+    (test_child_scenario / chain).write_text((parent / chain).read_text(encoding="utf-8"), encoding="utf-8")
     append_calendar_row_to(test_child_scenario / "calendar.csv", date="2031-01-31",
                            kind="retire_scheduled", scheduled_name="living",
                            description="child's own row")
@@ -564,7 +565,7 @@ def test_every_origin_is_a_dash_once_the_folders_differ_from_the_load(
         assert "folders" not in manifest_view(scenario).index
         assert scheduled_view(scenario).set_index("name")["defined_in"]["living"] == "retire_alice"
         # The same names, so only the files' stamps show the edit.
-        (overriding_child / "scheduled.csv").write_text(scheduled_override(healthcare="1600.00"))
+        (overriding_child / "scheduled.csv").write_text(scheduled_override(healthcare="1600.00"), encoding="utf-8")
         views = {
             "scheduled": scheduled_view(scenario)["defined_in"],
             "calendar": calendar_view(scenario)["defined_in"],
@@ -618,6 +619,6 @@ def test_chain_origins_name_a_chain_with_two_files_in_one_folder(
     source = overriding_child / "chains" / "source" / "asset_checking_liquidity.csv"
     destination = overriding_child / "chains" / "destination" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(source.read_text())
+    destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     origins = setup_listings.chain_origins(test_data_dir / "scenarios", "child")
     assert isinstance(origins["asset_checking_liquidity"], chain_edit.AmbiguousChain)

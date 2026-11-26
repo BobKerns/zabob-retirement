@@ -1,29 +1,57 @@
 # The verification gates from .github/copilot-instructions.md, run on GitHub so
 # a commit made without the local hooks (a fresh clone, a web edit,
-# --no-verify) is caught before merge. Mark these jobs as required checks in the
-# ruleset for main; they block merging, not pushing. The sixth gate, loading the
-# real scenarios, needs the private data repo and stays local.
+# --no-verify) is caught before merge. The rulesets for main and dev require
+# three checks: Blocked keywords, Spelling and markdown, and Tests and lint, which
+# gathers the test shards and the lint job, so the shard count can change
+# without touching the ruleset. They block merging, not pushing. The sixth
+# gate, loading the real scenarios, needs the private data repo and stays local.
+#
+# Pull requests merge into dev, and dev is promoted to main in batches
+# (scripts/promote_dev.py). So there are two depths:
+#
+# - Quick, for a pull request into dev: every check but the whole test suite.
+#   It runs the tests the change's areas select (tests/areas.toml); a change
+#   that selects the whole suite leaves it to the run on dev, which the
+#   author's local gate already ran.
+# - Full, for a push to dev or main, a pull request into main (a promotion),
+#   a pull request labeled full-gates, and a manual run: the whole suite in
+#   four shards.
+#
+# A run on dev that a later push to dev supersedes is cancelled, so a burst of
+# merges costs one full run, on the last of them. A failure there is found
+# after merge: scripts/bisect_dev.py finds the merge that caused it.
+#
+# The promotion pull request (head dev) doesn't rerun the tests, lint and types:
+# its head is dev's tip, which the push to dev already ran at full depth. Its
+# Changed files job waits for that push run and passes or fails "Tests and
+# lint" with it, and runs them itself only when there is no push run to reuse
+# (one a later push cancelled, say). The cheap checks still run (#759).
 #
 # Every job skips on a draft pull request, where the gates run locally and
-# Copilot doesn't review: Actions minutes are billed, and a draft can't merge.
-# A skipped job still reports its required check, and marking the pull request
-# ready (ready_for_review) runs everything on that commit.
+# Copilot doesn't review: a draft can't merge. A skipped job still reports its
+# required check, and marking the pull request ready (ready_for_review) runs
+# everything on that commit.
 name: Gates
 
 on:
   pull_request:
     # edited: the title and body are checked too, and can change on their own.
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    # labeled/unlabeled: adding or removing full-gates changes the depth. Any
+    # other label reruns the same checks, which is harmless.
+    types: [opened, synchronize, reopened, edited, ready_for_review, labeled, unlabeled]
   push:
-    branches: [main]
+    branches: [main, dev]
+  # "Run workflow" on a branch: the full gates on its tip.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# A new push to a pull request supersedes its running check. Pushes to main
-# never cancel each other: each run checks only its own pushed range.
+# A new push to a pull request supersedes its running check, and so does a new
+# push to dev. Pushes to main never cancel each other: each run checks only
+# its own pushed range.
 concurrency:
-  group: gates-${{ github.event.pull_request.number || github.run_id }}
+  group: gates-${{ github.event.pull_request.number || (github.ref == 'refs/heads/dev' && github.event_name == 'push' && 'dev') || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +63,7 @@ jobs:
       # The private keyword list (docs/SETUP.md). The check never prints it.
       BLOCKED_KEYWORDS_PRIVATE: ${{ secrets.BLOCKED_KEYWORDS_PRIVATE }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Every commit in the range, for its message.
           fetch-depth: 0
@@ -56,11 +84,18 @@ jobs:
           # Only these SHAs come from the event; never interpolate its text
           # into the script.
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          # A manual run has neither: check the commit it runs on.
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
+          DEV_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
         run: |
-          # A force push (or the first push) leaves no usable base, and the
-          # pushed range is unknown: fail closed by checking the whole history.
-          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          # A push to dev checks everything since the last promotion: a later
+          # push cancels this run, and its own range would miss this push's
+          # commits. A force push (or the first push) leaves no usable base,
+          # and the pushed range is unknown: fail closed by checking the whole
+          # history.
+          if [ "$DEV_PUSH" = true ] && git rev-parse --verify --quiet origin/main >/dev/null; then
+              range="origin/main..$HEAD"
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
               range="$BASE..$HEAD"
           else
               range="$HEAD"
@@ -86,32 +121,77 @@ jobs:
           printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/pr.txt"
           scripts/check-blocked-keywords.sh --text "$RUNNER_TEMP/pr.txt"
 
-  python:
-    name: Tests and lint
+  # Which jobs below have work to do. At full depth that is all of them,
+  # whatever the change: a push run on dev may stand for several merges whose
+  # own runs a later push cancelled, so its own range says too little. At quick
+  # depth (a pull request into dev, whose diff is the whole change), a change
+  # that only touches prose or editor settings skips lint and types; the list
+  # names what may skip, not what must run, so a new directory is checked by
+  # default. Its tests come from scripts/affected_tests.py.
+  changes:
+    name: Changed files
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # To find the push run on dev that a promotion reuses.
+      actions: read
+    outputs:
+      reused: ${{ steps.reuse.outputs.result }}
+      needed: ${{ steps.changes.outputs.needed }}
+      run_tests: ${{ steps.tests.outputs.run }}
+      groups: ${{ steps.tests.outputs.groups }}
+      paths: ${{ steps.tests.outputs.paths }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # The base commit, to list the changed files.
           fetch-depth: 0
 
-      # A change that only touches prose or editor settings can't change a
-      # test, lint or type result, so the rest of the job is skipped. The job
-      # itself still runs and passes: it is a required check, and a check
-      # skipped by a workflow-level paths filter never reports at all. The
-      # list names what may skip, not what must run, so a new directory is
-      # tested by default.
+      # A promotion's head is dev's tip: reuse the push run's result on it.
+      # From this repository only: a fork's branch named dev is no promotion.
+      - name: Push run on dev
+        id: reuse
+        if: >-
+          ${{ github.event_name == 'pull_request'
+              && github.event.pull_request.head.ref == 'dev'
+              && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          result=$(scripts/push-run-result.sh gates.yml "Tests and lint" "$SHA")
+          echo "Reusing the push run: $result"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Depth
+        id: depth
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-gates') }}
+        run: |
+          if [ "$EVENT" = pull_request ] && [ "$BASE_REF" = dev ] && [ "$FULL_LABEL" != true ]; then
+              depth=quick
+          else
+              depth=full
+          fi
+          echo "Depth: $depth"
+          echo "depth=$depth" >> "$GITHUB_OUTPUT"
+
       - name: Changed files
         id: changes
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          DEPTH: ${{ steps.depth.outputs.depth }}
+          REUSED: ${{ steps.reuse.outputs.result }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           needed=false
-          # With no usable base (a force push, the first push) the change is
-          # unknown: run everything.
-          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          if [ "$REUSED" = passed ] || [ "$REUSED" = failed ]; then
+              needed=false
+          elif [ "$DEPTH" = full ]; then
               needed=true
           else
               changed=$(git diff --name-only "$BASE...$HEAD")
@@ -129,49 +209,201 @@ jobs:
                   esac
               done <<< "$changed"
           fi
-          echo "Tests needed: $needed"
+          echo "Lint and types needed: $needed"
           echo "needed=$needed" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@v7
-        if: steps.changes.outputs.needed == 'true'
+      # The selector needs only the standard library, but of Python 3.14:
+      # uv installs that from .python-version (setup-python has no 3.14 build
+      # for the runner's Ubuntu).
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        if: ${{ steps.depth.outputs.depth == 'quick' }}
+        with:
+          version: "0.12.23"
+
+      - name: Tests to run
+        id: tests
+        env:
+          DEPTH: ${{ steps.depth.outputs.depth }}
+          REUSED: ${{ steps.reuse.outputs.result }}
+        run: |
+          if [ "$REUSED" = passed ] || [ "$REUSED" = failed ]; then
+              echo "The push run on dev ran them: $REUSED."
+              run=false groups='[1]' paths=''
+          elif [ "$DEPTH" = full ]; then
+              echo "Full gates: the whole suite."
+              run=true groups='[1, 2, 3, 4]' paths=tests
+          else
+              # HEAD is GitHub's merge of the pull request into dev, and HEAD^1
+              # the dev it merged into, so this is the change as merged. Not
+              # base.sha: a label or ready event can come after dev moved on,
+              # and base.sha would add dev's newer changes to the selection.
+              selection=$(uv run --no-project python scripts/affected_tests.py --list --base HEAD^1)
+              if [ -z "$selection" ]; then
+                  echo "No test reads what this change touched."
+                  run=false groups='[1]' paths=''
+              elif [ "$selection" = tests ]; then
+                  echo "The change selects the whole suite: it runs on dev after merge (label full-gates to run it here)."
+                  run=false groups='[1]' paths=''
+              else
+                  echo "Selected tests:"
+                  echo "$selection"
+                  run=true groups='[1]' paths=$(echo $selection)
+              fi
+          fi
+          # groups is never empty: GitHub rejects an empty matrix even on a
+          # job its condition skips.
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "groups=$groups" >> "$GITHUB_OUTPUT"
+          echo "paths=$paths" >> "$GITHUB_OUTPUT"
+
+  # The selected tests: the whole suite in four parallel shards, or the few
+  # files a quick run selected in one. Shards are balanced by the test times in
+  # tests/.test_durations (pytest-split). A test missing from that file counts
+  # as an average one, so the file only needs refreshing when the shards drift
+  # apart: `pytest -n auto --store-durations --durations-path tests/.test_durations`.
+  # least_duration deals the longest tests out first, so a few very long ones
+  # don't pile into one shard. The runner has no ffmpeg, so the three tests
+  # that need it skip here though the file counts them (about 90 s in all).
+  tests:
+    name: Tests (${{ matrix.group }}/${{ strategy.job-total }})
+    needs: changes
+    if: ${{ needs.changes.outputs.run_tests == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one run lists every failure.
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.changes.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           # Pinned: an unpinned setup asks the GitHub API for the latest
           # release on every run, and fails the job when that times out.
           version: "0.12.23"
+          enable-cache: true
 
       - name: Install Python and dependencies
-        if: steps.changes.outputs.needed == 'true'
         # uv reads the pinned version from .python-version.
         run: |
           uv python install
-          uv sync --locked --group dev
+          uv sync --locked --group dev --extra hub
 
       # The same data/private layout a developer has, from templates/.
       - name: Template data repo
-        if: steps.changes.outputs.needed == 'true'
         run: scripts/link-data.sh --template
 
       - name: Tests
-        if: steps.changes.outputs.needed == 'true'
-        run: uv run --no-sync python -m pytest -q -n auto
+        env:
+          # Test file paths from the selector, space-separated.
+          TEST_PATHS: ${{ needs.changes.outputs.paths }}
+        run: >-
+          uv run --no-sync python -m pytest -q -n auto
+          --splits ${{ strategy.job-total }} --group ${{ matrix.group }}
+          --splitting-algorithm least_duration
+          --durations-path tests/.test_durations
+          $TEST_PATHS
+
+  lint:
+    name: Lint and types
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.12.23"
+          enable-cache: true
+
+      - name: Install Python and dependencies
+        run: |
+          uv python install
+          uv sync --locked --group dev --extra hub
 
       - name: Lint
-        if: steps.changes.outputs.needed == 'true'
         run: uv run --no-sync ruff check src tests plugins
 
       - name: Types
         # Run even when lint fails, so one run reports both.
-        if: ${{ !cancelled() && steps.changes.outputs.needed == 'true' }}
+        if: ${{ !cancelled() }}
         run: uv run --no-sync ty check
+
+  # The required check. It passes when the shards and lint passed, when the
+  # change needed none of them, or, on a promotion, when they passed in the
+  # push run on dev; the rulesets name only this job, so the
+  # shard count can change without touching them.
+  python:
+    name: Tests and lint
+    needs: [changes, tests, lint]
+    # !cancelled(), not always(): a run superseded by a newer push (or a title
+    # edit) shows as cancelled rather than failed.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          REUSED: ${{ needs.changes.outputs.reused }}
+          NEEDED: ${{ needs.changes.outputs.needed }}
+          RUN_TESTS: ${{ needs.changes.outputs.run_tests }}
+          TESTS: ${{ needs.tests.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          echo "Changed files: $CHANGES (lint needed: $NEEDED, tests needed: $RUN_TESTS)"
+          echo "Tests: $TESTS"
+          echo "Lint and types: $LINT"
+          if [ "$CHANGES" != success ]; then exit 1; fi
+          if [ -n "$REUSED" ]; then echo "From the push run on dev: $REUSED"; fi
+          if [ "$REUSED" = failed ]; then exit 1; fi
+          if [ "$NEEDED" = true ] && [ "$LINT" != success ]; then exit 1; fi
+          if [ "$RUN_TESTS" = true ] && [ "$TESTS" != success ]; then exit 1; fi
+
+  # Work merges into dev; only a promotion (head dev) or a hotfix goes
+  # straight to main. A hotfix needs both its branch name (hotfix/...) and the
+  # hotfix label, so each confirms the other was meant. Not a required check: it makes a pull
+  # request opened against the wrong base loud, and retargeting it to dev
+  # clears it.
+  base:
+    name: Base branch
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Promotion or hotfix
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix') }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Until dev exists, main is still where pull requests go.
+          if ! gh api "repos/$REPO/branches/dev" --silent 2>/dev/null; then
+              echo "There is no dev branch yet."
+              exit 0
+          fi
+          [ "$HEAD_REF" = dev ] && exit 0
+          case "$HEAD_REF" in hotfix/*) named=true ;; *) named=false ;; esac
+          if [ "$named" = true ] && [ "$HOTFIX" = true ]; then
+              exit 0
+          elif [ "$named" = true ]; then
+              echo "::error::A hotfix into main needs the hotfix label too. Add it, or retarget the pull request to dev."
+          elif [ "$HOTFIX" = true ]; then
+              echo "::error::A hotfix comes from a branch named hotfix/<number>-<description>, made from origin/main. Push the fix there and open the pull request from it."
+          else
+              echo "::error::Pull requests go to dev; only dev's promotion or a hotfix (branch hotfix/..., label hotfix) goes to main. Edit the pull request's base to dev."
+          fi
+          exit 1
 
   docs:
     name: Spelling and markdown
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version-file: .node-version
           cache: npm

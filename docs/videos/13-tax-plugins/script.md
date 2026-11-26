@@ -44,13 +44,13 @@ the two the same): setup copies it into the data repo, and the code slides
 read their lines from it (`code_file`, `code_lines`). After editing it,
 keep each slide's `code_lines` and `marks` on the lines they mean. Each
 scenario is run once at the end and its run renamed to a fixed time. The
-tapes work in `~/retirement/data/sim`, as in videos 3 to 12.
+tapes work in `~/zabob-retirement/sim`, as in videos 3 to 12.
 
 The comparison stays with tax and pre-tax figures: the after-tax net worth
 prices each year's share of the IRA on top of that year's income without
 its own IRA draws, which qualifies for the credit, so it charges the
-credit's loss against the IRA in every drawdown year (an open question, not
-for this video).
+credit's loss against the IRA in every drawdown year (by design, #575: it
+is what the IRA money costs, but it misleads a comparison like this one).
 
 > Numbers in the narration were checked on 2026-11-11 against `setup.sh`.
 
@@ -131,9 +131,9 @@ credit.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/dc && cd ~/retirement/data/sim && sim switch base > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/dc && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -214,8 +214,8 @@ template = "window"
 look = "files"
 heading = "A tax plugin is a file in the data repo"
 title = "sim"
-address = "~/retirement/data/sim"
-lines = ["taxes", "scenarios", "aux", "allocations.csv", "persons.csv"]
+address = "~/zabob-retirement/sim"
+lines = ["taxes", "scenarios", "tables", "allocations.csv", "persons.csv"]
 note = "taxes/property_credit.py, for every scenario: not a scenario's own taxes/ folder"
 speaker = "bill"
 ```
@@ -337,9 +337,9 @@ from last year's return.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/check && cd ~/retirement/data/sim && sim switch dc > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/check && cd ~/zabob-retirement/sim && sim switch dc > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -385,9 +385,9 @@ same in both runs.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/use && cd ~/retirement/data/sim && sim switch dc-credit > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/use && cd ~/zabob-retirement/sim && sim switch dc-credit > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -420,9 +420,9 @@ three percent of it nearly covers the bill, leaving thirty three dollars.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/retirement/data/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
-Type "git -C ~/retirement/data reset -q --hard stage/worth && cd ~/retirement/data/sim && sim switch dc-credit > /dev/null 2>&1; clear"
+Type "git -C ~/zabob-retirement reset -q --hard stage/worth && cd ~/zabob-retirement/sim && sim switch dc-credit > /dev/null 2>&1; clear"
 Enter
 Sleep 2s
 Show
@@ -467,7 +467,7 @@ it go.
 ## Scene `nb`: The tax chart
 
 ```notebook
-Set DataDir "home/retirement/data/sim"
+Set DataDir "home/zabob-retirement/sim"
 Hide
 Open "net_worth.ipynb"
 RunAll

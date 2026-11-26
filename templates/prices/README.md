@@ -5,7 +5,7 @@
 places). Unlike growth-rate and inflation series (`series/`, which are
 per-scenario projections), a security's price history is a shared fact:
 every scenario that holds the same symbol uses the same prices by default.
-This folder sits at the data repo root, like `aux/`.
+This folder sits at the data repo root, like `tables/`.
 
 ## What it's used for
 
@@ -23,7 +23,7 @@ from a public price source, and writes them here. See `templates/README.md`
 
 ## Per-scenario overrides
 
-Like `aux/`, a scenario can replace one file for itself (and its
+Like `tables/`, a scenario can replace one file for itself (and its
 descendants) by adding `scenarios/<name>/prices/<same filename>.csv` — the
 loader uses that in place of the shared one here. This is rarely needed
 (prices are the same regardless of scenario), but it's available for, say, a
@@ -33,5 +33,5 @@ what-if scenario that assumes a different price path for one holding.
 
 - `docs/architecture/ADR-003-registries-and-csv-schemas.md` — column schema
   and the per-scenario override mechanism (§4.1d).
-- `aux/README.md` — the shared tax-law facts.
+- `tables/README.md` — the shared tax-law facts.
 - `templates/README.md` — the data repo as a whole.

@@ -275,7 +275,7 @@ def _widgets_the_notebooks_show(repo_root: Path) -> dict[str, Callable]:
     resolved from the notebook_ui modules."""
     names: set[str] = set()
     for notebook in (repo_root / "notebooks").glob("*.ipynb"):
-        for cell in json.loads(notebook.read_text())["cells"]:
+        for cell in json.loads(notebook.read_text(encoding="utf-8"))["cells"]:
             if cell["cell_type"] == "code":
                 names.update(re.findall(r"\.show(?:_scenario)?\(\s*(\w+)", "".join(cell["source"])))
     found: dict[str, Callable] = {}
