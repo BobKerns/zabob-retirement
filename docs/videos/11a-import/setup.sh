@@ -6,12 +6,12 @@
 # tagging the data repo before each scene's commands (stage/<scene>): a tape
 # resets to its tag, so it can make on camera what a later scene already has.
 
-export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
+export HOME="$(dirname "$ZABOB_DATA_DIR")/home"
 mkdir -p "$HOME"
-unset ANALYSIS_DATA_DIR
+unset ZABOB_DATA_DIR
 sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ
-source ~/zabob-retirement/sim/activate-analysis > /dev/null
+source ~/zabob-retirement/sim/activate-retirement > /dev/null
 cd ~/zabob-retirement
 
 stage() {  # commit what the commands before made, and mark where a scene starts

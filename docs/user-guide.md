@@ -148,12 +148,17 @@ argument or `--scenario`) makes it current, and the command says so
 first prints `Using scenario <name>`; with no current scenario (a fresh data
 repo, or after deleting it) the command asks you to name one.
 To look at a scenario without making it current (in a script, or for an AI
-assistant answering questions for you), set `ANALYSIS_KEEP_SCENARIO=1`:
+assistant answering questions for you), set `ZABOB_KEEP_SCENARIO=1`:
 commands then use the scenario they name and leave your current one as it is.
-`sim switch` prints your current scenario, and `sim switch <name>` makes
-`<name>` current, printing the one it replaces. The shell
-prompt that `activate-analysis` sets shows it, as
-`[analysis:<data repo>:<you>:<scenario>]`.
+`sim switch` shows who you are, your data repo and your current scenario,
+and `sim switch <name>` makes `<name>` current, naming the one it replaces.
+The current scenario is yours alone, one for each data repo you use, so
+someone else using the same data repo keeps their own. `sim login [name]`
+says who you are (by default your login name); it is the name put on what you
+make and change, not one of the household's people. `sim switch --data DIR`
+moves you to another data repo, and so does running a `sim` command inside
+one, saying so. The shell prompt that `activate-retirement` sets shows all
+three, as `[retirement:<data repo>:<you>:<scenario>]`.
 
 To rename a scenario (or an ensemble; the two commands are the same):
 
@@ -2380,6 +2385,12 @@ uses 8888, or the next free port. `--no-browser` prints the address instead, and
 JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
 it is running and its address, and `sim jupyter stop` stops it and its
 notebooks' kernels: save your notebooks first.
+
+For the rest of the household, `sim jupyter hub` runs a JupyterHub: each
+person logs in with their own account on the machine and gets their own
+JupyterLab, on a data repo they share or one of their own
+(`sim jupyter user add`). [Share with your household](guides/jupyterhub.md)
+sets it up.
 
 ### The same views from the terminal
 

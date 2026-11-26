@@ -7,7 +7,7 @@
 #   scripts/videos/docker.sh image
 #
 # VIDEO is a folder in docs/videos, by name (01-intro) or path
-# (docs/videos/01-intro). Videos land in out/videos, or $ANALYSIS_VIDEO_OUT.
+# (docs/videos/01-intro). Videos land in out/videos, or $ZABOB_VIDEO_OUT.
 #
 # The checkout (MOUNTS) is mounted read-only, and the project's
 # dependencies are synced from it into the volume analysis-videos-env at
@@ -19,13 +19,13 @@
 # The videos share one data repo, in the named volume analysis-videos-data
 # mounted at /data. A tape whose script names no demo data (data = ...)
 # starts from a copy of it. `shell` opens bash in the container in /data,
-# with ANALYSIS_DATA_DIR=/data/sim, to create the repo
+# with ZABOB_DATA_DIR=/data/sim, to create the repo
 # (`sim init /data --no-builder`) or change it with the CLI.
 # `docker volume rm analysis-videos-data` discards it.
 set -eu
 
 # Relative to where it was run from, not the repo root.
-out=${ANALYSIS_VIDEO_OUT:-}
+out=${ZABOB_VIDEO_OUT:-}
 if [ -n "$out" ]; then
     mkdir -p "$out"
     out=$(cd "$out" && pwd)

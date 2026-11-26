@@ -59,7 +59,7 @@ def test_installed_program_runs_without_a_checkout(
     # The prototype data, as shipped, loads with the shipped templates.
     data = tmp_path / "data"
     shutil.copytree(Path(templates).parent / "prototype_data", data)
-    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"} | {"ANALYSIS_NO_BUILDER": "1"}
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"} | {"ZABOB_NO_BUILDER": "1"}
     done = subprocess.run([installed_wheel / "sim", "check", "--all", "--data-dir", data],
                           cwd=tmp_path, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
@@ -72,7 +72,7 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
     home.mkdir()
     (tmp_path / "gitconfig").write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n",
                                         encoding="utf-8")
-    env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ANALYSIS_NO_BUILDER": "1",
+    env = {"PATH": f"{installed_wheel}:/usr/bin:/bin", "HOME": str(home), "ZABOB_NO_BUILDER": "1",
            "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
            **{f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER")
               for what, value in (("NAME", "t"), ("EMAIL", "t@t"))}}
@@ -83,7 +83,7 @@ def test_installed_init_example_activates_and_runs(installed_wheel: Path, tmp_pa
     assert (root / "sim" / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_wheel}\n"
     assert (root / "notebooks" / "net_worth.ipynb").is_file()
     done = subprocess.run(
-        ["bash", "-c", f"source {root / 'sim' / 'activate-analysis'} && sim switch && sim check base"],
+        ["bash", "-c", f"source {root / 'sim' / 'activate-retirement'} && sim switch && sim check base"],
         cwd=tmp_path, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "Current scenario: base" in done.stdout and "ok" in done.stdout

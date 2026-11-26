@@ -163,7 +163,7 @@ def test_a_mix_in_only_intent_does_not_run_without_the_data_repo(test_data_dir: 
     result = CliRunner().invoke(
         main, ["sim", "run", "extra", "--intent-dir", str(intent_dir), "--runs-dir", str(runs_dir),
                "--allow-dirty-data"],
-        env={"ANALYSIS_DATA_DIR": None},
+        env={"ZABOB_DATA_DIR": None},
     )
     assert result.exit_code != 0
     assert "mix-in only" in result.output, result.output
@@ -275,7 +275,7 @@ def test_a_mix_in_on_a_mix_in_intent_does_not_run_without_the_data_repo(
     result = CliRunner().invoke(
         main, ["sim", "run", "more", "--intent-dir", str(intent_dir), "--runs-dir", str(runs_dir),
                "--allow-dirty-data"],
-        env={"ANALYSIS_DATA_DIR": None},
+        env={"ZABOB_DATA_DIR": None},
     )
     assert result.exit_code != 0
     assert "mix-in only" in result.output, result.output

@@ -170,7 +170,7 @@ def test_row_completes_over_the_rows_the_batch_varied(
 ) -> None:
     line = f"ensemble sensitivity retire_alice --runs-dir {runs_dir} --row "
     env = {"_SIM_COMPLETE": "bash_complete", "COMP_WORDS": f"sim {line}",
-           "COMP_CWORD": str(len(line.split()) + 1), "ANALYSIS_DATA_DIR": str(test_data_dir)}
+           "COMP_CWORD": str(len(line.split()) + 1), "ZABOB_DATA_DIR": str(test_data_dir)}
     from zabob.retirement.sim.cli import sim_group_command
 
     result = CliRunner().invoke(sim_group_command, [], prog_name="sim", env=env)

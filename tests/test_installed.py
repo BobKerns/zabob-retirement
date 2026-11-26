@@ -1,5 +1,5 @@
 """An installed program, with no code checkout (#662): `sim init`, the
-notebooks, activate-analysis and background builds."""
+notebooks, activate-retirement and background builds."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 from zabob.retirement import resources
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
+from zabob.retirement.sim.loader import read_current_scenario
 
 _ALICE = ("--id", "alice", "--display", "Alice Example", "--birthdate", "1960-05-01",
           "--sex", "f", "--filing-status", "MFJ")
@@ -24,8 +25,9 @@ def _sim(*args: str) -> Result:
 
 
 def _activate(script: Path, program: Path, path: str, *, then: str = "") -> subprocess.CompletedProcess[str]:
+    # $ZABOB_USER stays empty: activate no longer sets it, `sim login` says who you are (#773).
     return subprocess.run(
-        ["bash", "-c", f'source {script} && echo "$ANALYSIS_REPO_DIR|$ANALYSIS_USER|$PATH"{then}'],
+        ["bash", "-c", f'source {script} && echo "$ZABOB_REPO_DIR|$ZABOB_USER|$PATH"{then}'],
         cwd=program.parent.parent, env={"PATH": path, "HOME": os.environ["HOME"]},
         capture_output=True, text=True, check=False)
 
@@ -50,7 +52,7 @@ def test_init_makes_the_data_repo_in_the_home_folder_with_the_notebooks(installe
     assert (root / "sim" / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_program}\n"
     assert (root / "notebooks" / "net_worth.ipynb").is_file()
     assert {"/state/", "/notebooks/", "/.mcp.json"} <= set((root / ".gitignore").read_text(encoding="utf-8").split())
-    assert "source home/zabob-retirement/sim/activate-analysis" in result.output  # as from here
+    assert "source home/zabob-retirement/sim/activate-retirement" in result.output  # as from here
     assert not (installed_program.parent.parent / "data").exists()  # nothing to link, nowhere
     # The notebooks aren't committed: their outputs would carry the household's numbers.
     tracked = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True,
@@ -65,7 +67,7 @@ def test_init_example_makes_alice_and_bill_s_household(installed_program: Path, 
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         assert [row["id"] for row in csv.DictReader(fh)][:2] == ["alice", "bill"]
     assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
-    assert (sim / ".current_scenario").read_text(encoding="utf-8").strip() == "base"
+    assert read_current_scenario(sim) == "base"
     assert (sim / "scenarios" / "retire_alice").is_dir()
     assert "checking base: ok" in result.output
     assert (tmp_path / "try" / "notebooks" / "README.md").is_file()
@@ -86,12 +88,12 @@ def test_notebooks_copy_keeps_changed_notebooks_unless_replacing(installed_progr
 
 def test_activate_puts_the_installed_program_first_and_deactivate_restores_path(installed_program: Path) -> None:
     assert _sim("init", "--no-builder", *_ALICE).exit_code == 0
-    script = Path(os.environ["HOME"]) / "zabob-retirement" / "sim" / "activate-analysis"
+    script = Path(os.environ["HOME"]) / "zabob-retirement" / "sim" / "activate-retirement"
     done = _activate(script, installed_program, "/usr/bin:/bin",
-                     then=' && deactivate-analysis && echo "$PATH"')
+                     then=' && deactivate-retirement && echo "$PATH"')
     assert done.stdout.splitlines() == [
-        f"installed:{installed_program}|alice|{installed_program}:/usr/bin:/bin", "/usr/bin:/bin"], done.stderr
-    assert "differs" not in done.stderr and "Enter ANALYSIS_REPO_DIR" not in done.stderr
+        f"installed:{installed_program}||{installed_program}:/usr/bin:/bin", "/usr/bin:/bin"], done.stderr
+    assert "differs" not in done.stderr and "Enter ZABOB_REPO_DIR" not in done.stderr
 
 
 def test_activate_leaves_out_of_gitignore_a_name_commented_out_or_negated(installed_program: Path) -> None:
@@ -101,7 +103,7 @@ def test_activate_leaves_out_of_gitignore_a_name_commented_out_or_negated(instal
     sim = Path(os.environ["HOME"]) / "zabob-retirement" / "sim"
     lines = ["# .retention.yaml", "!.current_scenario", "/.analysis_user", "#.analysis.bak"]
     (sim / ".gitignore").write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
-    done = _activate(sim / "activate-analysis", installed_program, "/usr/bin:/bin")
+    done = _activate(sim / "activate-retirement", installed_program, "/usr/bin:/bin")
     assert done.returncode == 0, done.stderr
     assert (sim / ".gitignore").read_text(encoding="utf-8").splitlines() == [*lines, ".analysis"]
 
@@ -115,8 +117,8 @@ def test_activate_finds_an_installed_program_through_the_sim_on_path(installed_p
     local = Path(os.environ["HOME"]) / ".local" / "bin"
     local.mkdir(parents=True)
     (local / "sim").symlink_to(installed_program / "sim")
-    done = _activate(sim / "activate-analysis", installed_program, f"{local}:/usr/bin:/bin")
-    assert done.stdout.startswith(f"installed:{installed_program}|alice|"), done.stderr
+    done = _activate(sim / "activate-retirement", installed_program, f"{local}:/usr/bin:/bin")
+    assert done.stdout.startswith(f"installed:{installed_program}||"), done.stderr
     assert (sim / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_program}\n"
 
 

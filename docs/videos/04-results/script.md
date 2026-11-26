@@ -75,7 +75,7 @@ an AI about a run, in plain words.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -123,7 +123,7 @@ compares fairly with 2026. Two options show the raw totals instead.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -155,7 +155,7 @@ the first number is the one to plan with.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -182,7 +182,7 @@ names. Old runs are cleared out after a while, keeping the newest few.
 ```tape
 Set FontSize 22
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -218,7 +218,7 @@ latest run, with no name given, has no negative balances at all.
 ```tape
 Set FontSize 19
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -250,7 +250,7 @@ the basis goes down with them.
 ```tape
 Set FontSize 26
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -283,7 +283,7 @@ lets you explore it.
 ```tape
 Set FontSize 19
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -314,7 +314,7 @@ and when it didn't, the refill chain sold investments for the rest.
 ```tape
 Set FontSize 19
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter

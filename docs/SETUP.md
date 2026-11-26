@@ -20,13 +20,21 @@ Then make your data repo, the git repository of CSV files that holds your
 household:
 
 ```sh
-sim init        # in ~/zabob-retirement, asking who you are
+sim init        # in ~/zabob-retirement, asking about your household
 ```
 
-That's all: `sim init` makes it your default data repo, so every `sim`
-command finds it, from any folder and in any new terminal. `sim use DIR`
-switches to another. In bash or zsh, `source
-~/zabob-retirement/sim/activate-analysis` adds the data repo and you to the
+Then say who you are, by default your login name:
+
+```sh
+sim login       # or: sim login Alice
+```
+
+That's all: `sim init` makes it your data repo, so every `sim` command finds
+it, from any folder and in any new terminal, and `sim login` records your name
+on what you make and change. `sim switch` shows both, and your current
+scenario; `sim switch --data DIR` switches to another data repo, as does
+running a `sim` command inside one. In bash or zsh, `source
+~/zabob-retirement/sim/activate-retirement` adds the data repo and you to the
 prompt and turns on TAB completion of names; it's optional.
 
 `sim init` saves a first version with git: on macOS, if a window offers to
@@ -34,15 +42,28 @@ install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
-notebooks, in its `notebooks/`; `sim jupyter start` opens them.
+notebooks, in its `notebooks/`; `sim jupyter start` opens them. To give
+everyone in the household their own JupyterLab, see [Share with your
+household](guides/jupyterhub.md).
 
 To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
 
+Upgrading past 1.0.0b1, the environment variables are `ZABOB_*` instead of
+`ANALYSIS_*`, and the data repo's `activate-analysis` is
+`activate-retirement` ([#782](https://github.com/BobKerns/zabob-retirement/issues/782)).
+A command run with an old name set stops and says what to do: in a shell
+that sourced the old script, it gives the two commands that replace it.
+Rename any of these variables you set yourself.
+
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
+
+Video: [Setup and install](https://youtu.be/_-NY-h16hsk) walks through
+installing from PyPI, a new data repo, and saving your work
+([日本語](https://youtu.be/VSZ0j2qAJuI)).
 
 The rest of this page is for working from a clone of the code.
 
@@ -68,10 +89,6 @@ pass the answers as options, `... | sh -s -- --yes --id alice --display
 "Alice Example" --birthdate 1960-05-01 --filing-status MFJ`; the comment at
 the top of [`scripts/install.sh`](../scripts/install.sh) lists them all.
 
-Video: [Setup and install](https://youtu.be/qnug-0zzlqA) walks through the
-install, a new data repo, activating it, and saving your work
-([日本語](https://youtu.be/Eu0r0Hk1ghM)).
-
 ## Windows
 
 The program runs on Windows itself. In PowerShell (or a Windows Terminal
@@ -94,7 +111,7 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
   runs only while you are logged in; nothing asks for a password or an
   administrator.
-- There is no TAB completion of names, since `activate-analysis` is for bash
+- There is no TAB completion of names, since `activate-retirement` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
 - `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
@@ -102,7 +119,7 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   updates it). In an older one, or the plain console window, it saves the
   chart as a PNG, prints its path and opens it in your image viewer. If a
   current Windows Terminal saves a PNG anyway, set
-  `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
+  `ZABOB_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
 ### Windows: WSL
 
@@ -170,7 +187,7 @@ It installs [uv](https://github.com/astral-sh/uv) if missing, configures the
 `.githooks` hooks (which keep runtime data and real account names out of
 commits), sets `merge.ff false` and `pull.ff true` in this repo and the linked
 data repo (an explicit merge always makes a merge commit; a pull still
-fast-forwards when it can), runs `uv sync --group dev` (installing the Python
+fast-forwards when it can), runs `uv sync --group dev --extra hub` (installing the Python
 version pinned in `.python-version` only if `uv sync` can't find a usable
 interpreter), and installs the notebook-cleaning `nbstripout` filter (strips
 outputs and per-run/per-machine metadata churn like `kernelspec.display_name`
@@ -193,7 +210,7 @@ verification gates do.
 Last, it links the data and code repositories together. It asks for the path to
 your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
-to create one there with `sim init`, which asks who you are. Leave the path
+to create one there with `sim init`, which asks about your household. Leave the path
 blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,
@@ -201,13 +218,13 @@ blank and it fills `data/private` with the template data instead, used as a
 Either way, this then gives you a working environment:
 
 ```sh
-source data/private/sim/activate-analysis
+source data/private/sim/activate-retirement
 ```
 
 A checkout's data repo is always found at its `data/private`. In a checkout
 that has none yet, `sim init` with no arguments makes one right there, and
 `sim init DIR` makes it at `DIR` and links `data/private` to it. Sourced
-through `data/private`, `activate-analysis` activates the code of the checkout
+through `data/private`, `activate-retirement` activates the code of the checkout
 you are in, so several worktrees can share one data repo and each run its
 own code. If you run `sim init` while another checkout's venv is active, it
 runs the `sim init` of the checkout you are in instead (making its `.venv`
@@ -221,7 +238,7 @@ scenario's run waits for a pending build of it. It builds only while the code
 is committed and matches your local `main` (or the branch
 `sim builder install BRANCH` names). Setup skips this under CI or an
 agent (`CI`, `CLAUDECODE`, `CLAUDE_CODE_REMOTE` or `AI_AGENT` set) or with
-`ANALYSIS_NO_BUILDER=1`; `sim builder install` turns it on later, and
+`ZABOB_NO_BUILDER=1`; `sim builder install` turns it on later, and
 `sim builder uninstall` off. `sim builder status` says what it's doing,
 and `sim builder log` what it did in the last hour (`-v` adds build output).
 
@@ -240,7 +257,7 @@ log` says why it didn't (run `git pull` on `main` when it lacks commits).
 that `origin` should live; never make the data repo public. `sim builder status` shows the last
 fetch, prices waiting to merge and why, and any symbol that keeps failing;
 `sim builder prices` fetches now. `sim builder install --no-prices`, or
-`ANALYSIS_PRICE_FETCH=off`, turns the fetches off.
+`ZABOB_PRICE_FETCH=off`, turns the fetches off.
 
 The same timer rolls forward, at night, each scenario marked to roll
 (`sim scenario edit NAME --roll monthly`; what is built on it too, after it,
@@ -248,7 +265,7 @@ unless marked `off`) once its start month is over, so
 its run picks up the month's prices: as `sim scenario roll --yes` would, on
 the `builder/roll` branch, merged into `main` the same way. Night is 01:00 to
 05:00 local time unless `sim builder install --roll-window HH:MM-HH:MM` says
-otherwise; `--no-roll`, or `ANALYSIS_ROLL=off`, turns it off. A roll into a
+otherwise; `--no-roll`, or `ZABOB_ROLL=off`, turns it off. A roll into a
 new year tags the plan before it `plan-<year>` rather than keeping a copy.
 `sim builder status` shows each roll, and one skipped or failed with why.
 Since it builds from your local `main`, not `origin/main`, `sim run` and
@@ -288,7 +305,7 @@ hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
     git config pull.ff true
     ```
     Run the last two in the data repo as well.
-6. Run `uv sync --group dev` (installing the pinned Python from
+6. Run `uv sync --group dev --extra hub` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
    This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It
@@ -347,7 +364,7 @@ same format: one keyword per line, `#` comment lines and blank lines ignored.
   - the `BLOCKED_KEYWORDS_PRIVATE` environment variable, which may also
     separate keywords with commas where a value can't span lines;
   - a `blocked-keywords.txt` file at the top of the data repo, found through
-    `$ANALYSIS_DATA_DIR`, or else through `data/private` in the main checkout
+    `$ZABOB_DATA_DIR`, or else through `data/private` in the main checkout
     (so worktrees and hooks run from an editor find it too).
 
 Set the private list once in each place it is needed:
@@ -402,7 +419,7 @@ Terminal takes (and foot, xterm and others that say they do). Sixel images
 have at most 256 colors, which a chart barely notices. In any other terminal,
 including macOS Terminal and inside tmux, it writes the chart to a PNG file,
 prints its path, and opens it in your image viewer, unless you're connected
-over SSH. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
+over SSH. If it guesses your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to
 `kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
 open it even over SSH.
 

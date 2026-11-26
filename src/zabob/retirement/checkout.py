@@ -1,10 +1,10 @@
 """What a code checkout of this program is, said once (#654).
 
 ``sim init`` pairs a data repo with the checkout it is run in, the videos'
-builder finds the checkout a script belongs to, and ``activate-analysis``
+builder finds the checkout a script belongs to, and ``activate-retirement``
 checks the one it is about to activate. A folder one took for a checkout
 and another didn't would leave the pairing in doubt, so all three go by
-the files here (the script by ``_analysis_validate_repo_dir``, which lists
+the files here (the script by ``_retirement_validate_repo_dir``, which lists
 the same ones; ``tests/test_sim_init.py`` holds the two together).
 """
 

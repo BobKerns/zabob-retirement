@@ -272,7 +272,7 @@ def test_scenario_create_records_mixins(
     derive_scenario("mix_a", PARENT, {
         "scheduled.csv": scheduled_override(salary_alice="9000.00"),
     })
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     result = CliRunner().invoke(main, ["sim", "scenario", "create", "combo", PARENT, "mix_a"])
     assert result.exit_code == 0, result.output
     assert f"inherits: {PARENT} + mix_a" in result.output
@@ -287,7 +287,7 @@ def test_scenario_create_records_mixins(
 def test_scenario_create_rejects_an_unknown_mixin(
     test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     result = CliRunner().invoke(main, ["sim", "scenario", "create", "combo", PARENT, "nope"])
     assert result.exit_code != 0
     assert "scenario not found" in result.output

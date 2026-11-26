@@ -13,6 +13,7 @@ from zabob.retirement.cli import main
 from zabob.retirement.sim import rename
 from zabob.retirement.sim.lineage import read_parents
 from zabob.retirement.sim.loader import growth_rule_name, load_scenario
+from zabob.retirement.sim.loader import read_current_scenario, write_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, scenario: str | None = "retire_alice"):
@@ -80,7 +81,7 @@ def test_scenario_rename_moves_it_and_repoints_everything(
 ) -> None:
     derive_scenario("kid", "retire_alice", description="Derived from retire_alice")
     derive_scenario("mixed", "base:retire_alice", description="Hand-written, naming retire_alice")
-    (test_data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "retire_alice")
     (test_data_dir / "README.md").write_text("Start with [Alice](scenarios/retire_alice/README.md).\n",
                                              encoding="utf-8")
 
@@ -96,7 +97,7 @@ def test_scenario_rename_moves_it_and_repoints_everything(
     assert _column(test_scenarios_dir / "kid" / "scenario.csv", "description") == ["Derived from retire_early"]
     assert _column(test_scenarios_dir / "mixed" / "scenario.csv", "description") == [
         "Hand-written, naming retire_alice"]
-    assert (test_data_dir / ".current_scenario").read_text(encoding="utf-8") == "retire_early\n"
+    assert read_current_scenario(test_data_dir) == "retire_early"
     assert "Current scenario is now retire_early (was retire_alice)" in result.stderr
     assert (test_data_dir / "README.md").read_text(encoding="utf-8") == (
         "Start with [Alice](scenarios/retire_early/README.md).\n")

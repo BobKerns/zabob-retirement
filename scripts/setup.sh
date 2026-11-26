@@ -146,10 +146,10 @@ echo "Configuring merges (merge.ff false, pull.ff true)..."
 set_merge_config .
 
 echo "Syncing dependencies..."
-if ! uv sync --group dev; then
+if ! uv sync --group dev --extra hub; then
     echo "uv sync failed; installing pinned Python ($(cat .python-version)) and retrying..."
     uv python install
-    uv sync --group dev
+    uv sync --group dev --extra hub
 fi
 
 echo "Installing nbstripout notebook filter..."
@@ -263,9 +263,9 @@ set_merge_config data/private
 # Background scenario builds (#300): on by default for a person's own
 # workspace with a linked data repo; never under CI or an agent, whose
 # checkouts aren't the person's workspace. `sim builder install` opts in later.
-if [ "${ANALYSIS_NO_BUILDER-}" ] || [ "${CI-}" ] || [ "${CLAUDECODE-}" ] \
+if [ "${ZABOB_NO_BUILDER-}" ] || [ "${CI-}" ] || [ "${CLAUDECODE-}" ] \
         || [ "${CLAUDE_CODE_REMOTE-}" ] || [ "${AI_AGENT-}" ]; then
-    echo "Skipping background builds (CI, an agent, or ANALYSIS_NO_BUILDER);"
+    echo "Skipping background builds (CI, an agent, or ZABOB_NO_BUILDER);"
     echo "  turn them on with: .venv/bin/sim builder install --data-dir data/private/sim"
 elif [ -L data/private ]; then
     echo "Turning on background scenario builds..."

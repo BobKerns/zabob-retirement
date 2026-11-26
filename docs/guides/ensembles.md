@@ -514,7 +514,7 @@ expense that reads each one:
 sim ensemble create inflation_drivers retire_alice
 for s in medical housing education fuel; do
   printf 'effective_date,annual_rate\n2026-01-31,3%%\n' \
-    > "$ANALYSIS_DATA_DIR/scenarios/inflation_drivers/series/inflation__$s.csv"
+    > "$ZABOB_DATA_DIR/scenarios/inflation_drivers/series/inflation__$s.csv"
 done
 sim scheduled add 2026-05-31 Asset_Checking Expense_Healthcare 400 \
   --scenario inflation_drivers --name medical_care --series medical

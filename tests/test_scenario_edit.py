@@ -15,6 +15,7 @@ from zabob.retirement.sim import scenario as sc
 from zabob.retirement.sim.lineage import MIXIN_ONLY_DESCRIPTION, read_parents
 from zabob.retirement.sim.loader import load_scenario
 from zabob.retirement.sim.readme import parse_readme_summary
+from zabob.retirement.sim.loader import read_current_scenario, write_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None):
@@ -351,11 +352,11 @@ def test_edit_unknown_scenario(test_data_dir: Path) -> None:
 # ---------- delete ----------
 
 def test_delete_removes_the_folder_and_clears_current(test_data_dir: Path, test_child_scenario: Path) -> None:
-    (test_data_dir / ".current_scenario").write_text("child\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "child")
     result = _sim(test_data_dir, "scenario", "delete", "child", "--yes")
     assert result.exit_code == 0, result.output
     assert not test_child_scenario.exists()
-    assert not (test_data_dir / ".current_scenario").exists()
+    assert read_current_scenario(test_data_dir) is None
     assert "No scenario is current now (was child)" in result.stderr
 
 

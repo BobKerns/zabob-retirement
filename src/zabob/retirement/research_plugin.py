@@ -2,7 +2,7 @@
 
 ``plugins/finance-research/`` in this repo is the neutral plugin: English
 only, no tax state. A household's choices live in the data repo, in
-``$ANALYSIS_DATA_DIR/research.yaml``::
+``$ZABOB_DATA_DIR/research.yaml``::
 
     languages: [en, ja]   # tab languages; en first, each other adds a copy of every tab
     tax_state: CA         # two-letter state code; leave out for none
@@ -364,7 +364,7 @@ def _resolve_config(data_dir: Path | None, config_file: Path | None) -> tuple[Re
 
 _data_dir_option = click.option(
     "--data-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
-    help=f"Data repo whose {CONFIG_FILENAME} to use (default: the one `sim use` shows).",
+    help=f"Data repo whose {CONFIG_FILENAME} to use (default: the one `sim switch` shows).",
 )
 _config_option = click.option(
     "--config", "config_file", type=click.Path(dir_okay=False, exists=True, path_type=Path), default=None,

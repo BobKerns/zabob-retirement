@@ -54,7 +54,7 @@ run it:
   subscribers, comments, analytics or any other channel's data.
 - **What it stores.** The sign-in token is saved on your computer, in your
   configuration folder (`~/.config/analysis-videos/token.json` unless you
-  set `ANALYSIS_VIDEO_SECRETS`), readable only by you. The IDs of the videos
+  set `ZABOB_VIDEO_SECRETS`), readable only by you. The IDs of the videos
   you uploaded, the length of each scene, and a hash of the title and
   description last sent are written to `published.toml` files beside the
   video scripts.

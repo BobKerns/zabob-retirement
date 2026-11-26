@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
+from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import BIN_DIR, WINDOWS, is_link, link_dir, login_name, program, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
@@ -138,7 +139,7 @@ from zabob.retirement.sim.loader import (
     KEEP_SCENARIO_ENV,
     calendar_row_key,
     roth_clock_year,
-    current_scenario_path,
+    forget_current_scenario,
     list_scenario_names,
     template_aux_copies,
     load_scenario,
@@ -322,12 +323,76 @@ def _format_warning(
     return f"warning: {message}\n"
 
 
-@click.group(name="sim")
-def sim_group_command() -> None:
+_SUBCOMMAND_ARGS = "zabob.sim.subcommand_args"
+
+
+class _SimGroup(click.Group):
+    """Keeps the subcommand's arguments where the group's callback can see
+    them: whether it was given --data-dir decides whether the working folder
+    counts (#773)."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        rest = super().parse_args(ctx, args)
+        ctx.meta[_SUBCOMMAND_ARGS] = list(rest)
+        return rest
+
+
+@click.group(name="sim", cls=_SimGroup)
+@click.pass_context
+def sim_group_command(ctx: click.Context) -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
     utf8_stdio()
+    check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init"):
+        return
+    args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
+    _follow_working_folder(args)
+    # Not for a command that says who you are.
+    if ctx.invoked_subcommand != "login" and not (ctx.invoked_subcommand == "switch" and any(
+            arg == "--login" or arg.startswith("--login=") for arg in args)):
+        _note_not_logged_in()
+
+
+def _follow_working_folder(args: list[str]) -> None:
+    """Record the data repo the working folder is in as the current one,
+    saying so, when it isn't already (#773): a command run there uses it, and
+    so do the ones after it, wherever they're run. --data-dir and
+    $ZABOB_DATA_DIR are for scripts and one shell, so neither is recorded,
+    and with either the working folder doesn't count; nor is anything
+    recorded for a lookup ($ZABOB_KEEP_SCENARIO). A code checkout's
+    data/private is used there but not recorded: in a worktree it is often
+    template data, gone with the worktree. Notebooks use it without recording
+    it (``user_config.data_dir_setting``)."""
+    from zabob.retirement import user_config
+
+    # `sim switch --data` records the one it names instead.
+    if os.environ.get("ZABOB_DATA_DIR") or os.environ.get(KEEP_SCENARIO_ENV) or any(
+            arg in ("--data-dir", "--data") or arg.startswith(("--data-dir=", "--data=")) for arg in args):
+        return
+    if os.environ.get(BUILDER_CHILD_ENV) or (here := user_config.local_data_dir()) is None:
+        return
+    if user_config.in_checkout(here):
+        return
+    was = user_config.default_data_dir()
+    if was is not None and was.resolve() == here.resolve():
+        return
+    try:
+        user_config.set_default_data_dir(here)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {_shown_repo(here)} as your data repo: {exc}", err=True)
+        return
+    previous = f" (was {_shown_repo(was)})" if was is not None else ""
+    click.echo(f"Data repo is now {_shown_repo(here)}{previous}: the one this folder is in", err=True)
+
+
+def _note_not_logged_in() -> None:
+    from zabob.retirement import user_config
+
+    if os.environ.get(BUILDER_CHILD_ENV) or user_config.current_user() is not None:
+        return
+    click.echo(f"Not logged in: `sim login` says who you are (meanwhile, {login_name()}).", err=True)
 
 
 @sim_group_command.command()
@@ -336,7 +401,7 @@ def sim_group_command() -> None:
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -607,8 +672,7 @@ def _resolve_scenario(
     except LoadError as exc:
         if defaulted:
             raise click.ClickException(
-                f"{current_scenario_path(data_dir)} names a missing scenario: {scenario!r}; "
-                "name one"
+                f"the current scenario, {scenario!r}, is missing; name one"
             ) from None
         raise click.ClickException("; ".join(exc.issues)) from None
     if defaulted:
@@ -636,7 +700,11 @@ def _make_current(data_dir: Path, name: str) -> None:
     previous = read_current_scenario(data_dir)
     if previous == name:
         return
-    write_current_scenario(data_dir, name)
+    try:
+        write_current_scenario(data_dir, name)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {name} as your current scenario: {exc}", err=True)
+        return
     _announce_current(name, previous)
 
 
@@ -661,7 +729,7 @@ def _resolve_data_dir(data_dir: Path | None) -> Path:
     env = data_dir_setting()
     if not env:
         raise click.ClickException(
-            "no data repo: make one with `sim init`, choose one with `sim use DIR`, "
+            "no data repo: make one with `sim init`, choose one with `sim switch --data DIR`, "
             "or pass --data-dir"
         )
     return Path(env).resolve()
@@ -673,7 +741,7 @@ def _resolve_data_dir(data_dir: Path | None) -> Path:
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -748,7 +816,7 @@ def run(
 
     Naming a scenario also records it as the data repo's current scenario,
     same as ``sim load <scenario>``. When a data repo is resolvable
-    (--data-dir, else the one `sim use` shows), this reloads the intent file first --
+    (--data-dir, else the one `sim switch` shows), this reloads the intent file first --
     loading is cheap, and it means a CSV edit since the last explicit
     ``sim load`` is never silently missed. Without a resolvable data repo,
     this only needs the already-built intent file, unchanged.
@@ -1747,7 +1815,7 @@ def _pool_readme(name: str, description: str, components: Mapping[str, str | Non
               help="The component whose member 0 is the pool's base case. Default: the first.")
 @click.option("--description", default=None, help="Default: 'Pooled from <components>'.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_pool_create(
     name: str | None, components: tuple[str, ...], ensemble_size: int | None,
     base: str | None, description: str | None, data_dir: Path | None,
@@ -1820,7 +1888,7 @@ def _ask_pool_components(data: Path, current: str | None) -> tuple[str, ...]:
 @click.option("--description", default=None,
               help="The pool's description; '' takes the generated 'Pooled from <components>'.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_pool_edit(
     name: str | None, components: tuple[str, ...], size: str | None, base: str | None,
     reserve: str | None, description: str | None, data_dir: Path | None,
@@ -1918,7 +1986,7 @@ def _apply_pool_edit(
 @ensemble_group_command.command("list")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("-v", "--verbose", is_flag=True, default=False,
               help="Show a table with each ensemble's parents, dates, seed, "
                    "ensemble size and description.")
@@ -2092,7 +2160,7 @@ _ENSEMBLE_DATA_DIR_OPTION = click.option(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 _ENSEMBLE_ACCOUNT_OPTION = click.option(
     "--account", default=None, type=completion.ACCOUNT,
@@ -2194,7 +2262,7 @@ def _graph_options(
         flag, "--chart", "as_graph", is_flag=True,
         help=capital(f"draw {drawn} in the terminal (kitty, iTerm2 or Sixel image protocol){how}, "
                      "or write a PNG file when the terminal can't show images, and open it in the "
-                     "image viewer when the session is local (ANALYSIS_IMAGE_PROTOCOL=file to only "
+                     "image viewer when the session is local (ZABOB_IMAGE_PROTOCOL=file to only "
                      f"write it){instead}."),
     )
     graph_file = click.option(
@@ -3130,7 +3198,7 @@ def _echo_ensemble_rail_deltas(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--batch", default=None,
@@ -4214,7 +4282,7 @@ def _report_row(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 @click.option(
     "--intent-dir",
@@ -4451,7 +4519,7 @@ def _run_target_options(fn):
         click.option("--member", type=click.IntRange(min=0), default=None,
                      help="For an ensemble: this member of its latest batch (default: member 0)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: the one `sim use` shows)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
         click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path),
                      default=None, help="Directory to search for the latest run."),
     ]):
@@ -5074,7 +5142,7 @@ def _compare_variants(data: Path, runs_dir: Path, baseline: str) -> list[str]:
                 "--section social-security or tax, that section's chart",
                 after="the tables", written="that chart (one chart only)")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path),
               default=None, help="Directory to find each scenario's latest run in.")
 def compare_command(
@@ -5575,7 +5643,7 @@ def _echo_guard_rail_comparison(
     "--data-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Data repo (default: the one `sim use` shows)",
+    help="Data repo (default: the one `sim switch` shows)",
 )
 def commit_command(
     scenario_name: str | None, every: bool, message: str | None, data_dir: Path | None,
@@ -5632,7 +5700,7 @@ def commit_command(
               help="Leave the new files uncommitted (and DIR not a git repository).")
 @click.option("--no-builder", is_flag=True,
               help="Don't turn on background builds (for scripts and tests); "
-                   "ANALYSIS_NO_BUILDER=1 does the same.")
+                   "ZABOB_NO_BUILDER=1 does the same.")
 @click.option("--example", is_flag=True,
               help="Make a data repo of the prototype household, Alice and Bill, to try things on, "
                    "instead of your own.")
@@ -5655,7 +5723,7 @@ def init_command(
     paired with the code beside it.
 
     The data repo gets sim/ with persons.csv, the other shared CSVs,
-    activate-analysis, .retention.yaml and scenarios/base, made current,
+    activate-retirement, .retention.yaml and scenarios/base, made current,
     from the code repository's templates/. The template scenarios (t_*) and
     tax-law aux tables aren't copied: they're read from templates/ itself,
     so they stay current as the code changes. It is made a git repository
@@ -5664,7 +5732,7 @@ def init_command(
     Then it turns on background builds (ADR-004 §12), as `sim builder
     install` does, installing the data repo's git hooks. --no-builder
     installs no hooks and links no DIR to data/private, for scripts and
-    tests; so does ANALYSIS_NO_BUILDER set in the environment, as for
+    tests; so does ZABOB_NO_BUILDER set in the environment, as for
     setup.sh. With no DIR the data repo is still made at data/private,
     which is where one was asked for.
     --no-commit skips the builder, which needs a git repository.
@@ -5689,9 +5757,9 @@ def init_command(
     # not link or hook anything in the checkout it records from. (With no
     # DIR the data repo is the checkout's data/private whatever this says:
     # code and data are one to one, and that is where it was asked for.)
-    no_builder = no_builder or bool(os.environ.get("ANALYSIS_NO_BUILDER"))
+    no_builder = no_builder or bool(os.environ.get("ZABOB_NO_BUILDER"))
     # The checkout this is run in is the one the data repo is for (#654):
-    # activate-analysis activates the code its data repo was made by, so a
+    # activate-retirement activates the code its data repo was made by, so a
     # `sim` from another worktree's venv would pair it with the wrong code.
     code = data_repo.CODE_REPO_DIR
     here = checkout_of(Path.cwd())
@@ -5717,7 +5785,7 @@ def init_command(
             raise click.ClickException(
                 f"{_shown(private, resolve=False)} is already there"
                 + (f", leading to {_shown(private.resolve())}" if is_link(private) else "")
-                + f". To use it: sim use {_shown(private, resolve=False)}. For a new data "
+                + f". To use it: sim switch --data {_shown(private, resolve=False)}. For a new data "
                 "repo elsewhere, give its DIR; to start over here, remove it first.")
         directory = private
     root = directory.expanduser().resolve()
@@ -5743,8 +5811,8 @@ def init_command(
                 f"{_shown(code / 'scripts' / 'link-data.sh')} {root}", err=True)
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
-        else _shown(sim / "activate-analysis")
+    activate = _shown(private / "sim" / "activate-retirement", resolve=False) if linked \
+        else _shown(sim / "activate-retirement")
     _next_steps(sim, activate, no_builder=no_builder)
 
 
@@ -5762,42 +5830,7 @@ def _init_installed(
     click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: sim jupyter start")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    _next_steps(sim, _shown(sim / "activate-analysis"), no_builder=no_builder)
-
-
-@sim_group_command.command("use")
-@click.argument("directory", required=False, metavar="DIR",
-                type=click.Path(file_okay=False, exists=True, path_type=Path))
-def use_command(directory: Path | None) -> None:
-    """Make DIR, a data repo (or its sim/ folder), your default (#687): the
-    one every command uses when no --data-dir, $ANALYSIS_DATA_DIR or data
-    repo you're working in names another. `sim init` makes the data repo it creates the default.
-
-    With no DIR, says which data repo the commands use, and why.
-    """
-    from zabob.retirement import user_config
-
-    if directory is None:
-        default = user_config.default_data_dir()
-        env = os.environ.get("ANALYSIS_DATA_DIR")
-        if env:
-            click.echo(f"{_shown_repo(Path(env))} (this shell's ANALYSIS_DATA_DIR)")
-            if default is not None:
-                click.echo(f"your default otherwise: {_shown_repo(default)}")
-        elif (local := user_config.local_data_dir()) is not None:
-            click.echo(f"{_shown_repo(local)} (the data repo this folder is in)")
-            if default is not None and default.resolve() != local.resolve():
-                click.echo(f"your default otherwise: {_shown_repo(default)}")
-        elif default is not None:
-            click.echo(f"{_shown_repo(default)} (your default)")
-        else:
-            raise click.ClickException("no data repo: make one with `sim init`, or choose one with `sim use DIR`")
-        return
-    root = directory.expanduser().resolve()
-    data_dir = root if (root / "persons.csv").is_file() else root / "sim"
-    if not (data_dir / "persons.csv").is_file():
-        raise click.ClickException(f"{_shown(root)} isn't a data repo (no sim/persons.csv)")
-    _remember_default(data_dir)
+    _next_steps(sim, _shown(sim / "activate-retirement"), no_builder=no_builder)
 
 
 def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
@@ -5808,13 +5841,16 @@ def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
     from zabob.retirement import user_config
 
     if no_builder and (kept := user_config.default_data_dir()) is not None:
-        click.echo(f"left your default data repo as {_shown_repo(kept)} (--no-builder); "
-                   f"`sim use {_shown_repo(data_dir)}` switches to this one")
+        click.echo(f"left your data repo as {_shown_repo(kept)} (--no-builder); "
+                   f"`sim switch --data {_shown_repo(data_dir)}` switches to this one")
     else:
         _remember_default(data_dir)
     click.echo()
-    click.echo("Next, add the rest of the household with `sim person add` and accounts to the base "
-               "scenario with `sim account add`.")
+    # Not logged in here (#773): whoever uses the data repo next, maybe not
+    # whoever made it, says who they are.
+    login = "" if user_config.current_user() else "Then `sim login` says who you are. "
+    click.echo(f"Next: {login}Add the rest of the household with `sim person add` and accounts to the "
+               "base scenario with `sim account add`.")
     if not WINDOWS:
         click.echo(f"Optional: `source {activate}` in bash or zsh shows the data repo and you in the "
                    "prompt and turns on TAB completion.")
@@ -5828,21 +5864,21 @@ def _shown_repo(data_dir: Path) -> str:
 
 def _remember_default(data_dir: Path) -> None:
     """Make ``data_dir`` the user's default data repo and say so, warning
-    when this shell's $ANALYSIS_DATA_DIR still names another."""
+    when this shell's $ZABOB_DATA_DIR still names another."""
     from zabob.retirement import user_config
 
     was = user_config.default_data_dir()
     user_config.set_default_data_dir(data_dir)
     if was is not None and was.resolve() != data_dir.resolve():
-        click.echo(f"made {_shown_repo(data_dir)} your default data repo, in place of "
-                   f"{_shown_repo(was)} (`sim use DIR` switches)")
+        click.echo(f"made {_shown_repo(data_dir)} your data repo, in place of "
+                   f"{_shown_repo(was)} (`sim switch --data DIR` switches)")
     else:
-        click.echo(f"made {_shown_repo(data_dir)} your default data repo: the sim commands use it "
-                   "from any folder (`sim use DIR` switches)")
-    env = os.environ.get("ANALYSIS_DATA_DIR")
+        click.echo(f"made {_shown_repo(data_dir)} your data repo: the sim commands use it "
+                   "from any folder (`sim switch --data DIR` switches)")
+    env = os.environ.get("ZABOB_DATA_DIR")
     if env and Path(env).resolve() != data_dir.resolve():
-        click.echo(f"  warning: this shell's ANALYSIS_DATA_DIR names {_shown(Path(env))}, which comes "
-                   "first; `deactivate-analysis` or a new shell uses the default", err=True)
+        click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                   "first; `deactivate-retirement` or a new shell uses the default", err=True)
 
 
 def _create_data_repo(
@@ -5930,7 +5966,7 @@ sim_group_command.add_command(jupyter_group)
 
 # Set for the `sim init` that one run from another checkout's venv starts,
 # so that a checkout whose `sim` is somehow another's can't start a third.
-_INIT_AGAIN = "ANALYSIS_INIT_AGAIN"
+_INIT_AGAIN = "ZABOB_INIT_AGAIN"
 
 
 def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
@@ -5982,31 +6018,93 @@ def _init_builder(sim: Path) -> None:
         click.echo(line)
 
 
+def _data_repo_option(value: Path) -> Path:
+    """A data repo, or its sim/ folder, as its data dir; a ClickException when it isn't one."""
+    root = value.expanduser().resolve()
+    data_dir = root if (root / "persons.csv").is_file() else root / "sim"
+    if not (data_dir / "persons.csv").is_file():
+        raise click.ClickException(f"{_shown(root)} isn't a data repo (no sim/persons.csv)")
+    return data_dir
+
+
+def _switch(login: str | None, data: Path | None, scenario: str | None, data_dir: Path | None = None) -> None:
+    """What `sim login` and `sim switch` share (#773): record who the user
+    is, their data repo and its current scenario, as given, then show all
+    three."""
+    from zabob.retirement import user_config
+
+    if data is not None:
+        data_dir = _data_repo_option(data)
+        was = user_config.default_data_dir()
+        if was is None or was.resolve() != data_dir.resolve():
+            user_config.set_default_data_dir(data_dir)
+            click.echo(f"Data repo is now {_shown_repo(data_dir)}"
+                       + (f" (was {_shown_repo(was)})" if was is not None else ""))
+        env = os.environ.get("ZABOB_DATA_DIR")
+        if env and Path(env).resolve() != data_dir.resolve():
+            click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                       "first; `deactivate-retirement` or a new shell uses this one", err=True)
+    if login is not None:
+        was_user = user_config.user_name()
+        if login != was_user:
+            user_config.set_user(login)
+            click.echo(f"Logged in as {login}" + (f" (was {was_user})" if was_user else ""))
+        if (env_user := os.environ.get("ZABOB_USER")) and env_user != login:
+            click.echo(f"  warning: this shell's ZABOB_USER, {env_user}, comes first", err=True)
+    setting = str(data_dir) if data_dir is not None else data_dir_setting()
+    data_dir_p = Path(setting).resolve() if setting else None
+    if scenario is not None:
+        if data_dir_p is None:
+            raise click.ClickException("no data repo to switch scenario in: give --data DIR")
+        previous = read_current_scenario(data_dir_p)
+        ref = _resolve_scenario(data_dir_p, scenario, remember=False)
+        working_set.use(data_dir_p, ref.name)
+        # Written even when unchanged: one read from the shared file before
+        # #773 becomes this user's own.
+        write_current_scenario(data_dir_p, ref.name)
+        if ref.name == previous:
+            click.echo(f"Unchanged: {ref.name}")
+        else:
+            click.echo(f"Switched to: {ref.name}" + (f" (was {previous})" if previous else ""))
+    user = user_config.current_user()
+    click.echo(f"User: {user or f'(not logged in: `sim login`; meanwhile {login_name()})'}")
+    click.echo(f"Data repo: {_shown_repo(data_dir_p) if data_dir_p else '(none: `sim init` makes one)'}")
+    if data_dir_p is not None:
+        click.echo(f"Current scenario: {read_current_scenario(data_dir_p) or '(none)'}")
+
+
+_DATA_HELP = "Make this data repo (or its sim/ folder) yours: the one every command uses from now on."
+
+
+@sim_group_command.command("login")
+@click.argument("name", required=False)
+@click.option("--scenario", type=completion.SCENARIO, default=None, help="Make this scenario current, too.")
+@click.option("--data", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help=_DATA_HELP)
+def login_command(name: str | None, scenario: str | None, data: Path | None) -> None:
+    """Say who you are (#773): NAME, by default your login name. It is the
+    same in every data repo, and names who made or changed things; it isn't
+    one of the household's people. Shows your data repo and current
+    scenario after."""
+    _switch(name or login_name(), data, scenario)
+
+
 @sim_group_command.command("switch")
 @click.argument("scenario", type=completion.SCENARIO, required=False)
-@click.option("--data-dir",
-              type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None)
-def switch_command(scenario: str | None, data_dir: Path | None) -> None:
-    """Show the current scenario, or make SCENARIO current (#236).
+@click.option("--login", "login", default=None, help="Say who you are, as `sim login NAME` does.")
+@click.option("--data", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help=_DATA_HELP)
+@click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Data repo for this command only, as on every command (default: yours).")
+def switch_command(scenario: str | None, login: str | None, data: Path | None, data_dir: Path | None) -> None:
+    """Show who you are, your data repo and its current scenario, or make
+    SCENARIO current (#236, #773).
 
-    With SCENARIO, prints the scenario that was current, then the new one.
-    Naming a scenario on any command makes it current too; this command does
-    only that, and says what changed.
+    With SCENARIO, says which was current before. Naming a scenario on any
+    command makes it current too; this command does only that, and says what
+    changed.
     """
-    data_dir_p = _resolve_data_dir(data_dir)
-    previous = read_current_scenario(data_dir_p)
-    click.echo(f"Current scenario: {previous or '(none)'}")
-    if scenario is None:
-        return
-    # It says what changed itself, in place of the usual notice.
-    ref = _resolve_scenario(data_dir_p, scenario, remember=False)
-    working_set.use(data_dir_p, ref.name)
-    if ref.name == previous:
-        click.echo(f"Unchanged: {ref.name}")
-    else:
-        write_current_scenario(data_dir_p, ref.name)
-        click.echo(f"Switched to: {ref.name}")
+    _switch(login, data, scenario, data_dir)
 
 
 @sim_group_command.command("items")
@@ -6037,7 +6135,7 @@ def switch_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario name used to find the latest run.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("--runs-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Directory to search for the latest run.")
 @output.output_options
@@ -7760,7 +7858,7 @@ def _ask_missing_arguments(
                    "(default: the current scenario).")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="For the guided mode: data repo (default: the one `sim use` shows).")
+              default=None, help="For the guided mode: data repo (default: the one `sim switch` shows).")
 @click.pass_context
 def calendar_add_group_command(
     ctx: click.Context, scenario: str | None, data_dir: Path | None,
@@ -9458,7 +9556,7 @@ _SOURCE_OPTION_HELP = "Outside layout to read FILE as (default: the one the file
 @import_group_command.command("sources")
 @click.argument("files", nargs=-1, type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo, for its own sources (default: the one `sim use` shows).")
+              default=None, help="Data repo, for its own sources (default: the one `sim switch` shows).")
 def import_sources(files: tuple[Path, ...], data_dir: Path | None) -> None:
     """List the outside layouts `sim import` reads; with FILEs, say which
     one each file is in.
@@ -12382,7 +12480,7 @@ def _holdings_options(fn):
         click.option("--scenario", type=completion.SCENARIO, default=None,
                      help="Scenario folder name (default: the current scenario)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: the one `sim use` shows)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
         click.option("--month", default=None,
                      help="Month of the run to show, YYYY-MM (default: the current month, "
                           "or the run's nearest one)."),
@@ -12623,7 +12721,7 @@ def _report_options(fn):
         click.option("--scenario", type=completion.SCENARIO, default=None,
                      help="Scenario whose latest run to read (default: the current scenario)."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: the one `sim use` shows)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
     ]):
         fn = option(fn)
     return output.output_options(fn)
@@ -15331,7 +15429,7 @@ def prices_group_command() -> None:
 @prices_group_command.command("fetch")
 @click.argument("symbols", type=completion.SYMBOL, nargs=-1)
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="Earliest date to fetch (default: the December before the earliest scenario start's year).")
 @click.option("--provider", "provider_name", default="yahoo", show_default=True,
@@ -15447,7 +15545,7 @@ def _note_stale_prices(data: Path) -> None:
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="With SYMBOLS, show only prices from this date on.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @output.output_options
 def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_dir: Path | None) -> None:
     """Show the prices stored in prices/.
@@ -15535,7 +15633,7 @@ def prices_show_command(symbols: tuple[str, ...], since_text: str | None, data_d
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @click.option("--tolerance", type=float, default=1.0, show_default=True,
               help="Percent difference between a stated balance and quantity x price that is flagged.")
 def prices_check_command(scenario: str | None, data_dir: Path | None, tolerance: float) -> None:
@@ -15598,7 +15696,7 @@ def chain_group_command() -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @output.output_options
 def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
     """List the chains with their steps, where each is defined, and what uses it.
@@ -15672,7 +15770,7 @@ def chain_list_command(scenario: str | None, data_dir: Path | None) -> None:
 @click.option("--scenario", type=completion.SCENARIO, default=None,
               help="Scenario folder name (default: the current scenario).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @output.output_options
 def chain_show_command(
     names: tuple[str, ...], as_mermaid: bool, as_graph: bool, graph_file: Path | None,
@@ -15998,7 +16096,7 @@ def _step_options(f):
 
 def _scenario_options(f):
     f = click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: the one `sim use` shows)")(f)
+                     default=None, help="Data repo (default: the one `sim switch` shows)")(f)
     return click.option("--scenario", type=completion.SCENARIO, default=None,
                         help="Scenario folder name (default: the current scenario).")(f)
 
@@ -16655,7 +16753,7 @@ def symbol_group_command() -> None:
 @click.option("--since", "since_text", default=None, metavar="YYYY-MM-DD",
               help="Earliest price to fetch (default: as for `sim prices fetch`).")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_add_command(
     symbol: str | None, name: str | None, weight_specs: tuple[str, ...], as_of: str | None,
     fetch: bool, never_fetch: bool, provider_name: str, since_text: str | None, data_dir: Path | None,
@@ -16777,7 +16875,7 @@ def _ask_month(question: str) -> str | None:
               help="The month the --weight set describes: replaces that month's set, or adds a "
                    "new dated set beside the others.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_edit_command(
     symbol: str | None, name: str | None, no_fetch: bool | None,
     weight_specs: tuple[str, ...], as_of: str | None, data_dir: Path | None,
@@ -16847,7 +16945,7 @@ def symbol_edit_command(
                    "(default: asked; with --yes, kept).")
 @click.option("--yes", is_flag=True, help="Delete without asking anything.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_delete_command(
     symbol: str | None, delete_prices: bool | None, yes: bool, data_dir: Path | None,
 ) -> None:
@@ -16932,7 +17030,7 @@ def symbol_delete_command(
               help="Commit the bundle, and the weights it wrote, in the data repo. Uncommitted, "
                    "the bundle doesn't count as research for the builder's schedule.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 def symbol_research_command(
     subject: str | None, ticker: str | None, kind: str | None, as_of: str | None, name: str | None,
     replace: bool, yes: bool, open_page: bool, from_bundle: Path | None, plugin_dir: Path | None,
@@ -17197,7 +17295,7 @@ symbol_group_command.add_command(research_plugin_command)
 
 @symbol_group_command.command("list")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows)")
+              default=None, help="Data repo (default: the one `sim switch` shows)")
 @output.output_options
 def symbol_list_command(data_dir: Path | None) -> None:
     """List every symbol: its name, latest allocation, prices and the lots holding it.
@@ -17249,7 +17347,7 @@ def scenario_group_command() -> None:
 @scenario_group_command.command("list")
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 @click.option("-v", "--verbose", is_flag=True, default=False,
               help="Show a table with each scenario's parents, dates, seed, "
                    "ensemble size and description.")
@@ -18634,7 +18732,8 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
         shutil.rmtree(leftover)
     _echo_renamed("scenario", old, new, changed)
     working_set.use(data, new)  # renaming a scenario is working on it (#322)
-    if rename.CURRENT_SCENARIO_FILE in changed:
+    # Outside the staged edit: the records are in the user's home (#773).
+    if forget_current_scenario(data, old, new):
         _announce_current(new, old)
     runs = find_state_dir(data, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
     if latest_run_path(runs, old, wait=False) or (runs / old).is_dir():
@@ -18646,7 +18745,7 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_rename(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Rename scenario OLD to NEW: its folder and scenario.csv name, every
     scenario naming it as a parent or mix-in, the current scenario if it is
@@ -18662,7 +18761,7 @@ def scenario_rename(old: str | None, new: str | None, data_dir: Path | None) -> 
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_rename(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Rename ensemble OLD to NEW; the same as `sim scenario rename`.
 
@@ -18711,7 +18810,7 @@ def _copy_scenario(old: str | None, new: str | None, data_dir: Path | None, *, w
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_copy(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Copy scenario OLD to a new scenario NEW, and make NEW current.
 
@@ -18732,7 +18831,7 @@ def scenario_copy(old: str | None, new: str | None, data_dir: Path | None) -> No
 @click.argument("new", required=False)
 @click.option("--data-dir",
               type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_copy(old: str | None, new: str | None, data_dir: Path | None) -> None:
     """Copy ensemble OLD to a new ensemble NEW; the same as `sim scenario
     copy`, but OLD must be an ensemble. NEW keeps OLD's seed and size, so
@@ -18805,7 +18904,7 @@ def _ask_shares(prompt: str, default: float | None, accept: bool) -> str:
                    "rolled: its lots, and with a start of its own, that start and its rows. "
                    "With an inherited start, START must be given.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_roll(name: str | None, start: str | None, keep: str | None, no_keep: bool,
                   accept: bool, own: bool, data_dir: Path | None) -> None:
     """Bring scenario NAME up to date: start it again at START (YYYY-MM),
@@ -19577,7 +19676,7 @@ def _add_edit_options(command: Callable[..., None], *, name_type: click.ParamTyp
                      help="Don't ask before making a scenario mix-in only (no start or end "
                           "anywhere in its lineage); needed off a terminal."),
         click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                     default=None, help="Data repo (default: the one `sim use` shows)."),
+                     default=None, help="Data repo (default: the one `sim switch` shows)."),
     ]
     for option in reversed(options):
         command = option(command)
@@ -19643,8 +19742,7 @@ def _delete_scenario(name: str | None, data_dir: Path | None, yes: bool, *, what
     shutil.rmtree(folder)
     click.echo(f"deleted scenario {name}")
     working_set.remove(data, name)
-    if read_current_scenario(data) == name:
-        current_scenario_path(data).unlink(missing_ok=True)
+    if forget_current_scenario(data, name):
         _announce_current(None, name)
     for path in mentions:
         click.echo(f"  {path.relative_to(data)} still mentions it")
@@ -19657,7 +19755,7 @@ def _delete_scenario(name: str | None, data_dir: Path | None, yes: bool, *, what
 @click.argument("name", required=False, type=completion.SCENARIO)
 @click.option("--yes", is_flag=True, help="Don't ask before deleting.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def scenario_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
     """Delete scenario NAME's folder. Refused while another scenario names
     it as its parent or a mix-in, or a pool as a component. Clears the current scenario if it is NAME;
@@ -19671,7 +19769,7 @@ def scenario_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
 @click.argument("name", required=False, type=completion.ENSEMBLE)
 @click.option("--yes", is_flag=True, help="Don't ask before deleting.")
 @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-              default=None, help="Data repo (default: the one `sim use` shows).")
+              default=None, help="Data repo (default: the one `sim switch` shows).")
 def ensemble_delete(name: str | None, yes: bool, data_dir: Path | None) -> None:
     """Delete ensemble NAME; the same as `sim scenario delete`.
 
@@ -19729,7 +19827,7 @@ def _enable_command(group: click.Group, what: str, *, enabled: bool) -> None:
     @click.argument("name", required=False,
                     type=completion.ENSEMBLE if what == "ensemble" else completion.SCENARIO)
     @click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-                  default=None, help="Data repo (default: the one `sim use` shows).")
+                  default=None, help="Data repo (default: the one `sim switch` shows).")
     def command(name: str | None, data_dir: Path | None) -> None:
         _set_enabled(name, data_dir, enabled=enabled, what=what)
 
@@ -19747,7 +19845,7 @@ _LISTING_SCENARIO_OPTION = click.option(
 )
 _LISTING_DATA_DIR_OPTION = click.option(
     "--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=None, help="Data repo (default: the one `sim use` shows).",
+    default=None, help="Data repo (default: the one `sim switch` shows).",
 )
 
 
@@ -22672,9 +22770,9 @@ def builder_group() -> None:
     named another). It also fetches prices after each weekday's close, on a
     branch merged into the data repo's main when that is checked out and
     clean. It rolls marked scenarios forward at night, and each morning
-    researches the symbol whose research is oldest. ANALYSIS_BUILDER=off
-    turns it off; ANALYSIS_PRICE_FETCH=off, ANALYSIS_ROLL=off and
-    ANALYSIS_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
+    researches the symbol whose research is oldest. ZABOB_BUILDER=off
+    turns it off; ZABOB_PRICE_FETCH=off, ZABOB_ROLL=off and
+    ZABOB_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
     ``--no-research``) turn off only those.
     """
 
@@ -22685,7 +22783,7 @@ def _builder_data_dir(data_dir: Path | None) -> Path:
 
 _BUILDER_DATA_DIR = click.option(
     "--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=None, help="Data repo (default: the one `sim use` shows)",
+    default=None, help="Data repo (default: the one `sim switch` shows)",
 )
 
 
@@ -22747,7 +22845,7 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         raise click.ClickException(f"not a workspace pair: {exc}") from None
     for line in done:
         click.echo(line)
-    # By the recorded choice alone: ANALYSIS_PRICE_FETCH=off is for one shell
+    # By the recorded choice alone: ZABOB_PRICE_FETCH=off is for one shell
     # (an agent's, a test's), so install_timer then leaves the timer as it is.
     config = builder.read_config(builder.BuilderPaths.for_data(resolved)) or {}
     if config.get("prices", True) or config.get("roll", True) or config.get("research", True):
@@ -23051,7 +23149,7 @@ def builder_status(data_dir: Path | None) -> None:
         return
     switched_off = builder.switched_off()
     if switched_off:
-        output.note("background builds are off here (ANALYSIS_BUILDER=off)")
+        output.note("background builds are off here (ZABOB_BUILDER=off)")
     config = builder.read_config(paths) or {}
     from zabob.retirement.resources import home_checkout
 

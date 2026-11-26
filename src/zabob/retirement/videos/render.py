@@ -50,7 +50,7 @@ class ToolMissing(RuntimeError):
 
 def cache_home() -> Path:
     """Where downloaded models and tools live (not the build cache, which is under out/)."""
-    env = os.environ.get("ANALYSIS_VIDEO_CACHE")
+    env = os.environ.get("ZABOB_VIDEO_CACHE")
     return Path(env) if env else Path.home() / ".cache" / "analysis-videos"
 
 
@@ -348,8 +348,8 @@ def slide_html(theme: Theme, meta: dict[str, Any], fields: dict[str, Any], lang:
 
 def chromium_path() -> str | None:
     """A Chromium to use when Playwright's own download doesn't match:
-    ``$ANALYSIS_VIDEO_CHROMIUM``, or the one the cloud container ships."""
-    return os.environ.get("ANALYSIS_VIDEO_CHROMIUM") or (
+    ``$ZABOB_VIDEO_CHROMIUM``, or the one the cloud container ships."""
+    return os.environ.get("ZABOB_VIDEO_CHROMIUM") or (
         _CONTAINER_CHROMIUM if Path(_CONTAINER_CHROMIUM).exists() else None
     )
 
@@ -361,7 +361,7 @@ def launch_chromium(pw: Any, args: Sequence[str] = ()) -> Any:
     shouldn't fail for want of it while Chrome is there."""
     from playwright.sync_api import Error
 
-    # A stale ANALYSIS_VIDEO_CHROMIUM falls through to the others, like a
+    # A stale ZABOB_VIDEO_CHROMIUM falls through to the others, like a
     # missing download.
     chromium = chromium_path()
     tries = [*([{"executable_path": chromium}] if chromium else []), {}, {"channel": "chrome"}]
@@ -372,7 +372,7 @@ def launch_chromium(pw: Any, args: Sequence[str] = ()) -> Any:
             continue
     raise ToolMissing(
         "no Chromium for slides and notebook scenes: run `uv run playwright install chromium`, "
-        "install Google Chrome, or set ANALYSIS_VIDEO_CHROMIUM")
+        "install Google Chrome, or set ZABOB_VIDEO_CHROMIUM")
 
 
 def render_slide(html: str, theme: Theme, out: Path) -> None:
@@ -549,6 +549,11 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
     _install_program(root)
     (root / "bin").mkdir()
     (root / "bin" / "python").symlink_to(sys.executable)
+    # Logged in as the demo's person (#773), so no "Not logged in" note joins
+    # every recorded command; a tape showing `sim login` changes it.
+    settings = root / "home" / ".config" / "zabob-retirement"
+    settings.mkdir(parents=True, exist_ok=True)
+    (settings / "user").write_text("alice\n", encoding="utf-8")
     term = theme.data["terminal"]
     accent = _rgb(theme.data["palette"]["accent"])
     rc = root / ".videorc"
@@ -556,7 +561,7 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
         "\n".join(
             [
                 f"cd {root}",
-                f"export ANALYSIS_DATA_DIR={root / 'data'}",
+                f"export ZABOB_DATA_DIR={root / 'data'}",
                 # The installed program (see _program_wheel), where a user's
                 # uv puts it, and this checkout's python for setup scripts,
                 # but not the checkout's sim: a tape whose install failed
@@ -566,21 +571,21 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
                 *(f"export {k}={v}" for k, v in _GIT_ENV.items()),
                 # A recorded `sim init` mustn't link this checkout's data/private
                 # or start background builds.
-                "export ANALYSIS_NO_BUILDER=1",
-                # A recorded `sim init` or `sim use` records its default data
-                # repo (#687) in the demo's home, not the recording user's.
+                "export ZABOB_NO_BUILDER=1",
+                # A recorded `sim init` or `sim switch --data` records its data
+                # repo (#687, #773) in the demo's home, not the recording user's.
                 f"export XDG_CONFIG_HOME={root / 'home' / '.config'}",
                 f"export APPDATA={root / 'home' / '.config'}",
                 # `sim chain show --graph` draws with the slides' Chromium, and
                 # shows the chart in ttyd's terminal by iTerm2's image protocol.
-                *([f"export ANALYSIS_CHROMIUM={chromium}"] if (chromium := chromium_path()) else []),
-                "export ANALYSIS_IMAGE_PROTOCOL=iterm",
+                *([f"export ZABOB_CHROMIUM={chromium}"] if (chromium := chromium_path()) else []),
+                "export ZABOB_IMAGE_PROTOCOL=iterm",
                 "unset PROMPT_COMMAND HISTFILE",
-                # A build run from an activated shell (activate-analysis) passes
-                # its user, repo and venv down; in a tape they'd name a person the
-                # demo's persons.csv lacks (so activate-analysis asks who you
-                # are) and show the household's repo name in the prompt.
-                "unset ANALYSIS_USER ANALYSIS_DATA_REPO_NAME ANALYSIS_REPO_DIR "
+                # A build run from an activated shell (activate-retirement) or a
+                # script passes its user, repo and venv down; in a tape they'd
+                # name someone other than the demo's person and show the
+                # household's repo name in the prompt.
+                "unset ZABOB_USER ZABOB_DATA_REPO_NAME ZABOB_REPO_DIR "
                 "VIRTUAL_ENV VIRTUAL_ENV_PROMPT",
                 # So uv puts a tool where it would for the user: in ~/.local.
                 "unset UV_TOOL_DIR UV_TOOL_BIN_DIR XDG_BIN_HOME XDG_DATA_HOME",
@@ -598,7 +603,7 @@ def prepare_demo(data: Path, setup: Path | None, theme: Theme, store: Path) -> P
 
     A copy of the demo data, committed, then the video's ``setup.sh`` run
     in it (with the tapes' environment: ``sim`` on PATH,
-    ``ANALYSIS_DATA_DIR`` set) and whatever it left uncommitted committed.
+    ``ZABOB_DATA_DIR`` set) and whatever it left uncommitted committed.
     Setup builds what the video shows without showing it being built:
     scenarios, edits, runs. Each tape then starts from a fresh copy.
     """
@@ -614,7 +619,7 @@ def _prepare_demo(data: Path, setup: Path | None, theme: Theme, store: Path) -> 
         rc = _sandbox(data, theme, root)
         if setup is not None:
             bash = need("bash", "install bash")
-            script = f'set -euo pipefail\nsource {rc}\ncd "$ANALYSIS_DATA_DIR"\nset -x\nsource {setup.resolve()}\n'
+            script = f'set -euo pipefail\nsource {rc}\ncd "$ZABOB_DATA_DIR"\nset -x\nsource {setup.resolve()}\n'
             # No terminal to read: a command that asks something fails rather
             # than waiting for an answer no one can type.
             proc = finish(spawn([bash, "-c", script], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,

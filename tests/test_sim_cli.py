@@ -18,6 +18,7 @@ from zabob.retirement.cli import main
 from zabob.retirement.sim import registries
 from zabob.retirement.sim.loader import load_scenario
 from zabob.retirement.sim.scenario import SERIES_README
+from zabob.retirement.sim.loader import read_current_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROTOTYPE = REPO_ROOT / "prototype_data"
@@ -100,7 +101,7 @@ def test_sim_run_refuses_an_intent_from_another_schema(retire_alice_intent_file:
         con.execute("UPDATE intent_manifest SET schema_version = schema_version - 1")
     result = CliRunner().invoke(
         main, ["sim", "run", "retire_alice", "--intent-dir", str(intent_dir), "--runs-dir", str(runs_dir)],
-        env={"ANALYSIS_DATA_DIR": None},
+        env={"ZABOB_DATA_DIR": None},
     )
     assert result.exit_code != 0
     assert "run: analysis sim load retire_alice" in result.output, result.output
@@ -358,7 +359,7 @@ def test_sim_load_records_current_scenario_and_defaults_to_it(
     test_data_dir: Path, tmp_path: Path, monkeypatch,
 ) -> None:
     data = test_data_dir
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(data))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(data))
     intent_dir = tmp_path / "intent"
     runner = CliRunner()
 
@@ -368,7 +369,7 @@ def test_sim_load_records_current_scenario_and_defaults_to_it(
          "--allow-dirty-data", "--no-run"],
     )
     assert result.exit_code == 0, result.output
-    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "retire_alice"
+    assert read_current_scenario(data) == "retire_alice"
 
     # No scenario argument: falls back to the recorded one.
     again = runner.invoke(
@@ -467,13 +468,13 @@ def test_sim_all_reports_failures_without_stopping(test_data_dir: Path, tmp_path
 @pytest.mark.uses_current_scenario_write
 def test_sim_scenario_create_derives_and_activates(test_data_dir: Path, tmp_path: Path, monkeypatch) -> None:
     data = test_data_dir
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(data))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(data))
     runner = CliRunner()
     result = runner.invoke(main, ["sim", "scenario", "create", "late", "retire_alice"])
     assert result.exit_code == 0, result.output
 
     scenario_dir = data / "scenarios" / "late"
-    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "late"
+    assert read_current_scenario(data) == "late"
     for role in ("source", "destination"):
         assert (scenario_dir / "chains" / role / ".gitignore").read_text(encoding="utf-8") == ""
     assert (scenario_dir / "chains" / "source" / "_example.csv").read_text(encoding="utf-8") == (
@@ -516,7 +517,7 @@ def test_sim_scenario_create_derives_and_activates(test_data_dir: Path, tmp_path
 
 
 def test_sim_scenario_create_rejects_bad_input(test_data_dir: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     runner = CliRunner()
 
     dup = runner.invoke(
@@ -1230,7 +1231,7 @@ def test_sim_run_finds_state_through_the_activated_data_dir(
                "--allow-dirty-data", "--no-run"],
     )
     assert loaded.exit_code == 0, loaded.output
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     # run now reloads from the data repo first (fast, and never misses a
     # CSV edit since the last explicit load), so it needs the same flag.
     result = runner.invoke(main, ["sim", "run", "retire_alice", "--allow-dirty-data"])

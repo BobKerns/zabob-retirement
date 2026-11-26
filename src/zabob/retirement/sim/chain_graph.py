@@ -84,9 +84,9 @@ def render(
     script = gzip.decompress(MERMAID_SCRIPT.read_bytes()).decode()
     with sync_playwright() as playwright:
         try:
-            # $ANALYSIS_CHROMIUM names a Chromium when Playwright's own download
+            # $ZABOB_CHROMIUM names a Chromium when Playwright's own download
             # doesn't match the installed Playwright (the video recordings set it).
-            browser = playwright.chromium.launch(executable_path=os.environ.get("ANALYSIS_CHROMIUM") or None)
+            browser = playwright.chromium.launch(executable_path=os.environ.get("ZABOB_CHROMIUM") or None)
         except Error:
             # Playwright's own Chromium isn't installed; an installed Chrome serves.
             try:
@@ -360,7 +360,7 @@ def swallow_replies(timeout: float = 0.2) -> None:
 def terminal_protocol() -> Protocol | None:
     """The image protocol this terminal takes, or ``None`` when it takes
     none, the output isn't a terminal, or it's inside tmux (which needs
-    passthrough wrapping this doesn't do). ``$ANALYSIS_IMAGE_PROTOCOL``
+    passthrough wrapping this doesn't do). ``$ZABOB_IMAGE_PROTOCOL``
     (``kitty``, ``iterm``, ``sixel``, or ``none``, ``file`` or ``open`` for
     no protocol) overrides the guess, for a terminal it gets wrong, but never
     sends images to output that isn't a terminal.
@@ -375,7 +375,7 @@ def terminal_protocol() -> Protocol | None:
     nothing (#777)."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None  # escapes would only garble a pipe or a file
-    forced = os.environ.get("ANALYSIS_IMAGE_PROTOCOL", "").lower()
+    forced = os.environ.get("ZABOB_IMAGE_PROTOCOL", "").lower()
     if forced in ("kitty", "iterm", "sixel"):
         return forced  # even in tmux: whoever set it may have passthrough on
     if forced in ("none", "file", "open") or os.environ.get("TMUX"):
@@ -402,9 +402,9 @@ def open_fallback() -> bool:
     """Whether a chart the terminal can't show should open in the image
     viewer: when someone is at this machine to see it (a terminal on the
     output, not over SSH, a desktop on Linux), unless
-    ``$ANALYSIS_IMAGE_PROTOCOL`` says ``file`` (or ``none``), or ``open``
+    ``$ZABOB_IMAGE_PROTOCOL`` says ``file`` (or ``none``), or ``open``
     to open it regardless."""
-    forced = os.environ.get("ANALYSIS_IMAGE_PROTOCOL", "").lower()
+    forced = os.environ.get("ZABOB_IMAGE_PROTOCOL", "").lower()
     if forced in ("none", "file"):
         return False
     if forced == "open":

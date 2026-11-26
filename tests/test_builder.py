@@ -15,13 +15,14 @@ import pytest
 
 from zabob.retirement.sim import builder, flock, freshness, locks, price_schedule, provenance
 from zabob.retirement.sim.builder import BuilderPaths
+from zabob.retirement.sim.loader import write_current_scenario
 
 
 
 
 @pytest.fixture
 def builder_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANALYSIS_BUILDER", raising=False)
+    monkeypatch.delenv("ZABOB_BUILDER", raising=False)
 
 
 def test_builds_only_from_committed_code_matching_main(
@@ -141,7 +142,7 @@ def test_notify_starts_the_builder_only_where_installed(
     builder.install(data_dir)
     assert builder.notify(data_dir) == "started the background builder"
     assert started == [data_dir]
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     assert "off" in builder.notify(data_dir)
     assert started == [data_dir]
 
@@ -250,7 +251,7 @@ def _wait_until_done(d: builder._Daemon) -> None:
 
 
 def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "retire_alice")
     daemon.scan()
     assert daemon.queue[0] == "retire_alice" and "base" in daemon.queue
     assert daemon.state == "building"
@@ -262,7 +263,7 @@ def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
 def test_queue_follows_the_working_set_then_runs_before_ensembles(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("base\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "base")
     daemon.paths.dir.mkdir(parents=True, exist_ok=True)
     daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n", encoding="utf-8")
     (daemon.paths.runs_dir / "ens_a").mkdir(parents=True)
@@ -370,7 +371,7 @@ def test_readers_dont_wait_where_the_builder_is_off_or_not_installed(
     # of the scenario waits for, so it never waits on the builder.
     with locks.building():
         builder.await_fresh(paths.runs_dir, "base")
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     builder.await_fresh(paths.runs_dir, "base")
 
 
@@ -687,7 +688,7 @@ def test_jobs_are_named_for_their_scenario_and_step() -> None:
 def test_the_builder_runs_everything_then_series_stores_then_sensitivities(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("b\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "b")
     queue = ["a:sensitivity", "b:series", "a", "b:sensitivity", "b", "a:series"]
     assert daemon.order(queue) == ["b", "a", "b:series", "a:series", "b:sensitivity", "a:sensitivity"]
 

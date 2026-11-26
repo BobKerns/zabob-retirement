@@ -44,6 +44,13 @@ dependencies = [
   "ofxtools>=1.1.1",
 ]
 
+[project.optional-dependencies]
+# `sim jupyter hub` (#766): a JupyterHub serving the household's logins, on
+# Linux and macOS. Its proxy, configurable-http-proxy, comes from npm.
+hub = [
+  "jupyterhub>=6.2.0; sys_platform != 'win32'",
+]
+
 [project.scripts]
 analysis = "zabob.retirement.cli:main"
 amazon = "zabob.retirement.amazon.cli:amazon_group_command"

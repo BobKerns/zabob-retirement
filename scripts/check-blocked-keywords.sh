@@ -14,7 +14,7 @@
 #   private  never committed here: the BLOCKED_KEYWORDS_PRIVATE environment
 #            variable (a secret in CI and cloud sessions), plus the file
 #            blocked-keywords.txt at the top of the data repo, found through
-#            $ANALYSIS_DATA_DIR or else the main checkout's data/private link
+#            $ZABOB_DATA_DIR or else the main checkout's data/private link
 # Both use the same format; the private one may also separate keywords with
 # commas, for environments that can't hold a multi-line value. A hit on a
 # private keyword reports only where it is, never the text, so the list
@@ -47,13 +47,13 @@ skip_list=":!$list"
 skip_npm_lock=':!package-lock.json'
 skip_uv_lock=':!uv.lock'
 
-# The private list file: in the data repo named by $ANALYSIS_DATA_DIR (which
+# The private list file: in the data repo named by $ZABOB_DATA_DIR (which
 # points into its sim/ subtree), or else the one data/private links to in the
 # main checkout, so a worktree without the link and a hook run without the
 # environment both still find it.
 private_file() {
-    if [ -n "${ANALYSIS_DATA_DIR:-}" ] && [ -d "$ANALYSIS_DATA_DIR" ]; then
-        data_top=$(git -C "$ANALYSIS_DATA_DIR" rev-parse --show-toplevel 2>/dev/null) || data_top=$ANALYSIS_DATA_DIR
+    if [ -n "${ZABOB_DATA_DIR:-}" ] && [ -d "$ZABOB_DATA_DIR" ]; then
+        data_top=$(git -C "$ZABOB_DATA_DIR" rev-parse --show-toplevel 2>/dev/null) || data_top=$ZABOB_DATA_DIR
         echo "$data_top/blocked-keywords.txt"
         return
     fi
