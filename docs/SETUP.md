@@ -126,9 +126,6 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
   runs only while you are logged in; nothing asks for a password or an
   administrator.
-- The builder doesn't research symbols each morning unless you ask for it
-  with `sim builder install --research`, since it hasn't been tried on
-  Windows yet ([#795](https://github.com/BobKerns/zabob-retirement/issues/795)).
 - TAB completion works in PowerShell, both Windows' own and PowerShell 7:
   `sim completion install` adds it to your profile. If it says the execution
   policy is `Restricted`, Windows PowerShell won't read a profile at all
@@ -308,7 +305,9 @@ companies from public sources. The answer defaults to no, and it isn't asked
 under CI or an agent. Each run of the plugin browses the web for several
 minutes and uses around 150k tokens. Its settings (tab languages, tax
 state) come from the data repo's `research.yaml`, and setup says which it
-used; once installed, a re-run of setup updates it. Install or remove it by
+used; once installed, a re-run of setup updates it. Sign in to Claude Code
+(run `claude` once) before the background builder researches each morning:
+it can't stop to ask, so its runs fail until you have. Install or remove it by
 hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
 [the finance research guide](guides/finance-research.md).
 

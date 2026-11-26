@@ -1639,9 +1639,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     prices = bool(before.get("prices", True)) if prices is None else prices
     roll = bool(before.get("roll", True)) if roll is None else roll
     roll_window = roll_window or str(before.get("roll_window") or roll_schedule.DEFAULT_WINDOW)
-    # Off by default on Windows until a research run is tried there (#795):
-    # its scripts run as `python3`, often only the Store's alias there.
-    research = bool(before.get("research", not WINDOWS)) if research is None else research
+    research = bool(before.get("research", True)) if research is None else research
     from zabob.retirement.sim.research import find_claude
 
     # Found on this shell's PATH now, for the hourly timer, whose PATH lacks
