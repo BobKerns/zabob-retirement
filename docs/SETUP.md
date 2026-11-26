@@ -34,7 +34,9 @@ install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
-notebooks, in its `notebooks/`; `sim jupyter start` opens them.
+notebooks, in its `notebooks/`; `sim jupyter start` opens them. To give
+everyone in the household their own JupyterLab, see [Share with your
+household](guides/jupyterhub.md).
 
 To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
@@ -167,7 +169,7 @@ It installs [uv](https://github.com/astral-sh/uv) if missing, configures the
 `.githooks` hooks (which keep runtime data and real account names out of
 commits), sets `merge.ff false` and `pull.ff true` in this repo and the linked
 data repo (an explicit merge always makes a merge commit; a pull still
-fast-forwards when it can), runs `uv sync --group dev` (installing the Python
+fast-forwards when it can), runs `uv sync --group dev --extra hub` (installing the Python
 version pinned in `.python-version` only if `uv sync` can't find a usable
 interpreter), and installs the notebook-cleaning `nbstripout` filter (strips
 outputs and per-run/per-machine metadata churn like `kernelspec.display_name`
@@ -285,7 +287,7 @@ hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
     git config pull.ff true
     ```
     Run the last two in the data repo as well.
-6. Run `uv sync --group dev` (installing the pinned Python from
+6. Run `uv sync --group dev --extra hub` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
    This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It

@@ -413,6 +413,24 @@ def _notebooks(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
 # A notebook `sim jupyter start` opens. Unchecked: the command checks it
 # itself, since its place may hold an option meant for jupyter lab.
 NOTEBOOK = NameType(_notebooks, "notebook", check=False)
+
+
+def _logins(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return hub.logins()
+
+
+def _hub_users(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return list(hub.read_users())
+
+
+# A login on this machine, to add to the hub (#766); checked against the
+# machine's logins by the command, since system logins aren't offered.
+LOGIN = NameType(_logins, "login", check=False)
+HUB_USER = NameType(_hub_users, "hub user")
 # A source with saved mappings: a folder under the data dir's imports/.
 IMPORT_SOURCE = NameType(_import_sources, "import source")
 # A lot may hold a symbol nothing names yet, and prices can fetch one.

@@ -76,6 +76,7 @@ CCSTMTRS
 CCSTMTTRNRS
 charmbracelet
 CHECKNUM
+chgrp
 chipmaker
 chunksize
 CLAUDECODE
@@ -171,6 +172,8 @@ getbasetemp
 geteuid
 gethostname
 getpid
+getpwall
+getpwnam
 getuid
 Ghostty
 globenewswire
@@ -430,6 +433,7 @@ sidefx
 SIGNONMSGSRSV
 signum
 Simons
+singleuser
 Sixel
 Smirnov
 SNSXX
@@ -525,6 +529,7 @@ unsourced
 unspsc
 upserts
 usefixtures
+usermod
 USSTK
 vaccts
 VBTLX
@@ -537,8 +542,10 @@ vmin
 vsplit
 VTSAX
 VTWNX
+waitpid
 Webull
 wezterm
+WNOHANG
 wordcount
 worktree
 worktrees
