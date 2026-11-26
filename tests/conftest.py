@@ -2497,7 +2497,8 @@ def fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, research_bundle
     the bundle named by ``$FAKE_CLAUDE_BUNDLE`` (default ``abcdx``) into its
     working folder and prints ``stream-json`` events. ``$FAKE_CLAUDE_FAIL``
     makes it report an error; ``$FAKE_CLAUDE_DENIED`` (a file path) reports
-    a Write of it refused; ``$FAKE_CLAUDE_SLEEP`` delays it;
+    a Write of it refused; ``$FAKE_CLAUDE_TOOL_ERROR`` reports a tool call
+    failing with that text; ``$FAKE_CLAUDE_SLEEP`` delays it;
     ``$FAKE_CLAUDE_CHILD`` leaves a child holding its stdout. Each call's
     arguments go to the returned file, one per line."""
     bin_dir = tmp_path / "fake-bin"
@@ -2521,6 +2522,9 @@ emit({{"type": "system", "subtype": "init"}})
 emit({{"type": "assistant", "message": {{"content": [
     {{"type": "tool_use", "name": "WebSearch", "input": {{"query": "ABCDX fact sheet"}}}},
     {{"type": "text", "text": "Found it."}}]}}}})
+if os.environ.get("FAKE_CLAUDE_TOOL_ERROR"):
+    emit({{"type": "user", "message": {{"content": [{{"type": "tool_result", "tool_use_id": "t2", "is_error": True,
+        "content": [{{"type": "text", "text": os.environ["FAKE_CLAUDE_TOOL_ERROR"]}}]}}]}}}})
 fail = os.environ.get("FAKE_CLAUDE_FAIL")
 denied = os.environ.get("FAKE_CLAUDE_DENIED")
 emit({{"type": "result", "subtype": "error" if fail else "success", "is_error": bool(fail),

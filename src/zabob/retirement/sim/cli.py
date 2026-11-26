@@ -17256,9 +17256,9 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         has_files = any(p.is_file() and p.suffix.lower() in research.KEPT_SUFFIXES for p in work.iterdir())
         if not has_files:
             if not outcome.ok:
-                why = research.failed_because(outcome.message, outcome.denied)
-            elif outcome.denied:
-                why = research.nothing_written(outcome.denied)
+                why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
+            elif outcome.denied or outcome.tool_errors:
+                why = research.nothing_written(outcome.denied, outcome.tool_errors, outcome.message)
             else:
                 why = ("the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
                        "in the plugin (--plugin-dir)?")
@@ -17266,7 +17266,7 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         bundle = research.bundle_dir(data, key)
         research.keep_bundle(work, bundle)
         if not outcome.ok:
-            why = research.failed_because(outcome.message, outcome.denied)
+            why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
             raise click.ClickException(f"the research failed: {why}\nWhat it wrote is kept at {bundle}")
     return bundle
 

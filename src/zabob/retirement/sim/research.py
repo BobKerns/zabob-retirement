@@ -704,6 +704,26 @@ class RunResult:
     seconds: float = 0.0
     denied: tuple[str, ...] = ()
     """The tool calls Claude Code refused (``permission_denials``), described."""
+    tool_errors: tuple[str, ...] = ()
+    """What the tool calls that failed got back, in order."""
+
+
+def tool_errors(event: dict[str, Any]) -> list[str]:
+    """The errors one ``stream-json`` event's tool results carry (#800): a
+    write that fails without a refusal, such as one outside the run's
+    folders, says why only here."""
+    if event.get("type") != "user":
+        return []
+    out = []
+    for block in (event.get("message") or {}).get("content") or []:
+        if not isinstance(block, dict) or block.get("type") != "tool_result" or not block.get("is_error"):
+            continue
+        content = block.get("content")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        text = " ".join(str(content or "").split())
+        out.append(text if len(text) <= 300 else text[:297] + "...")
+    return out
 
 
 def refusals(denied: tuple[str, ...]) -> str:
@@ -712,16 +732,24 @@ def refusals(denied: tuple[str, ...]) -> str:
     return f"Claude Code refused {'; '.join(denied[:5])}{more}"
 
 
-def failed_because(message: str, denied: tuple[str, ...]) -> str:
-    """Why a run failed, with what it was refused: a run whose writes keep
-    being refused may end on its turn limit, the refusals its real cause."""
-    return f"{message}; {refusals(denied)}" if denied else message
+def failed_because(message: str, denied: tuple[str, ...], errors: tuple[str, ...] = ()) -> str:
+    """Why a run failed, with what it was refused and its last tool errors:
+    a run whose writes keep failing may end on its turn limit, those
+    failures its real cause."""
+    parts = [message]
+    if denied:
+        parts.append(refusals(denied))
+    if errors:
+        parts.append("its last tool errors: " + " | ".join(errors[-3:]))
+    return "; ".join(parts)
 
 
-def nothing_written(denied: tuple[str, ...] = ()) -> str:
+def nothing_written(denied: tuple[str, ...] = (), errors: tuple[str, ...] = (), last: str = "") -> str:
     """Why a run that ended without error left no files: with what it was
     refused, which is usually the reason (#800)."""
-    return failed_because("the run wrote no files", denied)
+    said = " ".join(last.split())
+    said = f"; it ended saying: {said if len(said) <= 300 else said[:297] + '...'}" if said else ""
+    return failed_because("the run wrote no files", denied, errors) + said
 
 
 def _denials(result: dict[str, Any]) -> tuple[str, ...]:
@@ -781,6 +809,8 @@ def run_skill(
     # name, refuses each of those as outside the run's folders.
     work_dir, plugin_dir = work_dir.resolve(), plugin_dir.resolve()
     command = claude_command(subject, key, plugin_dir, work_dir, executable, kind)
+    progress(f"  in {work_dir}")
+    errors_seen: list[str] = []
     start = time.monotonic()
     # stderr goes to a file: a pipe nobody reads until the end could fill and
     # stall the run.
@@ -815,7 +845,9 @@ def run_skill(
                 continue
             if event.get("type") == "result":
                 result = event
-            for text in describe_event(event):
+            failed = tool_errors(event)
+            errors_seen.extend(failed)
+            for text in [*describe_event(event), *(f"! {error}" for error in failed)]:
                 elapsed = int(time.monotonic() - start)
                 progress(f"  [{elapsed // 60:2d}:{elapsed % 60:02d}] {text}")
         proc.wait()
@@ -843,7 +875,7 @@ def run_skill(
     ok = not result.get("is_error") and proc.returncode == 0
     return RunResult(ok, str(result.get("result") or result.get("subtype") or ""),
                      cost_usd=float(cost) if isinstance(cost, (int, float)) else None, seconds=seconds,
-                     denied=_denials(result))
+                     denied=_denials(result), tool_errors=tuple(errors_seen))
 
 
 def compare_lines(proposed: Allocation, latest: tuple[str, list[tuple[str, str]]] | None) -> list[str]:

@@ -516,6 +516,22 @@ def test_a_run_whose_writes_were_refused_says_so(
     assert "--plugin-dir" not in result.output
 
 
+def test_a_run_whose_writes_failed_says_how(
+    test_data_dir: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: a write can fail with no refusal; its error and the run's last
+    words say why."""
+    monkeypatch.setenv("FAKE_CLAUDE_BUNDLE", "")
+    monkeypatch.setenv("FAKE_CLAUDE_TOOL_ERROR", "Path is outside the allowed working directories")
+    result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
+    assert result.exit_code != 0
+    output = " ".join(result.output.split())
+    assert "! Path is outside the allowed working directories" in output  # as it happens
+    assert "its last tool errors: Path is outside the allowed working directories" in output
+    assert "it ended saying: Wrote the tear sheet." in output
+    assert re.search(r"\bin \S*research-ABCDX-\S*work\b", output)  # the folder it was given
+
+
 def test_spellings_differing_only_in_drive_case_give_one_rule(monkeypatch: pytest.MonkeyPatch) -> None:
     """C:/x (absolute) and c:/x (%TEMP%) are one rule, //c/x, given once."""
     monkeypatch.setattr(research, "WINDOWS", True)
