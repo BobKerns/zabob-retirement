@@ -1,7 +1,6 @@
 [project]
 name = "zabob-retirement"
-# packages/zabob-retire pins this same version; tests/test_release.py and
-# publish.yml hold them, and a release tag, together.
+# publish.yml checks a release tag against it.
 version = "1.0.0b1"
 description = "Zabob Retirement: a retirement simulator for your future, with scenario comparison and Monte Carlo ensembles"
 # PyPI shows this; README.md's relative links and images only work on GitHub.

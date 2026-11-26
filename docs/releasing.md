@@ -2,13 +2,8 @@
 
 # Releasing to PyPI
 
-Two packages are published together, by
-[`.github/workflows/publish.yml`](../.github/workflows/publish.yml):
-`zabob-retirement`, the program, and `zabob-retire`
-([`packages/zabob-retire/`](../packages/zabob-retire/)), a shorter name with
-no code that installs it. Both always carry the same version, and
-`zabob-retire` pins `zabob-retirement` to it; `tests/test_release.py` and the
-workflow check that.
+The program is published as `zabob-retirement`, by
+[`.github/workflows/publish.yml`](../.github/workflows/publish.yml).
 
 PyPI trusts the workflow itself (trusted publishing), in two GitHub
 environments: `testpypi`, open to any branch, and `pypi`, open to `main`
@@ -32,30 +27,19 @@ in its own pull request, unless `dev` no longer has the bug. `release/*`
 branches have `main`'s ruleset, and Gates runs the whole suite on a pull
 request into one.
 
-Each index needs a trusted publisher for each project, but the same
-workflow and environment can be a pending publisher (one that creates its
-project on first upload) for only one name, and the index won't take a
-pending publisher that matches one already in use. So the first upload to
-each index (TestPyPI done; PyPI still to do) goes:
-
-1. Register the pending publisher for `zabob-retirement` (`publish.yml`,
-   environment `testpypi` or `pypi`).
-2. Run the workflow: it uploads `zabob-retirement` first, on its own, and
-   its `zabob-retire` step fails.
-3. Create `zabob-retire` by hand, with an API token:
-   `uv build packages/zabob-retire`, then
-   `uv publish dist/zabob_retire-*` (for TestPyPI add
-   `--publish-url https://test.pypi.org/legacy/`).
-4. In `zabob-retire`'s settings on the index, add `publish.yml` and the same
-   environment as an ordinary trusted publisher, then re-run the failed job
-   (both uploads skip a file already there).
+The first upload to an index creates the project, through a pending
+publisher (one that creates its project on first upload): register it for
+`zabob-retirement`, with `publish.yml` and environment `testpypi` or
+`pypi`, then run the workflow. Register no other pending publisher with the
+same workflow and environment: the index uses one of them when the
+workflow's token is minted, and won't take another with the same identity
+afterwards. (The empty `zabob-retire` project on PyPI, from an earlier
+plan, holds that name with no publisher and no files; #775.)
 
 ## A release
 
-1. Set the new version in `pyproject.toml`, and in
-   `packages/zabob-retire/pyproject.toml` both its `version` and its
-   `dependencies` pin. Run `uv lock` (only the version line of
-   `zabob-retirement` changes). Merge that into `dev` and promote `dev` to
+1. Set the new version in `pyproject.toml`. Run `uv lock` (only the
+   version line of `zabob-retirement` changes). Merge that into `dev` and promote `dev` to
    `main` (`/promote`, or `scripts/promote_dev.py`; see
    [Promoting dev](../CONTRIBUTING.md#promoting-dev)), or, for a point
    release, merge it into the `release/x.y` branch.
