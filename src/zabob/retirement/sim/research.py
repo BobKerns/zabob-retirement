@@ -637,7 +637,8 @@ def _path_rules(tool: str, folder: Path) -> list[str]:
     resolving gives the long one, and the model writes under either."""
     resolved = folder.resolve()
     spellings = [folder.absolute().as_posix(), resolved.as_posix(), Path(_short_path(str(resolved))).as_posix()]
-    return [f"{tool}({_rule_path(spelling)}/**)" for spelling in dict.fromkeys(spellings)]
+    # Unique after mapping: C:/x and c:/x are both //c/x.
+    return [f"{tool}({rule}/**)" for rule in dict.fromkeys(_rule_path(s) for s in spellings)]
 
 
 def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, claude: str = "claude",
@@ -705,13 +706,22 @@ class RunResult:
     """The tool calls Claude Code refused (``permission_denials``), described."""
 
 
+def refusals(denied: tuple[str, ...]) -> str:
+    """``denied`` for a message: the first five, and how many more."""
+    more = f" and {len(denied) - 5} more" if len(denied) > 5 else ""
+    return f"Claude Code refused {'; '.join(denied[:5])}{more}"
+
+
+def failed_because(message: str, denied: tuple[str, ...]) -> str:
+    """Why a run failed, with what it was refused: a run whose writes keep
+    being refused may end on its turn limit, the refusals its real cause."""
+    return f"{message}; {refusals(denied)}" if denied else message
+
+
 def nothing_written(denied: tuple[str, ...] = ()) -> str:
     """Why a run that ended without error left no files: with what it was
     refused, which is usually the reason (#800)."""
-    if not denied:
-        return "the run wrote no files"
-    more = f" and {len(denied) - 5} more" if len(denied) > 5 else ""
-    return f"the run wrote no files; Claude Code refused {'; '.join(denied[:5])}{more}"
+    return failed_because("the run wrote no files", denied)
 
 
 def _denials(result: dict[str, Any]) -> tuple[str, ...]:
@@ -720,9 +730,10 @@ def _denials(result: dict[str, Any]) -> tuple[str, ...]:
     out = []
     for denial in result.get("permission_denials") or []:
         if isinstance(denial, dict):
-            args = denial.get("tool_input") or {}
+            args = denial.get("tool_input")
+            args = args if isinstance(args, dict) else {}
             detail = args.get("file_path") or args.get("command") or args.get("url") or ""
-            out.append(f"{denial.get('tool_name', '?')} {' '.join(str(detail).split())}".rstrip())
+            out.append(f"{denial.get('tool_name') or '?'} {' '.join(str(detail).split())}".rstrip())
     return tuple(out)
 
 

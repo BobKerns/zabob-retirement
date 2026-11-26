@@ -553,7 +553,8 @@ def research(
             last = {"symbol": chosen, "at": now.timestamp(), "seconds": report.seconds,
                     "cost": report.cost_usd}
             if not report.ok or not kept:
-                why = report.message if not report.ok else research_mod.nothing_written(report.denied)
+                why = (research_mod.failed_because(report.message, report.denied) if not report.ok
+                       else research_mod.nothing_written(report.denied))
                 first = (failing.get(chosen) or {}).get("since", now.timestamp())
                 failing[chosen] = {"error": why, "at": now.timestamp(), "since": first}
                 _update_state(top, failing=failing, costs=costs, pending=_settle(top),

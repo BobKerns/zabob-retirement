@@ -460,8 +460,12 @@ def test_a_run_renders_the_plugin_runs_claude_and_imports(test_data_dir: Path, f
     # Each allowed command is spelled out in the prompt exactly as the rule has it.
     assert all(f"`{a.removeprefix('Bash(').removesuffix(' *)')}`" in args[1] for a in bash)
     edits = [a for a in allowed if a.startswith(("Edit", "Write"))]
-    # One per spelling of the work folder (#800): here, as given and resolved.
-    assert edits and all(e.startswith("Edit(//") and e.endswith("/work/**)") for e in edits)
+    # One per spelling of the work folder (#800), the resolved one among them
+    # (on macOS the temporary folder is behind a symlink), each once.
+    work = plugin.resolve().parent.parent / "work"  # beside the folder the plugin is rendered into
+    assert f"Edit({research._rule_path(work.as_posix())}/**)" in edits
+    assert all(e.startswith("Edit(//") and e.endswith("/work/**)") for e in edits)
+    assert len(edits) == len(set(edits))
     assert all(str(s) in args[1] for s in scripts)  # the prompt says where the scripts are
     assert symbols.latest_set(test_data_dir, "ABCDX") is not None
 
@@ -512,6 +516,22 @@ def test_a_run_whose_writes_were_refused_says_so(
     assert "--plugin-dir" not in result.output
 
 
+def test_spellings_differing_only_in_drive_case_give_one_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C:/x (absolute) and c:/x (%TEMP%) are one rule, //c/x, given once."""
+    monkeypatch.setattr(research, "WINDOWS", True)
+    monkeypatch.setattr(research, "_short_path", lambda p: p)
+    monkeypatch.setattr(research.Path, "absolute", lambda self: research.Path("C:/x"))
+    monkeypatch.setattr(research.Path, "resolve", lambda self: research.Path("c:/x"))
+    assert research._path_rules("Edit", Path("x")) == ["Edit(//c/x/**)"]
+
+
+def test_a_failed_run_names_what_was_refused() -> None:
+    """#800: a run whose writes keep being refused may end on its turn limit."""
+    assert research.failed_because("error_max_turns", ("Write C:/w/a.md",)) == (
+        "error_max_turns; Claude Code refused Write C:/w/a.md")
+    assert research.failed_because("error_max_turns", ()) == "error_max_turns"
+
+
 @pytest.mark.parametrize(("windows", "path", "rule"), [
     (True, "C:/Users/First Last/AppData/Local/Temp/work", "//c/Users/First Last/AppData/Local/Temp/work"),
     (True, "d:/work", "//d/work"),
@@ -536,8 +556,8 @@ def test_the_work_folder_is_writable_under_its_short_name_too(
     work = tmp_path / "First Last" / "work"
     rules = research._path_rules("Edit", work)
     long = work.resolve().as_posix()
-    assert f"Edit(/{long}/**)" in rules
-    assert f"Edit(/{long.replace('First Last', 'FIRSTL~1')}/**)" in rules
+    assert f"Edit({research._rule_path(long)}/**)" in rules
+    assert f"Edit({research._rule_path(long.replace('First Last', 'FIRSTL~1'))}/**)" in rules
     assert len(rules) == len(set(rules))
 
 
