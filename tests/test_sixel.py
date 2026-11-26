@@ -123,7 +123,8 @@ def at_a_terminal(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     (b"\x1b[?61;4;6;7;22c", {}, "sixel"),  # foot, xterm -ti vt340, Windows Terminal
     (b"\x1b[?62;4;22c", {"TERM_PROGRAM": "vscode"}, "iterm"),  # a PNG over 256 colors
     (b"\x1b_Gi=31;OK\x1b\\\x1b[?62;4;22c", {}, "kitty"),
-    (b"\x1b[?1;0c", {"WT_SESSION": "4c1d"}, "sixel"),  # the console answered for Windows Terminal
+    # WT_SESSION names no version, and is inherited by windows started from one.
+    (b"\x1b[?1;0c", {"WT_SESSION": "4c1d"}, None),
     (b"\x1b[?62;22c", {}, None),
 ])
 def test_terminal_protocol_finds_sixel(
@@ -135,14 +136,13 @@ def test_terminal_protocol_finds_sixel(
     assert chain_graph.terminal_protocol() == expected
 
 
-def test_windows_terminal_gets_sixel_when_the_console_cant_be_asked(at_a_terminal: pytest.MonkeyPatch) -> None:
+def test_no_sixel_when_the_console_cant_be_asked(at_a_terminal: pytest.MonkeyPatch) -> None:
     def no_console(query: str) -> bytes:
         raise OSError("the input isn't a console")
 
     at_a_terminal.setattr(chain_graph, "_ask_terminal", no_console)
-    assert chain_graph.terminal_protocol() is None
     at_a_terminal.setenv("WT_SESSION", "4c1d")
-    assert chain_graph.terminal_protocol() == "sixel"
+    assert chain_graph.terminal_protocol() is None
 
 
 @pytest.mark.parametrize(("forced", "expected"), [("sixel", "sixel"), ("file", None), ("open", None)])
@@ -154,13 +154,11 @@ def test_sixel_and_the_fallbacks_can_be_forced(
     assert chain_graph.terminal_protocol() == expected
 
 
-def test_cell_size_asks_the_terminal_when_the_ioctl_cant_say(at_a_terminal: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("fcntl")  # Windows has no ioctl, and asks without it anyway
-    at_a_terminal.setattr("fcntl.ioctl", lambda *args: b"\0" * 8)  # rows and columns, no pixels
+def test_asked_cell_size(at_a_terminal: pytest.MonkeyPatch) -> None:
     at_a_terminal.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b[6;20;10t\x1b[?61;4c")
-    assert chain_graph.cell_size() == (10.0, 20.0)
+    assert chain_graph.asked_cell_size() == (10.0, 20.0)
     at_a_terminal.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b[?61;4c")
-    assert chain_graph.cell_size() is None
+    assert chain_graph.asked_cell_size() is None
 
 
 @pytest.mark.parametrize(("env", "tty", "expected"), [

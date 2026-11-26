@@ -368,9 +368,11 @@ def terminal_protocol() -> Protocol | None:
     The guess: iTerm2 by name; then whatever the terminal answers to the
     kitty query (kitty's own protocol, or Sixel in its device attributes),
     with the terminals known to take iTerm2's protocol getting that ahead of
-    Sixel, whose 256 colors draw a chart less well. Windows Terminal draws
-    only Sixel (from 1.22), so it gets Sixel even when the console answers
-    for it."""
+    Sixel, whose 256 colors draw a chart less well. Sixel needs the
+    terminal to say so: ``$WT_SESSION`` names Windows Terminal but not its
+    version (one before 1.22 draws no Sixel), and it passes on to any
+    window started from one (a ``start cmd`` console, say), so it decides
+    nothing (#777)."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None  # escapes would only garble a pipe or a file
     forced = os.environ.get("ANALYSIS_IMAGE_PROTOCOL", "").lower()
@@ -391,7 +393,7 @@ def terminal_protocol() -> Protocol | None:
         return "kitty"
     if os.environ.get("TERM_PROGRAM") in _ITERM_PROGRAMS:
         return "iterm"
-    if sixel_reply(reply) or os.environ.get("WT_SESSION"):
+    if sixel_reply(reply):
         return "sixel"
     return None
 
@@ -416,9 +418,7 @@ def open_fallback() -> bool:
 
 def cell_size() -> tuple[float, float] | None:
     """The terminal's cell width and height in its own pixels, which on a
-    Retina screen are device pixels, when it reports its pixel size: from
-    the window-size ioctl, else by asking the terminal (which Windows needs,
-    lacking the ioctl)."""
+    Retina screen are device pixels, when it reports its pixel size."""
     try:
         import fcntl
         import struct
@@ -426,10 +426,18 @@ def cell_size() -> tuple[float, float] | None:
 
         rows, columns, x_pixels, y_pixels = struct.unpack(
             "HHHH", fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\0" * 8))
-        if x_pixels and y_pixels and columns and rows:
-            return x_pixels / columns, y_pixels / rows
     except (ImportError, OSError):
-        pass
+        return None
+    if not (x_pixels and y_pixels and columns and rows):
+        return None
+    return x_pixels / columns, y_pixels / rows
+
+
+def asked_cell_size() -> tuple[float, float] | None:
+    """The cell size the terminal gives when asked (``CSI 16 t``), for a
+    Sixel image when :func:`cell_size` can't say: Windows has no ioctl. Only
+    for Sixel, whose image must be drawn to its width; the other protocols
+    size an image themselves, and asking costs a round trip."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None
     try:

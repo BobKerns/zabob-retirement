@@ -2190,7 +2190,9 @@ def _graph_options(
     graph = click.option(
         flag, "as_graph", is_flag=True,
         help=capital(f"draw {drawn} in the terminal (kitty, iTerm2 or Sixel image protocol){how}, "
-                     f"or write a PNG file when the terminal can't show images{instead}."),
+                     "or write a PNG file when the terminal can't show images, and open it in the "
+                     "image viewer when the session is local (ANALYSIS_IMAGE_PROTOCOL=file to only "
+                     f"write it){instead}."),
     )
     graph_file = click.option(
         file_flag, "graph_file", type=click.Path(dir_okay=False, path_type=Path), default=None,
@@ -15901,7 +15903,9 @@ def _terminal_cell(protocol: str | None) -> tuple[float, float] | None:
     if protocol is None:
         return None
     cell = chain_graph.cell_size()
-    return chain_graph.SIXEL_CELL if cell is None and protocol == "sixel" else cell
+    if cell is None and protocol == "sixel":
+        cell = chain_graph.asked_cell_size() or chain_graph.SIXEL_CELL
+    return cell
 
 
 def _show_image(
@@ -15935,7 +15939,7 @@ def _show_image(
             raise click.ClickException(f"couldn't write the chart to a temporary file: {error}") from error
         click.echo(f"wrote {name}")
         if chain_graph.open_fallback() and oscompat.open_file(Path(name)):
-            click.echo("opened it in the image viewer", err=True)
+            click.echo("asked the image viewer to open it", err=True)
         click.echo("This terminal can't show images. iTerm2, kitty, Ghostty, WezTerm, "
                    "VS Code's terminal or Windows Terminal (1.22 or later) draws the chart in place.",
                    err=True)

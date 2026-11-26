@@ -99,7 +99,9 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 - `--graph` and `--chart` draw their charts in Windows Terminal 1.22 or
   later (its Settings, **About**, gives the version; the Microsoft Store
   updates it). In an older one, or the plain console window, they save the
-  chart as a PNG, print its path and open it in your image viewer.
+  chart as a PNG, print its path and open it in your image viewer. If a
+  current Windows Terminal saves a PNG anyway, set
+  `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
 ### Windows: WSL
 

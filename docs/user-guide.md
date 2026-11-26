@@ -852,7 +852,8 @@ the terminal, and `--mermaid` prints the flowchart's Mermaid source for a
 README. To show the chart in place, `--graph` needs a terminal that shows
 images; iTerm2, kitty, Ghostty, WezTerm, VS Code's integrated terminal or
 Windows Terminal 1.22 or later are recommended. Anywhere else it writes the
-chart to a PNG, prints its path and opens it in your image viewer
+chart to a PNG, prints its path and, when the session is local, opens it in
+your image viewer
 ([Setup](SETUP.md#drawing-chain-flowcharts-in-the-terminal) says why and how).
 `sim chain add` with no arguments builds a chain by asking what it is for;
 `sim chain step add|edit|move|rm`, `rename` and `delete` change one.
@@ -2426,7 +2427,7 @@ covers the whole run. `sim account history` takes a month or a bare year.
 `--chart` shows the notebook's chart of the view instead of its table: drawn
 in the terminal when it shows images (iTerm2, kitty, Ghostty, Windows
 Terminal and others), else written to a temporary PNG whose name it prints,
-and opened in your image viewer. `--chart-file NAME.png`
+and opened in your image viewer when the session is local. `--chart-file NAME.png`
 (or `.svg`) writes it to that file instead. `--table` with either prints the
 table too, after the chart. The chart follows the command's
 options: `--dollars`, `--pre-tax`, `--by`, `--year`, `--lot`, `--exclude` and
