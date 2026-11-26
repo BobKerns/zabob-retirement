@@ -33,9 +33,24 @@ That's all: `sim init` makes it your data repo, so every `sim` command finds
 it, from any folder and in any new terminal, and `sim login` records your name
 on what you make and change. `sim switch` shows both, and your current
 scenario; `sim switch --data DIR` switches to another data repo, as does
-running a `sim` command inside one. In bash or zsh, `source
-~/zabob-retirement/sim/activate-retirement` adds the data repo and you to the
-prompt and turns on TAB completion of names; it's optional.
+running a `sim` command inside one.
+
+To have TAB complete `sim`'s commands, options and the names your scenarios
+define (accounts, chains, scenarios...), set it up once for your shell:
+
+```sh
+sim completion install       # your shell; or name it: bash, zsh, fish, powershell
+```
+
+It writes the completion script under your settings folder (fish's own
+`~/.config/fish/completions/` for fish) and adds a line that reads it to
+`~/.bashrc`, `~/.zshrc` or PowerShell's `$PROFILE`; open a new terminal to
+use it. Running it again changes nothing but the script, so run it again
+after an upgrade if TAB stops completing. To put the script somewhere of
+your own, `sim completion show zsh` prints it. Bash needs version 4.4 or
+later: macOS's own `/bin/bash` is older, so on a Mac use zsh, its default.
+In bash or zsh, `source ~/zabob-retirement/sim/activate-retirement` adds the
+data repo and you to the prompt; it's optional.
 
 `sim init` saves a first version with git: on macOS, if a window offers to
 install the command-line developer tools (which include git), let it finish,
@@ -110,9 +125,10 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)): a command
   that shows a run whose data or code changed builds it first, so it may
   take a moment the first time.
-- There is no TAB completion of names, since `activate-retirement` is for bash
-  and zsh. Commands still ask for a name they need, with completion as you
-  type.
+- TAB completion works in PowerShell, both Windows' own and PowerShell 7:
+  `sim completion install` adds it to your profile. If it says the execution
+  policy is `Restricted`, Windows PowerShell won't read a profile at all
+  until you run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 - `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
   later (its Settings, **About**, gives the version; the Microsoft Store
   updates it). In an older one, or the plain console window, it saves the

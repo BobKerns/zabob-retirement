@@ -38,6 +38,7 @@ from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
 from zabob.retirement.research_plugin import research_plugin_command
 from zabob.retirement.jupyter.cli import jupyter_group
+from zabob.retirement.sim import shell_completion  # registers PowerShell with click (#792)
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -345,7 +346,7 @@ def sim_group_command(ctx: click.Context) -> None:
     check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
-    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init"):
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
         return
     args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
     _follow_working_folder(args)
@@ -5962,6 +5963,51 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
 
 
 sim_group_command.add_command(jupyter_group)
+
+
+@sim_group_command.group(name="completion")
+def completion_group() -> None:
+    """TAB completion for sim in your shell: install, show (#792).
+
+    bash, zsh, fish and PowerShell. `sim completion install` sets it up once;
+    no need to source the data repo's activate-retirement.
+    """
+
+
+def _completion_shell(shell: str | None) -> str:
+    if shell is None and (shell := shell_completion.detect_shell()) is None:
+        raise click.UsageError(f"name the shell: {', '.join(shell_completion.SHELLS)}")
+    return shell
+
+
+_SHELL_ARGUMENT = click.argument("shell", type=click.Choice(shell_completion.SHELLS), required=False)
+
+
+@completion_group.command(name="install")
+@_SHELL_ARGUMENT
+def completion_install(shell: str | None) -> None:
+    """Set up TAB completion for sim in SHELL (default: yours).
+
+    Writes the completion script and adds a line to the shell's startup file
+    (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that reads it; fish needs
+    no line. Running it again rewrites the script and adds nothing twice.
+    """
+    shell = _completion_shell(shell)
+    for done in shell_completion.install(shell):
+        click.echo(f"wrote {_shown(done.script, resolve=False)}")
+        if done.startup_file is not None:
+            click.echo(f"added a line reading it to {_shown(done.startup_file, resolve=False)}")
+        if done.note:
+            click.echo(done.note)
+    click.echo(f"Open a new {shell} to use it.")
+
+
+@completion_group.command(name="show")
+@_SHELL_ARGUMENT
+def completion_show(shell: str | None) -> None:
+    """Print the TAB completion script for sim in SHELL (default: yours),
+    to put somewhere of your own choosing."""
+    click.echo(shell_completion.source(_completion_shell(shell)), nl=False)
 
 
 # Set for the `sim init` that one run from another checkout's venv starts,
