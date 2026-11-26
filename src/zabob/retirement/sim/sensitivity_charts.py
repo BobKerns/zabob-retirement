@@ -1,5 +1,5 @@
 """Sensitivity charts (ADR-007 §9, #329), widget-free so the notebook's
-``sensitivity_widget`` and ``sim ensemble sensitivity --chart`` draw the
+``sensitivity_widget`` and ``sim ensemble sensitivity --graph`` draw the
 same ones.
 
 For a sensitivity (OAT) batch: an overview heatmap (parameters x reporting

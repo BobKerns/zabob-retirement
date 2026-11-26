@@ -33,7 +33,7 @@ ALLOCATIONS = (
 @pytest.fixture(scope="function")
 def allocations_csv(test_data_dir: Path) -> Path:
     path = test_data_dir / "allocations.csv"
-    path.write_text(ALLOCATIONS)
+    path.write_text(ALLOCATIONS, encoding="utf-8")
     return path
 
 
@@ -97,7 +97,7 @@ def test_totals_and_percentages_add_up_and_can_be_split(
 def test_bad_allocation_rows_are_rejected(
     rows: str, message: str, test_data_dir: Path, load_test_copy,
 ) -> None:
-    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\n" + rows)
+    (test_data_dir / "allocations.csv").write_text("symbol,as_of,asset_class,weight\n" + rows, encoding="utf-8")
     with pytest.raises(LoadError, match=message):
         load_test_copy()
 
@@ -137,7 +137,7 @@ def test_a_scenario_shows_opening_values_with_the_weights_at_its_start(
 
 def test_a_bad_class_still_counts_toward_the_weight_total(test_data_dir: Path, load_test_copy) -> None:
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nAAA,,gold,60%\nAAA,,bond,40%\n")
+        "symbol,as_of,asset_class,weight\nAAA,,gold,60%\nAAA,,bond,40%\n", encoding="utf-8")
     with pytest.raises(LoadError) as ei:
         load_test_copy()
     assert not any("add up to" in issue for issue in ei.value.issues)  # 60 + 40 is 100
@@ -146,7 +146,7 @@ def test_a_bad_class_still_counts_toward_the_weight_total(test_data_dir: Path, l
 @pytest.fixture(scope="function")
 def unknown_split_csv(test_data_dir: Path) -> Path:
     path = test_data_dir / "allocations.csv"
-    path.write_text("symbol,as_of,asset_class,weight\nAAA,,stock,70%\nAAA,,bond,30%\n")
+    path.write_text("symbol,as_of,asset_class,weight\nAAA,,stock,70%\nAAA,,bond,30%\n", encoding="utf-8")
     return path
 
 
@@ -310,7 +310,7 @@ ADD_SYMBOL_HEADING = "### 4.11 Add a stock or fund"
 def test_symbol_commands_point_to_the_add_a_symbol_guide(command: list[str]) -> None:
     """Issue #127: adding a symbol is documented, not a command, so the help says where."""
     guide = Path(__file__).parents[1] / "docs" / "user-guide.md"
-    assert ADD_SYMBOL_HEADING in guide.read_text()  # the section the help names still exists
+    assert ADD_SYMBOL_HEADING in guide.read_text(encoding="utf-8")  # the section the help names still exists
     result = CliRunner().invoke(main, ["sim", *command, "--help"], terminal_width=200)
     assert result.exit_code == 0, result.output
     assert "Part 4.11" in result.output
@@ -328,11 +328,11 @@ def test_allocation_graph(
     chart = tmp_path / "allocation.svg"
     result = CliRunner().invoke(main, [
         "sim", "allocation", *by, "--scenario", "retire_alice", "--data-dir", str(test_data_dir),
-        "--runfile", str(two_lot_run_file), "--chart-file", str(chart), "--table",
+        "--runfile", str(two_lot_run_file), "--graph-file", str(chart), "--table",
     ], env={"COLUMNS": "200"})
     assert result.exit_code == 0, result.output
     assert "asset allocation" in result.output
-    assert "<svg" in chart.read_text()
+    assert "<svg" in chart.read_text(encoding="utf-8")
 
 
 def test_allocation_figures(allocations_csv: Path, two_lot_run: RunConnection) -> None:
@@ -355,9 +355,9 @@ def test_a_lot_growing_at_an_asset_class_series_is_that_class(
     in a scenario and in its run; one growing at a series no class is named
     for stays unclassified."""
     lots = retire_alice_csv("account_lots.csv")
-    lots.write_text(lots.read_text().replace(
+    lots.write_text(lots.read_text(encoding="utf-8").replace(
         "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,,",
-        "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,stock,"))
+        "Asset_TraditionalIRA_Alice,default,traditional_ira,,,,stock,"), encoding="utf-8")
     run = run_test_copy()
     with ScenarioConnection(test_data_dir, "retire_alice") as scenario, RunConnection(run) as ran:
         for source in (scenario, ran):

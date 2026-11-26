@@ -7,9 +7,11 @@ Python 3.14+, `uv`, `src/` layout, single top-level project (no nested repos).
 ## Two repositories, one workflow
 
 Code lives here. **Data lives in a separate git repository**, with the
-simulator's inputs under its `sim/` subtree. Commands find it via
-`$ANALYSIS_DATA_DIR` (set by sourcing the data repo's `activate-analysis`) or an
-explicit `--data-dir`. Nothing in `data/`, `out/`, or `state/` here is tracked.
+simulator's inputs under its `sim/` subtree. Commands find it via an explicit
+`--data-dir`, `$ZABOB_DATA_DIR` (set by sourcing the data repo's
+`activate-retirement`), the data repo the working folder is in, or the user's
+own (`sim init` records it, `sim switch --data` or a command run in another
+changes it; `user_config.py`). `sim login` records who the user is. Nothing in `data/`, `out/`, or `state/` here is tracked.
 
 Never edit the data repo to make code or tests pass. If scenario data looks
 wrong or stale, say so and let the user decide.
@@ -56,16 +58,11 @@ ADR-005 through ADR-008 each have a companion `ADR-00N-implementation-plan.md`
 beside them.
 
 An ADR is edited in place to describe the current design, so it stays easy
-to read: rewrite the affected sections and add one bullet to the ADR's
-closing `## Amendments` list: the issue (or the ADR) that changed it, a short
-phrase saying what changed, and the sections affected. Add it at the end of the
-list; when two branches both add one, resolving the conflict is keeping both. The
-header's fixed "Amended" line only points to that list, so it never changes. The
-bullet marks a change to the design; an editorial edit (an example's names, a
-typo, a link) needs none. Don't keep
-superseded text as tombstones or ask for it to be kept; git history holds the
-previous decisions and their rationale. If the code and an ADR disagree, fix the drift in the
-same change — the ADRs are load-bearing, not historical.
+to read: rewrite the affected sections, and name the issue in the commit and
+pull request. An ADR keeps no change log or amendment list; git history holds
+the previous decisions and their rationale. Don't keep superseded text as
+tombstones or ask for it to be kept. If the code and an ADR disagree, fix the
+drift in the same change — the ADRs are load-bearing, not historical.
 
 Key modules:
 
@@ -118,7 +115,7 @@ Five gates should pass before reporting any change done, plus a sixth for
 changes to the simulator or its loader:
 
 ```sh
-.venv/bin/python -m pytest -q -n auto -m "not slow"  # tests, less the slow ones
+.venv/bin/python scripts/affected_tests.py        # tests the change needs, less the slow ones
 .venv/bin/python -m ruff check src tests plugins  # lint
 .venv/bin/ty check                                # types (ty; src, tests, plugins: pyproject.toml)
 npm run spell                                     # spelling (cspell)
@@ -129,11 +126,20 @@ npm run markdownlint                              # markdown (markdownlint)
 `cspell` and `markdownlint` are pinned in `package.json` and installed by
 `scripts/setup.sh` (`npm ci`); see [`docs/SETUP.md`](../docs/SETUP.md).
 
-[`.github/workflows/gates.yml`](workflows/gates.yml) runs the first five gates,
-with every test including the slow ones, and the blocked-keyword check on every
-pull request that isn't a draft and every push to `main`. It skips the tests,
-lint and types when a change touches only prose or editor settings (the list is
-in the workflow).
+`scripts/affected_tests.py` compares the working tree with `origin/dev`
+(`origin/main` before `dev` exists; `--base` for another branch) and runs
+only the tests whose area the change touches, per
+[`tests/areas.toml`](../tests/areas.toml); a change to a path no area owns (the engine, the loader, taxes, the CLI, `tests/conftest.py`) runs
+the whole suite, which is most changes. `--list` shows the choice without
+running it; arguments after `--` go to pytest. When a test starts reading a
+path an area owns, add it to that area; `tests/test_affected_tests.py` fails
+on a pattern that no longer matches anything.
+
+For quicker reruns while iterating, `pytest-testmon` (not a dependency;
+`uv pip install pytest-testmon`) reruns only the tests whose code changed:
+`pytest -n auto --testmon`. Its first run in a worktree takes half again as
+long as a plain one. It tracks Python only, so a changed CSV, notebook or
+script selects nothing; the gate above is still the one to pass.
 
 Tests marked `@pytest.mark.slow` (about a second or more each) are left out of
 the everyday local run. When a change touches a slow test or the code it
@@ -141,27 +147,68 @@ exercises, run that test locally too (`-m slow`, or the test by name). Mark a
 new test `slow` when it takes about a second on its own.
 
 Copilot reviews a pull request when it leaves draft, and every push after
-that; Gates skips drafts too, since Actions minutes are billed. So open pull
-requests as drafts and iterate there with the local gates. Before marking one
-ready, merge `main` and run the whole suite locally, slow tests included
-(`.venv/bin/python -m pytest -q -n auto`). Marking it ready starts Copilot's review and one Gates
-run together; fix anything either finds. When a ready pull request needs
-several more pushes (a merge from `main`, a batch of review fixes), turn it
-back into a draft first, push, and mark it ready again: one review and one
-Gates run per return to ready, not one per push.
+that; Gates skips drafts too. So open pull requests as drafts and iterate
+there with the local gates. Before marking one ready, merge `dev` and run the
+change's tests with the slow ones (`.venv/bin/python scripts/affected_tests.py
+--slow`); run the whole suite (`.venv/bin/python -m pytest -q -n auto`) only
+when asked, since `dev` runs it after merge. Marking it ready starts Copilot's
+review and one Gates run together; fix anything either finds. When a ready
+pull request needs several more pushes (a merge from `dev`, a batch of review
+fixes), turn it back into a draft first, push, and mark it ready again: one
+review and one Gates run per return to ready, not one per push.
 
 Run a single test with `.venv/bin/python -m pytest tests/test_engine.py::test_name -q`
 (or `-k pattern` to match by substring).
 
-`ruff check` is clean on `main`; keep it that way.
+`ruff check` is clean on `dev` and `main`; keep it that way.
 
-`ty check` is clean on `main` too. Fix a type error rather than silencing it.
+`ty check` is clean on them too. Fix a type error rather than silencing it.
 Where a library hides types from ty, use the existing helper: `named_rows()`
 for `DataFrame.itertuples()` (`src/zabob/retirement/frames.py`), or `_trait()` for a
 traitlets class attribute (`notebook_ui/pickers.py`). A narrow
 `# ty: ignore[<rule>]` with a reason is the last resort. To read a frame's
 years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
 (also in `frames.py`).
+
+## The dev branch
+
+Work merges into `dev`, not `main`: branch from `origin/dev`, and open pull
+requests against `dev` (the Retarget workflow, `.github/workflows/retarget.yml`,
+moves one opened against `main` to `dev`, unless it is the promotion or a
+`hotfix/` branch). Whenever `dev` has anything `main` lacks, a
+promotion of `dev` to `main` is open: the Promotion workflow
+(`.github/workflows/promotion.yml`) runs `scripts/promote_dev.py` on every
+push to `dev`, which opens it as a draft (so it doesn't rerun the full
+gates on every push to `dev`) or refreshes its body. `/promote`, the skill
+in `.claude/skills/promote/`, is the manual fallback when that run fails,
+and checks the promotion before merge. Bob marks it ready when he wants to
+promote and merges it. Nothing else
+goes to `main` except a hotfix, which branches from `origin/main` (not
+`dev`, whose unpromoted merges it would carry) as `hotfix/<number>-<desc>`,
+is labeled `hotfix`, and goes to `dev` as soon as it lands, from an
+`issue/<number>-<desc>` branch at the same commits.
+"Fixes #N" in a pull request into `dev` closes nothing until the promotion
+merges, so an issue whose pull request merged stays open until then; the
+promotion pull request lists and closes them.
+
+[`.github/workflows/gates.yml`](workflows/gates.yml) runs the first five gates
+and the blocked-keyword check, at one of two depths, on every pull request
+that isn't a draft:
+
+- **Quick**, on a pull request into `dev`: keywords, lint, types, spelling,
+  markdown, and the tests `scripts/affected_tests.py` selects, slow ones
+  included. A change that selects the whole suite doesn't run it there.
+- **Full**, on every push to `dev` or `main`, a pull request into `main`, a
+  pull request labeled `full-gates`, and "Run workflow" on a branch: the
+  whole suite, slow tests included, in four shards. A newer push to `dev`
+  cancels the run on the older one, so a burst of merges costs one run.
+
+At quick depth, lint and types skip when a change touches only prose or
+editor settings (the list is in the workflow); full depth runs everything,
+whatever the change. A failure on `dev` is found after merge:
+`scripts/bisect_dev.py TEST...` runs those tests at `dev`'s merges since the
+last promotion and names the first that fails them. Fix it forward in a pull
+request into `dev`, or revert that merge (`git revert -m 1 <merge>`).
 
 ## Conventions
 
@@ -193,6 +240,13 @@ years or months from its `DatetimeIndex`, use `index_years()`/`index_months()`
   inline `shutil.copytree`/`tmp_path` setup. Check there before writing setup;
   a new reusable need becomes a new fixture. Its module docstring explains the
   session (shared, read-only) vs. function (private, mutation-safe) families.
+- **Actions are pinned to commits.** Every `uses:` in a workflow names a
+  full commit SHA with its release as a comment
+  (`actions/checkout@<sha>  # v7.0.1`), never a tag or branch: the
+  repository rejects anything else. Find the SHA with
+  `git ls-remote --tags https://github.com/<owner>/<repo>` (the `^{}` line
+  for an annotated tag). Dependabot proposes updates weekly, into `dev`;
+  `tests/test_workflows.py` checks the pins.
 - **Tabs are forbidden** in all text files (code, markdown, docs) — spaces only.
 - Spell checking (cspell) runs over markdown, Python, CSV, and TOML (see
   `cspell.json`). Add project-specific words to `.cspell/project-words.txt`,

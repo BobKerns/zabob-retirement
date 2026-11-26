@@ -18,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import importlib
 import importlib.abc
-import importlib.util
 import itertools
 import linecache
 import pkgutil

@@ -1,12 +1,14 @@
 """Test-wide safety net: never let a forgotten override touch real user data.
 
 Without this, a test that omits ``--data-dir`` (or a matching ``monkeypatch``)
-silently falls back to whatever ``$ANALYSIS_DATA_DIR`` happens to be set to in
+silently falls back to whatever ``$ZABOB_DATA_DIR`` happens to be set to in
 the *ambient* shell — which, on a dev machine with the data repo activated,
 is the developer's real, personal data directory. That happened: a test run
 overwrote the real data repo's ``.current_scenario`` with a prototype
 scenario name. Clearing these here makes any such test fail loudly with
-"ANALYSIS_DATA_DIR not set" instead of quietly mutating real data.
+"no data repo" instead of quietly mutating real data. The user's default
+data repo (#687, ``user_config``) is a per-test empty config folder for the
+same reason.
 
 Fixture pattern for filesystem test data
 -----------------------------------------
@@ -72,6 +74,8 @@ import git
 import pandas as pd
 import pytest
 
+from zabob.retirement import env_names, user_config
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
 from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
@@ -98,19 +102,44 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.skip(reason=why))
 
 
-_ANALYSIS_ENV_VARS = (
-    "ANALYSIS_DATA_DIR",
-    "ANALYSIS_SCENARIO",
+_AMBIENT_ENV_VARS = (
+    "ZABOB_DATA_DIR",
+    "ZABOB_SCENARIO",
+    "ZABOB_HUB_DIR",  # the hub's folder (#766): under the test's user config instead
 )
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_analysis_env(
+def _no_ambient_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
-    for name in _ANALYSIS_ENV_VARS:
+    for name in _AMBIENT_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    # Without $ANALYSIS_DATA_DIR the notebook widgets fall back to the
+    # Nor the old names (#782), which would stop every command, from a shell
+    # activated before the rename.
+    for name in [name for name in os.environ if name.startswith(env_names.OLD_PREFIX)]:
+        monkeypatch.delenv(name)
+    # Nor the developer's default data repo (#687): `sim init` in a test
+    # records its own there.
+    config = tmp_path_factory.mktemp("user-config")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    monkeypatch.setenv("APPDATA", str(config))
+    # Logged in (#773), as the login name a command uses meanwhile, so no
+    # "Not logged in" note joins every command's output; a test of logging
+    # in removes it.
+    (config / "zabob-retirement").mkdir()
+    (config / "zabob-retirement" / "user").write_text(f"{login_name()}\n", encoding="utf-8")
+    # Nor the data repo a test happens to run in: a checkout's own
+    # data/private/sim. A test of that step passes `start` (see
+    # tests/test_user_config.py) or changes into a data repo of its own.
+    real_local = user_config.local_data_dir
+    base = tmp_path_factory.getbasetemp()
+
+    def _local_under_tmp(start: Path | None = None) -> Path | None:
+        here = (start or Path.cwd()).resolve()
+        return real_local(here) if here.is_relative_to(base.resolve()) else None
+    monkeypatch.setattr(user_config, "local_data_dir", _local_under_tmp)
+    # Without $ZABOB_DATA_DIR the notebook widgets fall back to the
     # checkout's data/private/sim: on a dev machine, the real data repo,
     # whose disabled scenarios once hid a test's recipe (#401).
     monkeypatch.setattr(
@@ -118,15 +147,17 @@ def _no_ambient_analysis_env(
         lambda: tmp_path_factory.getbasetemp() / "no-checkout-data" / "sim")
     # No test starts or waits on a background builder (#300) unless it
     # turns the builder back on itself.
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
-    monkeypatch.delenv("ANALYSIS_BUILDER_CHILD", raising=False)
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
+    monkeypatch.delenv("ZABOB_BUILDER_CHILD", raising=False)
     # Nor fetches prices or installs a timer (#560), even with the builder on:
     # a test that does turns this off and passes a fake provider.
-    monkeypatch.setenv("ANALYSIS_PRICE_FETCH", "off")
+    monkeypatch.setenv("ZABOB_PRICE_FETCH", "off")
     # Nor rolls scenarios forward at night (#564).
-    monkeypatch.setenv("ANALYSIS_ROLL", "off")
+    monkeypatch.setenv("ZABOB_ROLL", "off")
     # Nor researches symbols with Claude each morning (#640).
-    monkeypatch.setenv("ANALYSIS_RESEARCH", "off")
+    monkeypatch.setenv("ZABOB_RESEARCH", "off")
+    # Nor fetches from the data repo's origin and moves main (#785).
+    monkeypatch.setenv("ZABOB_CATCH_UP", "off")
 
 
 _STABLE_CODE_STAMPS = CodeStamps(version="0" * 40, dirty=False, repo_path="CODE_REPO")
@@ -269,6 +300,28 @@ def test_data_dir(tmp_path, prototype_data: Path) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(prototype_data, data_dir, dirs_exist_ok=True)
     return data_dir
+
+@pytest.fixture(scope="function")
+def other_data_repo(tmp_path: Path, prototype_data: Path) -> Path:
+    """A second private copy of the prototype data, as a data repo of its own
+    (``other/sim``, beside ``test_data_dir``): for what differs between data
+    repos, such as each one's current scenario (#773). Returns its data dir."""
+    data_dir = tmp_path / "other" / "sim"
+    shutil.copytree(prototype_data, data_dir)
+    return data_dir
+
+
+@pytest.fixture(scope="function")
+def old_aux_layout(test_data_dir: Path) -> list[Path]:
+    """The private data copy in the layout before #687: its lookup tables in
+    ``aux/`` folders, the shared one and a scenario's own (retire_alice's).
+    Returns the two folders."""
+    (test_data_dir / "tables").rename(test_data_dir / "aux")
+    own = test_data_dir / "scenarios" / "retire_alice" / "aux"
+    own.mkdir()
+    shutil.copy(test_data_dir / "aux" / "inflation__cpi.csv", own)
+    return [test_data_dir / "aux", own]
+
 
 @pytest.fixture(scope="session")
 def scenarios_dir(data_dir: Path) -> Path:
@@ -575,7 +628,7 @@ def new_user_env(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
     home = top / "home"
     home.mkdir()
     (top / "gitconfig").write_text("[user]\n\tname = Alice Example\n\temail = alice@example.com\n"
-                                   "[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+                                   "[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n", encoding="utf-8")
     return {"HOME": str(home), "GIT_CONFIG_GLOBAL": str(top / "gitconfig"),
             "LANG": os.environ.get("LANG", "C.UTF-8")}
 
@@ -643,11 +696,11 @@ def lot_variant_runs(
     (variant_dir / "account_lots.csv").write_text(
         f"{header}\n"
         "Asset_Brokerage_Joint,b,,BBB,2026-01-15,1500,,150000.00,100000.00,\n"
-        "Asset_Brokerage_Joint,c,,CCC,2027-06-30,,,25000.00,20000.00,\n"
+        "Asset_Brokerage_Joint,c,,CCC,2027-06-30,,,25000.00,20000.00,\n", encoding="utf-8"
     )
     (variant_dir / "year_to_date.csv").write_text(
         "name,from_account,from_lot,to_account,to_lot,amount,tax_character,year,description\n"
-        "prior_wages_alice,Income_Salary_Alice,,Asset_Checking,,70000.00,ordinary,,\n"
+        "prior_wages_alice,Income_Salary_Alice,,Asset_Checking,,70000.00,ordinary,,\n", encoding="utf-8"
     )
     loaded = load_scenario(test_data_dir, "variant", intent_dir=intent_dir,
                            scenarios_dir=test_scenarios_dir, allow_dirty_data=True)
@@ -782,19 +835,19 @@ def write_lifespans(retire_alice_csv: Callable[[str], Path]) -> Callable[..., No
         header = _LIFESPAN_HEADER
         if any(r.count(",") == 8 for r in rows):
             header = header.replace("\n", ",life_table\n")
-        retire_alice_csv("lifespan.csv").write_text(header + "".join(f"{r}\n" for r in rows))
+        retire_alice_csv("lifespan.csv").write_text(header + "".join(f"{r}\n" for r in rows), encoding="utf-8")
     return _write
 
 
 @pytest.fixture(scope="function")
 def write_life_table(test_data_dir: Path) -> Callable[[str, str], Path]:
     """Write a life table CSV in the private data copy, at a path relative to
-    it (``scenarios/retire_alice/aux/life_table__jp.csv``), from rows of
+    it (``scenarios/retire_alice/tables/life_table__jp.csv``), from rows of
     ``effective_date,age,q_female,q_male`` after the header."""
     def _write(where: str, rows: str) -> Path:
         path = test_data_dir / where
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("effective_date,age,q_female,q_male\n" + rows)
+        path.write_text("effective_date,age,q_female,q_male\n" + rows, encoding="utf-8")
         return path
     return _write
 
@@ -862,17 +915,17 @@ def guide_chains(
     checking's refill and overflow. Returns the data dir."""
     sources, destinations = retire_alice_csv("chains/source"), retire_alice_csv("chains/destination")
     (sources / "bridge.csv").write_text(
-        _CHAIN_HEADER + "Asset_Savings,,10000.00,,cpi,annual\nAsset_Brokerage_Joint,default,,,,\n")
+        _CHAIN_HEADER + "Asset_Savings,,10000.00,,cpi,annual\nAsset_Brokerage_Joint,default,,,,\n", encoding="utf-8")
     (sources / "retirement_draw.csv").write_text(
-        _CHAIN_HEADER + "bridge,,,50%,,\nAsset_TraditionalIRA_Alice,default,,,,\n")
+        _CHAIN_HEADER + "bridge,,,50%,,\nAsset_TraditionalIRA_Alice,default,,,,\n", encoding="utf-8")
     (destinations / "ss_split.csv").write_text(
-        _CHAIN_HEADER + "Asset_Checking,,,50%,,\nAsset_Savings,,,,,\n")
+        _CHAIN_HEADER + "Asset_Checking,,,50%,,\nAsset_Savings,,,,,\n", encoding="utf-8")
     scheduled = retire_alice_csv("scheduled.csv")
-    text = scheduled.read_text().replace(
+    text = scheduled.read_text(encoding="utf-8").replace(
         "ss_alice,Income_SS_Alice,,Asset_Checking,", "ss_alice,Income_SS_Alice,,ss_split,")
     text += ("monthly_draw,retirement_draw,,Asset_Checking,,monthly,,fixed_amount,,,,,,1000.00,,,"
              "none,,2030-01-31,,200,,,,{},,\n")
-    scheduled.write_text(text)
+    scheduled.write_text(text, encoding="utf-8")
     update_account_value("Asset_Checking", "", maximum_balance="30000.00", refill_target="3000.00",
                          overflow_chain="Asset_Savings")
     return test_data_dir
@@ -947,7 +1000,7 @@ def depreciating_car(test_data_dir: Path, retire_alice_csv: Callable[[str], Path
     """Add ``Asset_Car`` to the private retire_alice copy: a $30,000 vehicle
     whose ``jalopy`` rate series is -12% a year, so its value drains into the
     built-in ``depreciation`` expense account (ADR-003 §2.2). Returns its name."""
-    (test_data_dir / "aux" / "rate__jalopy.csv").write_text(
+    (test_data_dir / "tables" / "rate__jalopy.csv").write_text(
         "effective_date,annual_rate\n2020-01-31,-12%\n", encoding="utf-8")
     accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
     accounts.loc[len(accounts)] = {
@@ -1013,7 +1066,7 @@ def strategy_module(strategy_scenarios: Path) -> Callable[[str, str], Path]:
     """Write a module into the private copy's ``strategies/`` folder."""
     def _write(name: str, text: str) -> Path:
         path = strategy_scenarios / "strategies" / f"{name}.py"
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1078,7 +1131,7 @@ def _commit_files(repo: git.Repo, files: Mapping[str, str] | None = None,
     root = Path(str(repo.working_tree_dir))
     for name, text in (files or {}).items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text(text)
+        (root / name).write_text(text, encoding="utf-8")
     repo.git.add(A=True)
     actor = git.Actor("t", "t@t")
     return repo.index.commit(message, author=actor, committer=actor).hexsha
@@ -1102,7 +1155,7 @@ def data_repo_sim(tmp_path: Path, test_data_dir: Path) -> Path:
     data_dir = data_repo / "sim"
     data_repo.mkdir()
     test_data_dir.rename(data_dir)
-    (data_repo / ".gitignore").write_text("sim/.analysis\nstate/\n")
+    (data_repo / ".gitignore").write_text("sim/.analysis\nstate/\n", encoding="utf-8")
     repo = git.Repo.init(data_repo, b="main")
     with repo.config_writer() as cw:
         cw.set_value("commit", "gpgsign", "false")
@@ -1112,6 +1165,30 @@ def data_repo_sim(tmp_path: Path, test_data_dir: Path) -> Path:
     repo.index.commit("init", author=actor, committer=actor)
     repo.close()
     return data_dir
+
+
+@pytest.fixture(scope="function")
+def free_port() -> int:
+    """A TCP port on 127.0.0.1 nothing was listening on a moment ago."""
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.fixture(scope="function")
+def hub_logins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """The machine's logins as the hub commands (#766) see them: ``alice``
+    and ``bill``, with homes under ``tmp_path/home``. Returns their homes."""
+    from zabob.retirement.jupyter import hub
+
+    homes = {name: tmp_path / "home" / name for name in ("alice", "bill")}
+    for home in homes.values():
+        home.mkdir(parents=True)
+    monkeypatch.setattr(hub, "home_of", homes.get)
+    monkeypatch.setattr(hub, "logins", lambda: sorted(homes))
+    return homes
 
 
 @pytest.fixture(scope="function")
@@ -1125,6 +1202,25 @@ def data_repo_origin(tmp_path: Path, data_repo_sim: Path) -> Path:
         repo.create_remote("origin", str(origin))
         repo.git.push("-q", "-u", "origin", "main")
     return origin
+
+
+@pytest.fixture(scope="function")
+def other_clone(tmp_path: Path, data_repo_origin: Path, commit_files: CommitFiles) -> Callable[..., str]:
+    """``other_clone({path: text}, message)``: another clone of
+    ``data_repo_origin`` (another machine, #785) commits the files on its
+    ``main`` and pushes; returns the commit. Paths are from the data repo's
+    top (``sim/...``)."""
+    clone = tmp_path / "elsewhere"
+
+    def _push(files: dict[str, str], message: str = "another machine's commit") -> str:
+        if not clone.exists():
+            git.Repo.clone_from(data_repo_origin, clone).close()
+        with git.Repo(clone) as other:
+            other.git.pull("-q", "--ff-only")
+            made = commit_files(other, files, message)
+            other.git.push("-q", "origin", "main")
+        return made
+    return _push
 
 
 @pytest.fixture(scope="function")
@@ -1180,10 +1276,10 @@ def write_guard_rails(retire_alice_csv: Callable[[str], Path]) -> Callable[..., 
 
 @pytest.fixture(scope="function")
 def write_aux(test_data_dir: Path) -> Callable[[str, str], Path]:
-    """Write a file into the private data copy's ``aux/`` directory."""
+    """Write a file into the private data copy's ``tables/`` directory."""
     def _write(filename: str, text: str) -> Path:
-        path = test_data_dir / "aux" / filename
-        path.write_text(text)
+        path = test_data_dir / "tables" / filename
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1207,8 +1303,8 @@ def qqq_prices(test_data_dir: Path) -> Path:
     and ABCDX (which has no prices). Returns the data dir."""
     (test_data_dir / "prices").mkdir(exist_ok=True)
     (test_data_dir / "prices" / "security_price__QQQ.csv").write_text(
-        "effective_date,price\n2025-12-31,400.00\n2026-09-30,580.00\n2026-10-13,609.00\n")
-    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Nasdaq 100\nABCDX,A fund\n")
+        "effective_date,price\n2025-12-31,400.00\n2026-09-30,580.00\n2026-10-13,609.00\n", encoding="utf-8")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nQQQ,Nasdaq 100\nABCDX,A fund\n", encoding="utf-8")
     return test_data_dir
 
 
@@ -1218,7 +1314,7 @@ def scenario_own_prices(retire_alice_csv: Callable[[str], Path], add_account_val
     lacks, and a Roth_Alice lot holding 10 shares of it."""
     own = retire_alice_csv("prices")
     own.mkdir(exist_ok=True)
-    (own / "security_price__QQQX.csv").write_text("effective_date,price\n2026-05-29,10.00\n")
+    (own / "security_price__QQQX.csv").write_text("effective_date,price\n2026-05-29,10.00\n", encoding="utf-8")
     add_account_value("Asset_Roth_Alice", lot="x", symbol="QQQX", quantity="10", opening_balance="1.00")
 
 
@@ -1242,7 +1338,7 @@ def write_series(retire_alice_csv: Callable[[str], Path]) -> Callable[[str, str]
     ``(series name, "effective_date,annual_rate" rows)``, rates in percent."""
     def _write(series: str, rows: str) -> Path:
         path = retire_alice_csv("series") / f"rate__{series}.csv"
-        path.write_text(f"effective_date,annual_rate\n{rows}\n")
+        path.write_text(f"effective_date,annual_rate\n{rows}\n", encoding="utf-8")
         return path
     return _write
 
@@ -1258,10 +1354,10 @@ def blended_fund(test_data_dir: Path, set_brokerage_lots: Callable[[list[dict[st
          "opening_cost_basis": "200000.00"},
     ])
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nFND,,stock_us,60%\nFND,,bond,40%\n")
+        "symbol,as_of,asset_class,weight\nFND,,stock_us,60%\nFND,,bond,40%\n", encoding="utf-8")
     calendar = test_data_dir / "scenarios" / "retire_alice" / "calendar.csv"
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,fund,"), encoding="utf-8")
     write_series("stock_us", "2026-01-31,8%")
     write_series("bond", "2026-01-31,4%")
 
@@ -1318,7 +1414,7 @@ def write_itemization(test_data_dir: Path) -> Callable[..., None]:
         folder = test_data_dir / "itemizations"
         folder.mkdir(exist_ok=True)
         rows = "".join(f"item{n},{value}\n" for n, value in enumerate(values, 1))
-        (folder / f"{name}.csv").write_text(f"Item,Value\n{rows}")
+        (folder / f"{name}.csv").write_text(f"Item,Value\n{rows}", encoding="utf-8")
     return _write
 
 
@@ -1383,6 +1479,51 @@ def add_person(test_data_dir: Path) -> Callable[..., None]:
                **({"kind": "person"} if not columns.get("role") else {}), **columns}
         pd.concat([persons, pd.DataFrame([row])], ignore_index=True).fillna("").to_csv(
             path, index=False)
+    return _add
+
+
+@pytest.fixture(scope="function")
+def update_person(test_data_dir: Path) -> Callable[..., None]:
+    """Set columns on one person of the private data copy's shared
+    persons.csv, adding any column it lacks: ``update_person("bill",
+    roth_clock_start="2009")``."""
+    def _update(person: str, **columns: str) -> None:
+        path = test_data_dir / "persons.csv"
+        persons = pd.read_csv(path, dtype=str, keep_default_na=False)
+        row = persons["id"] == person
+        assert row.any(), person
+        for column, value in columns.items():
+            if column not in persons.columns:
+                persons[column] = ""
+            persons.loc[row, column] = value
+        persons.to_csv(path, index=False)
+    return _update
+
+
+INHERITED_ROTH_BILL = "Asset_InheritedRoth_Bill"
+
+
+@pytest.fixture(scope="function")
+def add_inherited_roth(retire_alice_csv: Callable[[str], Path]) -> Callable[..., str]:
+    """``add_inherited_roth(**lot_columns)``: a Roth IRA Bill inherited from
+    someone outside the household (#257), in an account of its own, whose
+    name it returns: $50,000, of which $20,000 is basis, with no ``acquired``
+    date (so no ten-year deadline) unless ``lot_columns`` say otherwise."""
+    def _add(**lot_columns: str) -> str:
+        accounts = pd.read_csv(retire_alice_csv("accounts.csv"), dtype=str, keep_default_na=False)
+        accounts.loc[len(accounts)] = {
+            **dict.fromkeys(accounts.columns, ""),
+            "name": INHERITED_ROTH_BILL, "kind": "asset", "subkind": "retirement",
+            "owner": "bill", "opened": "2026-01-31", "meta_json": "{}"}
+        accounts.to_csv(retire_alice_csv("accounts.csv"), index=False)
+        lots = pd.read_csv(retire_alice_csv("account_lots.csv"), dtype=str, keep_default_na=False)
+        lots.loc[len(lots)] = {
+            **dict.fromkeys(lots.columns, ""),
+            "account_name": INHERITED_ROTH_BILL, "lot": "default", "subkind": "inherited_roth_ira",
+            "opening_balance": "50000.00",
+            "opening_cost_basis": "20000.00", **lot_columns}
+        lots.to_csv(retire_alice_csv("account_lots.csv"), index=False)
+        return INHERITED_ROTH_BILL
     return _add
 
 
@@ -1455,13 +1596,15 @@ def mistaken_symbol(test_data_dir: Path) -> str:
     allocations.csv (beside VTI's), a shared price file and retire_alice's
     own. For ``sim symbol delete`` (#191); hold it with
     ``set_brokerage_lots``. Returns the symbol."""
-    (test_data_dir / "securities.csv").write_text("symbol,name\nXOLD,A mistake\nVTI,Total market\n")
+    (test_data_dir / "securities.csv").write_text("symbol,name\nXOLD,A mistake\nVTI,Total market\n", encoding="utf-8")
     (test_data_dir / "allocations.csv").write_text(
-        "symbol,as_of,asset_class,weight\nXOLD,,bond,100%\nXOLD,2030-01,cash,100%\nVTI,,stock_us,100%\n")
-    (test_data_dir / "prices" / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,10.00\n")
+        "symbol,as_of,asset_class,weight\nXOLD,,bond,100%\nXOLD,2030-01,cash,100%\nVTI,,stock_us,100%\n",
+            encoding="utf-8")
+    (test_data_dir / "prices" / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,10.00\n",
+                                                                       encoding="utf-8")
     own = test_data_dir / "scenarios" / "retire_alice" / "prices"
     own.mkdir(exist_ok=True)
-    (own / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,11.00\n")
+    (own / "security_price__XOLD.csv").write_text("effective_date,price\n2026-01-02,11.00\n", encoding="utf-8")
     return "XOLD"
 
 
@@ -1501,15 +1644,15 @@ def two_lot_run_file(test_data_dir: Path, retire_alice_csv: Callable[[str], Path
     ])
 
     (test_data_dir / "securities.csv").write_text(
-        "symbol,name\nAAA,Alpha Growth Fund\nBBB,Beta Income Fund\n")
+        "symbol,name\nAAA,Alpha Growth Fund\nBBB,Beta Income Fund\n", encoding="utf-8")
 
     calendar = retire_alice_csv("calendar.csv")
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"))
-    (test_data_dir / "aux" / "rate__AAA.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,2%\n")
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"), encoding="utf-8")
+    (test_data_dir / "tables" / "rate__AAA.csv").write_text(
+        "effective_date,annual_rate\n2026-01-31,2%\n", encoding="utf-8")
     (retire_alice_csv("chains/source") / "lotb.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Brokerage_Joint,b,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Brokerage_Joint,b,,,,\n", encoding="utf-8")
 
     scheduled = pd.read_csv(retire_alice_csv("scheduled.csv"), dtype=str, keep_default_na=False)
     scheduled.loc[len(scheduled)] = {
@@ -1568,8 +1711,8 @@ def tax_module(test_data_dir: Path, test_data: Path) -> Callable[..., Path]:
         path = test_data_dir / "taxes" / f"{name}.py"
         path.parent.mkdir(parents=True, exist_ok=True)
         if text is None:
-            text = (test_data / "sim" / "tax_calculators" / "taxes" / f"{name}.py").read_text()
-        path.write_text(text)
+            text = (test_data / "sim" / "tax_calculators" / "taxes" / f"{name}.py").read_text(encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
         return path
     return _write
 
@@ -1850,7 +1993,7 @@ def code_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> git.Repo:
     for name, text in {"src/engine.py": "v1\n", "templates/t.csv": "", "pyproject.toml": "",
                        "uv.lock": "", "docs/guide.md": "one\n"}.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text(text)
+        (root / name).write_text(text, encoding="utf-8")
     repo.git.add(A=True)
     actor = git.Actor("t", "t@t")
     repo.index.commit("init", author=actor, committer=actor)
@@ -1910,20 +2053,20 @@ def installed_program(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     program = tmp_path / "tool" / "bin"
     program.mkdir(parents=True)
-    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n')
-    (program / "python").write_text("#!/bin/sh\nexit 1\n")
+    (program / "sim").write_text(f'#!/bin/sh\necho "$@" >> {program / "calls"}\n', encoding="utf-8")
+    (program / "python").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     for name in ("sim", "python"):
         (program / name).chmod(0o755)
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     gitconfig = tmp_path / "gitconfig"
-    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n")
+    gitconfig.write_text("[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
     for who in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{who}_NAME", "t")
         monkeypatch.setenv(f"GIT_{who}_EMAIL", "t@t")
-    monkeypatch.delenv("ANALYSIS_NO_BUILDER", raising=False)
+    monkeypatch.delenv("ZABOB_NO_BUILDER", raising=False)
     named = resources.INSTALLED + str(program)
     monkeypatch.setattr(resources, "CHECKOUT_DIR", None)
     monkeypatch.setattr(data_repo, "CODE_REPO_DIR", None)
@@ -2037,8 +2180,8 @@ def two_lot_ensemble_runs_dir(
         {"lot": "b", "opening_balance": "200000.00", "opening_cost_basis": "140000.00"},
     ])
     calendar = retire_alice_csv("calendar.csv")
-    calendar.write_text(calendar.read_text().replace(
-        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"))
+    calendar.write_text(calendar.read_text(encoding="utf-8").replace(
+        ",Asset_Brokerage_Joint,default,", ",Asset_Brokerage_Joint,a,"), encoding="utf-8")
     append_calendar_row(
         date="2027-02-28", kind="set_rate", name="checking_rate_vary",
         series="Asset_Checking", amount="4.5%",
@@ -2238,16 +2381,16 @@ def inflation_batch(_built_batches: Callable[[str], Path], state_dir: Path) -> P
 @pytest.fixture(scope="function")
 def calibration_cache_dir(tmp_path: Path) -> Path:
     """A private, initially empty download cache for
-    ``analysis historical``."""
+    ``sim historical``."""
     return tmp_path / "calibration_cache"
 
 
 @pytest.fixture(scope="function")
 def calibration_rate_csv(tmp_path: Path) -> Path:
     """A ``date,rate`` CSV of three annual rates (3%, 5%, 4% for 2020-2022),
-    ``analysis historical``'s input format for a series already in percent."""
+    ``sim historical``'s input format for a series already in percent."""
     path = tmp_path / "premiums.csv"
-    path.write_text("date,rate\n2020-01-01,3.0\n2021-01-01,5.0\n2022-01-01,4.0\n")
+    path.write_text("date,rate\n2020-01-01,3.0\n2021-01-01,5.0\n2022-01-01,4.0\n", encoding="utf-8")
     return path
 
 
@@ -2318,7 +2461,7 @@ def fake_state(intent_dir: Path, runs_dir: Path) -> Callable[..., Path]:
 
 @pytest.fixture(scope="function")
 def without_template_aux(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hide the code repository's templates/aux/ (#317) from the loader, so a
+    """Hide the code repository's templates/tables/ (#317) from the loader, so a
     test that deletes one of the private copy's aux tables sees it missing
     instead of the template's copy filling in."""
     monkeypatch.setattr("zabob.retirement.sim.loader.TEMPLATE_AUX_DIR", tmp_path_factory.mktemp("no_template_aux"))
@@ -2334,7 +2477,7 @@ def state_tax_without_its_deduction(
     "state tax uses the federal standard deduction". The prototype's idle
     latent factors add their one note on things defined but not read yet."""
     add_state_tax()
-    (test_data_dir / "aux" / "state_standard_deduction__CA.csv").unlink()
+    (test_data_dir / "tables" / "state_standard_deduction__CA.csv").unlink()
 
 
 @pytest.fixture(scope="session")
@@ -3112,3 +3255,18 @@ def write_old_import_map(test_data_dir: Path) -> Callable[[str, str], Path]:
         return path
 
     return write
+
+
+@pytest.fixture
+def notebooks_root(tmp_path: Path) -> Generator[Path]:
+    """A folder with a notebooks/ holding one notebook, ``net_worth.ipynb``,
+    which `sim jupyter` takes for the checkout's or the data repo's (#762).
+    Function-scoped: the commands write .mcp.json and state/ into it."""
+    from unittest.mock import patch
+
+    from zabob.retirement.jupyter import server
+
+    (tmp_path / "notebooks").mkdir()
+    (tmp_path / "notebooks" / "net_worth.ipynb").write_text("{}", encoding="utf-8")
+    with patch.object(server, "root", return_value=tmp_path):
+        yield tmp_path

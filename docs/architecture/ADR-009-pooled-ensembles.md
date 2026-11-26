@@ -5,7 +5,6 @@
 - **Status:** Accepted
 - **Date:** 2026-10-28
 - **Supersedes:** —
-- **Amended:** see [Amendments](#amendments) at the end.
 - **Related:** [ADR-006](ADR-006-ensemble-scenarios.md) (ensembles: keyed draws, batches, member 0, pairing, the series store and the draws database), [ADR-004](ADR-004-reproducibility-and-activation.md) §11-12 (what can't have changed; the background builder), [ADR-007](ADR-007-sensitivity-analysis.md) (sensitivity), [ADR-003](ADR-003-registries-and-csv-schemas.md) §4.5 (`scenario.csv`), issues [#292](https://github.com/BobKerns/zabob-retirement/issues/292) (this design; decisions recorded there) and [#340](https://github.com/BobKerns/zabob-retirement/issues/340) (a compound-episode template and the history weights).
 
 ## Context
@@ -65,7 +64,7 @@ Member 0 is the base component's member 0, so the pool, like every ensemble, has
 
 ### 6. Reports
 
-A pool's batch is an ordinary batch of members, so `sim ensemble summary|compare`, their `--chart`, `sim compare` (member 0) and the notebook widgets read it as they read any ensemble. Two additions:
+A pool's batch is an ordinary batch of members, so `sim ensemble summary|compare`, their `--graph`, `sim compare` (member 0) and the notebook widgets read it as they read any ensemble. Two additions:
 
 - **The summary** prints, under its header, the pool's members by component with their weights and shared seed (`pool of 3, seed 7: e_great_inflation 36 (15%), ...`), and which components the worst 5% of members came from, ranked by each member's lowest CPI-constant net worth over the run (after-tax unless `--pre-tax`; net worth even with `--account`, since an account only some components have is 0 in the rest), the worst point of a lifetime rather than where it ends (`worst 5% (12) by lowest CPI-constant net worth: 6 e_pandemic_spike, 5 e_great_inflation, ...`). The pooled tail means rest on those members, so a small count from a component is a reason for more members. There is no other breakdown by component: each component's own report is one command away.
 - **The reserve** is the pool's own, when it sets one, else its base component's (`series_db._pool_meta`).
@@ -98,9 +97,3 @@ The draws database (ADR-006 §6) is kept per component. `member` gains `componen
 
 - Weighted members (importance sampling, oversampling the worst component), if more members ever isn't enough.
 - Weights that vary by member, such as a probability of trouble that depends on the year.
-
-## Amendments
-
-Each entry changed this ADR's design. The sections it names were rewritten in place to describe the current design; git history has the earlier text.
-
-- [#340](https://github.com/BobKerns/zabob-retirement/issues/340): a compound episode template exists, so pool members can meet two episodes (Consequences, Limits).

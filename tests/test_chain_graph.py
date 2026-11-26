@@ -69,7 +69,7 @@ def test_terminal_protocol_asks_the_terminal(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     monkeypatch.delenv("TMUX", raising=False)
-    monkeypatch.delenv("ANALYSIS_IMAGE_PROTOCOL", raising=False)
+    monkeypatch.delenv("ZABOB_IMAGE_PROTOCOL", raising=False)
     if term_program is None:
         monkeypatch.delenv("TERM_PROGRAM", raising=False)
     else:
@@ -82,7 +82,7 @@ def test_terminal_protocol_asks_the_terminal(
 def test_image_protocol_can_be_forced(
     monkeypatch: pytest.MonkeyPatch, forced: str, expected: str | None,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_IMAGE_PROTOCOL", forced)
+    monkeypatch.setenv("ZABOB_IMAGE_PROTOCOL", forced)
     monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
     monkeypatch.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b_Gi=31;OK\x1b\\")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
@@ -95,7 +95,7 @@ def test_image_protocol_can_be_forced(
 
 
 def test_no_protocol_inside_tmux_or_when_piped(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANALYSIS_IMAGE_PROTOCOL", raising=False)
+    monkeypatch.delenv("ZABOB_IMAGE_PROTOCOL", raising=False)
     monkeypatch.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b_Gi=31;OK\x1b\\")
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     assert chain_graph.terminal_protocol() is None
@@ -123,6 +123,21 @@ def test_graph_options_are_one_of_three(guide_chains: Path, tmp_path: Path) -> N
     assert both.exit_code == 2 and "use one of --mermaid, --graph and --graph-file" in both.output
     gif = _sim(guide_chains, "bridge", "--graph-file", str(tmp_path / "chart.gif"))
     assert gif.exit_code == 2 and "must end in .png or .svg" in gif.output
+
+
+def test_chart_is_graph_and_table_adds_the_trees(
+    guide_chains: Path, tmp_path: Path, stub_render: list[tuple[str, str]],
+) -> None:
+    """Issue #779: --chart and --chart-file are --graph and --graph-file under
+    other names; the flowchart comes alone, and --table adds the trees after it."""
+    alone = _sim(guide_chains, "bridge", "--chart-file", str(tmp_path / "alone.svg"))
+    assert alone.exit_code == 0, alone.output
+    assert (tmp_path / "alone.svg").read_bytes() == FAKE_PNG
+    assert "Asset_Savings" not in alone.output
+    both = _sim(guide_chains, "bridge", "--graph-file", str(tmp_path / "both.svg"), "--table")
+    assert both.exit_code == 0, both.output
+    assert "Asset_Savings" in both.output
+    assert len(stub_render) == 2
 
 
 def test_graph_file_writes_the_chart(
@@ -155,7 +170,8 @@ def test_graph_without_an_image_terminal_writes_a_png(
     assert result.exit_code == 0, result.output
     written = next(tmp_path.glob("chain-*.png"))
     assert f"wrote {written}" in result.output and written.read_bytes() == FAKE_PNG
-    assert "iTerm2, kitty, Ghostty" in result.output
+    assert "iTerm2, kitty, Ghostty" in result.output and "Windows Terminal (1.22 or later)" in result.output
+    assert "image viewer to open" not in result.output  # CliRunner's output is no terminal, so nobody to see it
 
 
 def test_graph_in_a_kitty_terminal(
@@ -168,6 +184,41 @@ def test_graph_in_a_kitty_terminal(
     assert result.output.startswith("\x1b_Ga=T,f=100,q=2,m=1;")
 
 
+def test_graph_in_a_sixel_terminal(
+    guide_chains: Path, monkeypatch: pytest.MonkeyPatch, stub_render: list[tuple[str, str]],
+) -> None:
+    """#777: Windows Terminal draws Sixel, and says nothing of its cell size
+    from Python's side, so the chart is drawn for its 10 by 20 cell."""
+    import io
+
+    from PIL import Image
+
+    png = io.BytesIO()
+    Image.new("RGB", (40, 12), "white").save(png, format="PNG")
+    monkeypatch.setattr(chain_graph, "render", lambda *args, **kwargs: png.getvalue())
+    monkeypatch.setattr(chain_graph, "terminal_protocol", lambda: "sixel")
+    monkeypatch.setattr(chain_graph, "cell_size", lambda: None)
+    monkeypatch.setattr(chain_graph, "asked_cell_size", lambda: None)
+    result = _sim(guide_chains, "bridge", "--graph")
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith('\x1bPq"1;1;40;12#0;2;100;100;100#0!40~-#0!40~\x1b\\')
+
+
+def test_graph_without_an_image_terminal_opens_the_png(
+    guide_chains: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub_render: list[tuple[str, str]],
+) -> None:
+    from zabob.retirement import oscompat
+
+    opened: list[Path] = []
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(chain_graph, "open_fallback", lambda: True)
+    monkeypatch.setattr(oscompat, "open_file", lambda path: opened.append(path) or True)
+    result = _sim(guide_chains, "bridge", "--graph")
+    assert result.exit_code == 0, result.output
+    assert opened == [next(tmp_path.glob("chain-*.png"))]
+    assert "asked the image viewer to open it" in result.output
+
+
 def test_graph_error_is_one_line(guide_chains: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(source: str, fmt: str = "png", scale: float = 2.0, fit_width: float | None = None) -> bytes:
         raise chain_graph.GraphError("no browser to draw the chart with")
@@ -177,6 +228,7 @@ def test_graph_error_is_one_line(guide_chains: Path, monkeypatch: pytest.MonkeyP
     assert result.exit_code == 1 and "Error: no browser to draw the chart with" in result.output
 
 
+@pytest.mark.slow
 def test_render_draws_a_png_with_mermaid() -> None:
     """The real thing, where a browser and a copy of Mermaid are at hand."""
     chart = "flowchart LR\n    a[Alice] -->|1: all| b([bridge])\n"
@@ -210,3 +262,17 @@ def test_graph_file_that_cant_be_written(
 ) -> None:
     result = _sim(guide_chains, "bridge", "--graph-file", str(tmp_path / "missing" / "chart.png"))
     assert result.exit_code == 1 and f"couldn't write {tmp_path / 'missing' / 'chart.png'}" in result.output
+
+
+def test_only_a_sixel_terminal_is_asked_its_cell_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#777: kitty and iTerm2 images size themselves, so they cost no extra
+    round trip, and keep the size they had when the ioctl can't say."""
+    from zabob.retirement.sim import cli
+
+    asked: list[bool] = []
+    monkeypatch.setattr(chain_graph, "cell_size", lambda: None)
+    monkeypatch.setattr(chain_graph, "asked_cell_size", lambda: asked.append(True) or (9.0, 18.0))
+    assert cli._terminal_cell("kitty") is None and cli._terminal_cell("iterm") is None and not asked
+    assert cli._terminal_cell("sixel") == (9.0, 18.0) and asked
+    monkeypatch.setattr(chain_graph, "asked_cell_size", lambda: None)
+    assert cli._terminal_cell("sixel") == chain_graph.SIXEL_CELL

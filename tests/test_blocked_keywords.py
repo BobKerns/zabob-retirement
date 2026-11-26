@@ -63,7 +63,7 @@ def test_no_tracked_file_contains_a_blocked_keyword() -> None:
     # The private list too, wherever this run can see it.
     private = {
         name: os.environ[name]
-        for name in ("BLOCKED_KEYWORDS_PRIVATE", "ANALYSIS_DATA_DIR")
+        for name in ("BLOCKED_KEYWORDS_PRIVATE", "ZABOB_DATA_DIR")
         if name in os.environ
     }
     result = _check(REPO, "--all", extra_env=private)
@@ -240,7 +240,7 @@ def test_the_private_list_file_is_read_from_the_data_repo(
 
     assert _check(scratch_repo, "--staged").returncode == 0
 
-    result = _check(scratch_repo, "--staged", extra_env={"ANALYSIS_DATA_DIR": str(data / "sim")})
+    result = _check(scratch_repo, "--staged", extra_env={"ZABOB_DATA_DIR": str(data / "sim")})
 
     assert result.returncode == 1
     assert "notes.txt:1" in result.stderr

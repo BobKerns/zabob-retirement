@@ -249,7 +249,7 @@ def test_sim_ensemble_compare_shows_a_one_sided_account_without_deltas(
     assert "baseline tail" not in result.output
 
 
-# --chart and --chart-file (#167, #393)
+# --graph and --graph-file (#167, #393)
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -261,15 +261,16 @@ def test_sim_ensemble_summary_chart_file_writes_an_svg_before_the_tables(
     chart = tmp_path / "fan.svg"
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "summary", "baseline", "--runs-dir", str(runs_dir),
-        "--chart-file", str(chart), "--table",
+        "--graph-file", str(chart), "--table",
     ])
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines()[0] == f"wrote {chart}"  # the chart comes first (#393)
     assert result.stdout.splitlines()[2].split()[0] == "year"
-    svg = chart.read_text()
+    svg = chart.read_text(encoding="utf-8")
     assert "<svg" in svg and "net worth fan chart (CPI-constant) (baseline)" in svg
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_graph_draws_every_panel_the_options_ask_for(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path, tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -293,7 +294,7 @@ def test_sim_ensemble_compare_graph_draws_every_panel_the_options_ask_for(
     seeded_ensemble_batch("child", 1)
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "compare", "baseline", "child", "--runs-dir", str(runs_dir),
-        "--reserve", "1000000", "--dollars", "nominal", "--chart",
+        "--reserve", "1000000", "--dollars", "nominal", "--graph",
     ])
     assert result.exit_code == 0, result.output
     (figure,) = figures
@@ -314,10 +315,10 @@ def test_sim_ensemble_compare_graph_of_a_one_sided_account_is_its_fan_chart(
     chart = tmp_path / "one-sided.svg"
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "compare", "baseline", "child", "--runs-dir", str(runs_dir),
-        "--account", "Asset_Renamed", "--chart-file", str(chart),
+        "--account", "Asset_Renamed", "--graph-file", str(chart),
     ])
     assert result.exit_code == 0, result.output
-    assert "account Asset_Renamed fan chart (CPI-constant) (child)" in chart.read_text()
+    assert "account Asset_Renamed fan chart (CPI-constant) (child)" in chart.read_text(encoding="utf-8")
 
 
 def test_sim_ensemble_graph_shows_in_an_image_terminal(
@@ -330,7 +331,7 @@ def test_sim_ensemble_graph_shows_in_an_image_terminal(
     monkeypatch.setattr(chain_graph, "swallow_replies", lambda: None)
     seeded_ensemble_batch("baseline", 1)
     result = CliRunner().invoke(main, [
-        "sim", "ensemble", "summary", "baseline", "--runs-dir", str(runs_dir), "--chart",
+        "sim", "ensemble", "summary", "baseline", "--runs-dir", str(runs_dir), "--graph",
     ])
     assert result.exit_code == 0, result.output
     assert "\x1b_Ga=T,f=100,q=2" in result.output
@@ -338,8 +339,8 @@ def test_sim_ensemble_graph_shows_in_an_image_terminal(
 
 
 @pytest.mark.parametrize("options, message", [
-    (["--chart", "--chart-file", "chart.png"], "use one of --chart and --chart-file"),
-    (["--chart-file", "chart.gif"], "must end in .png or .svg"),
+    (["--graph", "--graph-file", "chart.png"], "use one of --graph and --graph-file"),
+    (["--graph-file", "chart.gif"], "must end in .png or .svg"),
 ])
 def test_sim_ensemble_graph_options_are_checked_before_loading(
     runs_dir: Path, options: list[str], message: str,
@@ -363,6 +364,7 @@ def test_figure_dpi_matches_the_terminal_text_height() -> None:
 # Several variants (#328)
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_with_several_variants_prints_the_notebooks_two_tables(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path,
 ) -> None:
@@ -407,6 +409,7 @@ def test_sim_ensemble_compare_with_several_variants_prints_the_notebooks_two_tab
     assert len(deltas) == len(tables.deltas_table("baseline", ["child", "other"]))
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_names_the_recipes_without_the_account(
     seeded_ensemble_batch: Callable[[str, int], Path], runs_dir: Path,
 ) -> None:
@@ -432,6 +435,7 @@ def test_sim_ensemble_compare_refuses_a_variant_named_twice(
     assert result.exit_code == 2 and "name each variant once" in result.output
 
 
+@pytest.mark.slow
 def test_sim_ensemble_compare_graph_draws_a_column_for_each_variant(
     seeded_ensemble_batch: Callable[..., Path], runs_dir: Path, tmp_path: Path,
 ) -> None:
@@ -441,10 +445,10 @@ def test_sim_ensemble_compare_graph_draws_a_column_for_each_variant(
     chart = tmp_path / "grid.svg"
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "compare", "baseline", "child", "other",
-        "--runs-dir", str(runs_dir), "--chart-file", str(chart),
+        "--runs-dir", str(runs_dir), "--graph-file", str(chart),
     ])
     assert result.exit_code == 0, result.output
-    svg = chart.read_text()
+    svg = chart.read_text(encoding="utf-8")
     assert "child − baseline, future by future (3 paired members)" in svg
     assert "other − baseline: no paired futures" in svg
     assert "(the recipes have different seeds" in svg
@@ -456,10 +460,10 @@ def test_sim_ensemble_compare_graph_refuses_more_variants_than_it_draws(
 ) -> None:
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "compare", "e0", "a", "b", "c", "d", "e",
-        "--runs-dir", str(runs_dir), "--chart",
+        "--runs-dir", str(runs_dir), "--graph",
     ])
     assert result.exit_code == 2
-    assert "--chart draws at most 4 variants" in result.output
+    assert "--graph draws at most 4 variants" in result.output
 
 
 def test_sim_ensemble_summary_and_compare_take_json(

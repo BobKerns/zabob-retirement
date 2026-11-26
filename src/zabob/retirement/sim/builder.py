@@ -23,7 +23,7 @@ Rules (Bob, #300):
   needs it starts it.
 - It is opt-in per workspace (``sim builder install``, which
   ``scripts/setup.sh`` runs except under CI or an agent), and
-  ``ANALYSIS_BUILDER=off`` turns it off entirely.
+  ``ZABOB_BUILDER=off`` turns it off entirely.
 
 Its work is jobs, a scenario and a step (#454): ``run`` (``sim load``: the
 scenario's run, or its Monte Carlo batch), then for an ensemble ``series``
@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import fcntl
 import json
 import os
 import signal
@@ -66,8 +65,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from zabob.retirement.oscompat import WINDOWS, kill_tree, pid_alive, program, release_tree, start_detached, start_tree
 from zabob.retirement.resources import CHECKOUT_DIR, INSTALLED, home_checkout, program_home, program_sim, same_home
-from zabob.retirement.sim import builder_log
+from zabob.retirement.sim import builder_log, flock
 from zabob.retirement.sim.lineage import is_pool
 from zabob.retirement.sim.loader import (
     DEFAULT_INTENT_DIR,
@@ -106,6 +106,8 @@ DEFAULT_BRANCH = "main"
 IDLE_GRACE_SECONDS = 120.0
 # How often the daemon looks for requests and its build finishing.
 TICK_SECONDS = 0.5
+# How long `uninstall` waits on Windows for a stopped daemon to be gone (#748).
+STOP_WAIT_SECONDS = 60.0
 # Hook stubs this module writes into the data repo carry this line.
 HOOK_MARKER = "# analysis sim builder hook (#300)"
 HOOK_NAMES = ("post-commit", "post-checkout", "post-merge", "post-rewrite")
@@ -192,7 +194,7 @@ def _sensitivity_options(data_dir: Path, scenario: str) -> list[str]:
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_BUILDER=off`` (or 0/no/false): no daemon, no waiting."""
+    """``ZABOB_BUILDER=off`` (or 0/no/false): no daemon, no waiting."""
     return os.environ.get(BUILDER_SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
@@ -276,7 +278,7 @@ class BuilderPaths:
 def read_config(paths: BuilderPaths) -> dict[str, Any] | None:
     """The workspace's opt-in record, or None when it hasn't opted in."""
     try:
-        config = json.loads(paths.config.read_text())
+        config = json.loads(paths.config.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return config if isinstance(config, dict) and config.get("data_dir") else None
@@ -284,7 +286,7 @@ def read_config(paths: BuilderPaths) -> dict[str, Any] | None:
 
 def read_status(paths: BuilderPaths) -> dict[str, Any]:
     try:
-        status = json.loads(paths.status.read_text())
+        status = json.loads(paths.status.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return status if isinstance(status, dict) else {}
@@ -294,8 +296,17 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     """Write ``path`` whole, by rename, so a reader never sees half of it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(value, indent=2, sort_keys=True))
-    os.replace(tmp, path)
+    tmp.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Windows refuses to replace a file another process has open (a
+            # reader of status.json, antivirus); it is open only briefly (#748).
+            if not WINDOWS or attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def daemon_alive(paths: BuilderPaths) -> bool:
@@ -305,7 +316,7 @@ def daemon_alive(paths: BuilderPaths) -> bool:
     except FileNotFoundError:
         return False
     try:
-        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        flock.lock(fd, shared=True, block=False)
     except BlockingIOError:
         return True
     finally:
@@ -344,7 +355,7 @@ def installed_pair_problems(data_dir: Path) -> list[str]:
     problems = []
     pointer = data_dir / ".analysis"
     try:
-        named = pointer.read_text().strip()
+        named = pointer.read_text(encoding="utf-8").strip()
     except OSError:
         named = ""
     if not same_home(named, program_home()):
@@ -367,7 +378,7 @@ def pair_problems(code: Path | None, data_dir: Path) -> list[str]:
         problems.append(f"{private} doesn't lead to {data_dir.parent}")
     pointer = data_dir / ".analysis"
     try:
-        named = Path(pointer.read_text().strip()).resolve()
+        named = Path(pointer.read_text(encoding="utf-8").strip()).resolve()
     except OSError:
         named = None
     if named != code:
@@ -512,13 +523,36 @@ def _request(paths: BuilderPaths, kind: str, scenario: str | None = None,
     return made
 
 
+def _stop_requested(paths: BuilderPaths) -> bool:
+    """Whether a ``stop`` request waits, read without draining the rest."""
+    try:
+        names = sorted(paths.requests.glob("*.json"))
+    except OSError:
+        return False
+    for name in names:
+        try:
+            if json.loads(name.read_text(encoding="utf-8")).get("kind") == "stop":
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def _child_env() -> dict[str, str]:
+    """The environment of a build, fetch, roll or research the daemon starts."""
+    # GIT_OPTIONAL_LOCKS=0: a cancelled build on Windows is ended outright,
+    # and a `git status` it was in would leave .git/index.lock behind for the
+    # person's next git command (#748). Its commits' locks aren't optional.
+    return {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1", "GIT_OPTIONAL_LOCKS": "0"}
+
+
 def _drain_requests(paths: BuilderPaths) -> list[dict[str, Any]]:
     out = []
     if not paths.requests.is_dir():
         return out
     for path in sorted(paths.requests.glob("*.json")):
         try:
-            out.append(json.loads(path.read_text()))
+            out.append(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
         path.unlink(missing_ok=True)
@@ -526,8 +560,16 @@ def _drain_requests(paths: BuilderPaths) -> list[dict[str, Any]]:
 
 
 def _sim_executable() -> list[str]:
-    sim = Path(sys.executable).parent / "sim"
+    sim = program(Path(sys.executable).parent, "sim")
     return [str(sim)] if sim.exists() else [sys.executable, "-m", "zabob.retirement", "sim"]
+
+
+def _pair_sim(paths: BuilderPaths) -> list[str]:
+    """The pair's own code, whichever checkout asked (a reader, a hook in
+    another worktree linking the same data): what it builds with."""
+    code = (read_config(paths) or {}).get("code_dir")
+    sim = program_sim(code) if code else None
+    return [str(sim)] if sim is not None and sim.exists() else _sim_executable()
 
 
 def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
@@ -535,21 +577,28 @@ def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
     the same moment finds the daemon lock taken and exits."""
     paths.dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, BUILDER_SWITCH_ENV: "off"}
-    # The pair's own code, whichever checkout asked (a reader, a hook in
-    # another worktree linking the same data).
-    code = (read_config(paths) or {}).get("code_dir")
-    sim = program_sim(code) if code else None
-    command = [str(sim)] if sim is not None and sim.exists() else _sim_executable()
+    command = _pair_sim(paths)
     # The daemon writes its log itself; only what it can't (a traceback) goes
     # to stderr, kept in the log unindented, so shown without -v.
     log = builder_log.file_for(paths.log_dir, datetime.now())
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "ab") as stderr:
-        subprocess.Popen(
+        _detach(start_detached(
             [*command, "builder", "run", "--data-dir", str(data_dir)],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr,
-            start_new_session=True, env=env, close_fds=True,
-        )
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr, env=env, close_fds=True,
+            # Not the starter's folder: Windows won't remove or rename a folder
+            # that is a running process's (a code worktree whose hook started it).
+            cwd=paths.dir,
+        ))
+
+
+def _detach(process: subprocess.Popen[bytes]) -> None:
+    """Leave ``process`` running and never wait for it. On Windows a return
+    code keeps Popen from warning, when collected, that it still runs; on
+    POSIX the collected Popen is reaped by the next one, which a return code
+    would stop, leaving a zombie in a long-lived process (a notebook's)."""
+    if WINDOWS:
+        process.returncode = 0
 
 
 def notify(data_dir: Path, *, start: bool = True) -> str:
@@ -595,16 +644,6 @@ def hold(data_dir: Path, scenarios: Sequence[str]) -> None:
     _write_json(path, {"pid": os.getpid(), "scenarios": sorted(_holding[path])})
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # someone else's, but there
-    return True
-
-
 def held(paths: BuilderPaths) -> dict[str, int]:
     """Each held scenario and the pid of the command holding it. A hold
     whose process has gone (killed, so its exit handler never ran) is
@@ -614,12 +653,12 @@ def held(paths: BuilderPaths) -> dict[str, int]:
         return out
     for path in paths.holds.glob("*.json"):
         try:
-            body = json.loads(path.read_text())
+            body = json.loads(path.read_text(encoding="utf-8"))
             pid = int(body["pid"])
             names = [str(name) for name in body["scenarios"]]
         except (OSError, ValueError, KeyError, TypeError):
             continue  # being written; the next look sees it whole
-        if not _alive(pid):
+        if not pid_alive(pid):
             path.unlink(missing_ok=True)
             continue
         out.update(dict.fromkeys(names, pid))
@@ -698,6 +737,7 @@ class _Daemon:
         self.researcher: subprocess.Popen[bytes] | None = None
         self.research_reader: threading.Thread | None = None
         self.research_looked = float("-inf")
+        self.caught_up = float("-inf")
         self.research_ended = float("-inf")
 
     # The key a build is good for: the code trees and the scenario's data tree.
@@ -891,6 +931,26 @@ class _Daemon:
         """A reader asked for one of ``scenario``'s jobs: its others follow."""
         self.follow = [scenario, *[n for n in self.follow if n != scenario]]
 
+    def children_running(self) -> bool:
+        return any(p is not None and p.poll() is None for p in (self.fetcher, self.roller, self.researcher))
+
+    def await_children(self) -> None:
+        """Wait for a running price fetch, roll or research to finish (#748).
+        On Windows each is a Job Object this process holds the only handle
+        to, so exiting would end it in the middle of a commit or merge, or
+        throw away research already paid for. On POSIX each has its own
+        session and outlives the daemon."""
+        for what, process, reader in (("price fetch", self.fetcher, self.fetch_reader),
+                                      ("roll", self.roller, self.roll_reader),
+                                      ("research", self.researcher, self.research_reader)):
+            if process is not None and process.poll() is None:
+                self.log(f"waiting for the {what} to finish before stopping")
+                code = process.wait()
+                if reader is not None:
+                    reader.join(timeout=5)  # its last lines land before ours
+                release_tree(process)
+                self.log(f"the {what} finished (exit {code})")
+
     def cancel(self, why: str) -> None:
         build = self.build
         if build is None:
@@ -909,13 +969,13 @@ class _Daemon:
         if wanted:
             self._follow(name)
         key = self.key(name, trees)
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+        env = _child_env()
         self.log(f"building {job}")
         self.paths.dir.mkdir(parents=True, exist_ok=True)
-        process = subprocess.Popen(
+        process = start_tree(
             [*_sim_executable(), *step_command(self.data_dir, name, step)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert process.stdout is not None
         # A thread, so a chatty build never blocks on a full pipe while the
@@ -926,6 +986,25 @@ class _Daemon:
         self.build = _Build(job, key, process, time.time(), wanted, reader)
         self.cancelled.pop(job, None)
         self.state = "building"
+
+    def catch_up_tick(self) -> None:
+        """#785: once an hour, between builds, fetch ``main``'s upstream and
+        fast-forward ``main`` to it (``price_schedule.catch_up``), so prices,
+        rolls and weights another clone's builder pushed arrive here."""
+        from zabob.retirement.sim import price_schedule
+
+        # The hour itself is shared with the timer's tick and with the
+        # next daemon (this one exits when idle); this only keeps the loop
+        # from reading it every pass.
+        if self.build is not None or self.held or time.monotonic() - self.caught_up < 60:
+            return
+        self.caught_up = time.monotonic()
+        try:
+            lines = price_schedule.catch_up_if_due(self.data_dir)
+        except (price_schedule.PriceScheduleError, OSError) as exc:
+            lines = [f"not caught up with origin: {exc}"]
+        for line in lines:
+            self.log(line)
 
     def prices_tick(self, now: bool) -> None:
         """#560: note a price fetch that ended; merge fetched prices that
@@ -939,6 +1018,7 @@ class _Daemon:
             if self.fetch_reader is not None:
                 self.fetch_reader.join(timeout=5)
             code = self.fetcher.returncode
+            release_tree(self.fetcher)
             self.fetcher = self.fetch_reader = None
             self.fetch_ended = time.monotonic()
             self.log("fetched prices" if code == 0 else f"price fetch failed (exit {code})")
@@ -946,7 +1026,9 @@ class _Daemon:
         if not now and time.monotonic() - self.prices_looked < 60:
             return
         self.prices_looked = time.monotonic()
-        if not price_schedule.enabled(read_config(self.paths)):
+        config = read_config(self.paths)
+        # What it fetched is merged even once another clone writes (#785).
+        if not price_schedule.configured(config):
             return
         # Between builds only: a merge rewrites price files a build may be
         # reading, and changes the data version it records.
@@ -958,16 +1040,18 @@ class _Daemon:
                 return
             for line in merged:
                 self.log(line)
+        if not price_schedule.enabled(config):
+            return
         if time.monotonic() - self.fetch_ended < price_schedule.RETRY_SECONDS:
             return
         if not price_schedule.due(price_schedule.read_state(self.data_dir), datetime.now(UTC)):
             return
         self.log("fetching prices")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.fetcher = subprocess.Popen(
+        env = _child_env()
+        self.fetcher = start_tree(
             [*_sim_executable(), "builder", "prices", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.fetcher.stdout is not None
         self.fetch_reader = threading.Thread(target=self.writer.copy, args=(self.fetcher.stdout,),
@@ -986,6 +1070,7 @@ class _Daemon:
             if self.roll_reader is not None:
                 self.roll_reader.join(timeout=5)
             code = self.roller.returncode
+            release_tree(self.roller)
             self.roller = self.roll_reader = None
             self.roll_ended = time.monotonic()
             self.log("rolled scenarios forward" if code == 0 else f"roll failed (exit {code})")
@@ -994,7 +1079,7 @@ class _Daemon:
             return
         self.roll_looked = time.monotonic()
         config = read_config(self.paths)
-        if not roll_schedule.enabled(config):
+        if not roll_schedule.configured(config):
             return
         if self.build is None and not self.held:
             try:
@@ -1007,15 +1092,15 @@ class _Daemon:
                 self.log(line)
         # One that crashed before recording its night isn't started again
         # every minute: an hour later, as a failed fetch is.
-        if self.fetcher is not None or time.monotonic() - self.roll_ended < 3600 \
+        if not roll_schedule.enabled(config) or self.fetcher is not None or time.monotonic() - self.roll_ended < 3600 \
                 or not roll_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("rolling scenarios forward")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.roller = subprocess.Popen(
+        env = _child_env()
+        self.roller = start_tree(
             [*_sim_executable(), "builder", "roll", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.roller.stdout is not None
         self.roll_reader = threading.Thread(target=self.writer.copy, args=(self.roller.stdout,),
@@ -1034,6 +1119,7 @@ class _Daemon:
             if self.research_reader is not None:
                 self.research_reader.join(timeout=5)
             code = self.researcher.returncode
+            release_tree(self.researcher)
             self.researcher = self.research_reader = None
             self.research_ended = time.monotonic()
             self.log("researched a symbol" if code == 0 else f"research failed (exit {code})")
@@ -1042,7 +1128,7 @@ class _Daemon:
             return
         self.research_looked = time.monotonic()
         config = read_config(self.paths)
-        if not research_schedule.enabled(config):
+        if not research_schedule.configured(config):
             return
         if self.build is None and not self.held:
             try:
@@ -1055,15 +1141,15 @@ class _Daemon:
                 self.log(line)
         # One that crashed before recording its day isn't started again
         # every minute: an hour later, as a failed fetch is.
-        if time.monotonic() - self.research_ended < 3600 \
+        if not research_schedule.enabled(config) or time.monotonic() - self.research_ended < 3600 \
                 or not research_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("researching a symbol")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.researcher = subprocess.Popen(
+        env = _child_env()
+        self.researcher = start_tree(
             [*_sim_executable(), "builder", "research", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.researcher.stdout is not None
         self.research_reader = threading.Thread(target=self.writer.copy, args=(self.researcher.stdout,),
@@ -1076,6 +1162,7 @@ class _Daemon:
         if build is None or build.process.poll() is None:
             return False
         self.build = None
+        release_tree(build.process)
         build.drain()
         from zabob.retirement.sim.freshness import code_tree
 
@@ -1106,16 +1193,20 @@ class _Daemon:
         self.paths.dir.mkdir(parents=True, exist_ok=True)
         lock = os.open(self.paths.daemon_lock, os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock.lock(lock, block=False)
         except BlockingIOError:
             os.close(lock)
             return 0  # one is already running; it has the request
+        # Any request made from here on is this daemon's: it holds the lock.
+        started = time.time()
         self.prune_logs()
         configured = (read_config(self.paths) or {}).get("code_dir")
         if configured and not same_home(this_home(), configured):
             self.log(f"not started: this is {this_home() or 'code outside git'}, but the pair's code is {configured}")
             os.close(lock)
             return 1
+        # Our pid at once, so `sim builder stop` never signals the one before.
+        self.write_status()
         # This process and its builds must never wait on the builder itself.
         os.environ[BUILDER_SWITCH_ENV] = "off"
         forget_hook_repository()
@@ -1132,11 +1223,16 @@ class _Daemon:
             while not self.stopping and not self.restart:
                 for request in _drain_requests(self.paths):
                     rescan = True
+                    # One left for a daemon that was already exiting isn't ours.
+                    if request.get("kind") == "stop" and float(request.get("made") or 0) >= started:
+                        self.stopping = True
                     if request.get("kind") == "first" and request.get("scenario"):
                         name = request["scenario"]
                         jobs = [job_key(name, step) for step in request.get("steps") or ("run",)
                                 if step in STEPS]
                         self.first = [*jobs, *[j for j in self.first if j not in jobs]]
+                if self.stopping:
+                    break  # before a scan could start anything new
                 if self.finished():
                     rescan = True
                 if held(self.paths) != self.held:  # one taken, or its command ended
@@ -1152,6 +1248,7 @@ class _Daemon:
                 if self.build is None and self.queue and self.started_trees is not None:
                     self.start_next(self.started_trees)
                     self.write_status()
+                self.catch_up_tick()
                 self.prices_tick(looked_again)
                 self.roll_tick(looked_again)
                 self.research_tick(looked_again)
@@ -1165,12 +1262,25 @@ class _Daemon:
                 time.sleep(TICK_SECONDS)
         finally:
             self.cancel("builder stopping" if not self.restart else "code changed")
+            if WINDOWS and self.children_running():
+                # Say so while it waits: readers stop waiting on a cancelled build.
+                self.state, self.queue = "stopping", []
+                self.write_status()
+                self.await_children()
             self.state = "stopped"
             self.queue = []
             self.write_status()
             self.log("restarting" if self.restart else "stopped")
             os.close(lock)  # frees the daemon lock for the next one
         if self.restart:
+            if WINDOWS:
+                # Windows's execv starts a new process and ends this one
+                # anyway, so start the next daemon as any other is (#748),
+                # unless a stop came while this one finished (it reads no
+                # more requests, and the next would take it as an earlier one's).
+                if not _stop_requested(self.paths):
+                    spawn_daemon(self.paths, self.data_dir)
+                return 0
             os.execv(sys.executable, [
                 sys.executable, "-m", "zabob.retirement", "sim", "builder", "run",
                 "--data-dir", str(self.data_dir),
@@ -1189,7 +1299,17 @@ def _took(seconds: float) -> str:
 
 
 def _kill(process: subprocess.Popen[bytes]) -> None:
-    """Stop a build and its workers (its own process group)."""
+    """Stop a build and its workers (its own process group). On Windows,
+    which has no SIGTERM to send, they are ended at once, Job Object and all
+    (#748); a build ended either way leaves only a reserved run name, which
+    readers skip, and its scenario's lock, freed as it exits."""
+    if WINDOWS:
+        kill_tree(process)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass  # TerminateJobObject was refused; nothing more to send it
+        return
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -1460,11 +1580,18 @@ status=0
 if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
 [ -f "$top/state/builder/config.json" ] || exit $status
-code="$(cat "$top/sim/.analysis" 2>/dev/null)" || exit $status
+# tr: sim init on Windows wrote it with CRLF before #748.
+code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" || exit $status
 case "$code" in
-    {INSTALLED}*) sim="${{code#{INSTALLED}}}/sim" ;;
-    *) sim="$code/.venv/bin/sim" ;;
+    {INSTALLED}*) dir="${{code#{INSTALLED}}}" ;;
+    *) dir="$code/.venv/bin" ;;
 esac
+# Git for Windows's sh: the Windows path sim/.analysis holds, as its own,
+# and a venv's programs in Scripts, as .exe (#748).
+if command -v cygpath >/dev/null 2>&1; then dir="$(cygpath -u "$dir")"; fi
+[ -d "$dir" ] || dir="${{dir%/bin}}/Scripts"
+sim="$dir/sim"
+[ -x "$sim" ] || sim="$dir/sim.exe"
 [ -x "$sim" ] || exit $status
 "$sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
 exit $status
@@ -1472,7 +1599,7 @@ exit $status
 
 
 def _ours(hook: Path) -> bool:
-    return hook.read_text(errors="replace").split("\n")[1:2] == [HOOK_MARKER]
+    return hook.read_text(encoding="utf-8", errors="replace").split("\n")[1:2] == [HOOK_MARKER]
 
 
 def install(data_dir: Path, branch: str | None = None, prices: bool | None = None,
@@ -1487,7 +1614,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     else as recorded, else yes: #640), install the data repo's hooks (the code repo's are
     in ``.githooks/``). Returns what it did. The timer is the CLI's
     (``price_schedule.install_timer``)."""
-    from zabob.retirement.sim import roll_schedule
+    from zabob.retirement.sim import roll_schedule, shared_writer
 
     if roll_window is not None:
         start, end = roll_schedule.parse_window(roll_window)  # ValueError: the CLI says why
@@ -1522,6 +1649,9 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         "data_dir": str(data_dir), "code_dir": this_home(), "branch": branch,
         "prices": prices, "roll": roll, "roll_window": roll_window, "research": research,
         "claude": claude, "installed": time.time(),
+        # The name sim/.builder.toml knows this clone by (#785), kept as first
+        # found, so a host name that changes later still matches it.
+        "machine": before.get("machine") or shared_writer.this_machine(),
     })
     done = [f"recorded the pair in {paths.config}",
             f"builds only from code matching the local {branch} branch",
@@ -1544,26 +1674,56 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
             chained = hook.with_name(hook.name + CHAINED_SUFFIX)
             hook.rename(chained)
             done.append(f"moved {hook.name} to {chained.name}; the builder's hook runs it first")
-        hook.write_text(DATA_HOOK)  # ours, or none: (re)write it
+        # LF even on Windows: Git for Windows's sh reads a CR as part of a word.
+        hook.write_text(DATA_HOOK, encoding="utf-8", newline="\n")  # ours, or none: (re)write it
         hook.chmod(0o755)
         done.append(f"installed {hook}")
     return done
+
+
+def await_stopped(paths: BuilderPaths, seconds: float = STOP_WAIT_SECONDS) -> bool:
+    """Wait up to ``seconds`` for the daemon to be gone; whether it is."""
+    deadline = time.monotonic() + seconds
+    while daemon_alive(paths):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.2)
+    return True
+
+
+def stop_daemon(paths: BuilderPaths) -> int | None:
+    """Ask the workspace's daemon to stop, cancelling its build; its pid,
+    or None when none runs. SIGTERM on POSIX; on Windows a request it reads
+    within a tick, since a signal there would end it before it could cancel
+    its build or say it stopped (#748)."""
+    pid = read_status(paths).get("pid")
+    if not daemon_alive(paths):
+        return None
+    if WINDOWS:
+        # A new daemon may not have written its status yet; the request needs no pid.
+        _request(paths, "stop")
+        return pid if isinstance(pid, int) else 0
+    if not isinstance(pid, int):
+        return None
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return None
+    return pid
 
 
 def uninstall(data_dir: Path) -> list[str]:
     """Opt this workspace out. The data repo's hooks stay (other data
     worktrees may be opted in); without a config they do nothing."""
     paths = BuilderPaths.for_data(data_dir.resolve())
-    if daemon_alive(paths):
-        status = read_status(paths)
-        pid = status.get("pid")
-        if isinstance(pid, int):
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+    done = []
+    # On Windows a stop is a request, and files in use can't be removed:
+    # the worktrees wait for the daemon (and its fetch, roll or research).
+    if stop_daemon(paths) is not None and WINDOWS and not await_stopped(paths):
+        done.append(f"the background builder hasn't stopped after {STOP_WAIT_SECONDS:.0f}s; "
+                    "its worktrees may not all be removed")
     paths.config.unlink(missing_ok=True)
-    done = [f"removed {paths.config}"]
+    done.insert(0, f"removed {paths.config}")
     if paths.prices_worktree.exists():
         # The price branch stays: it holds nothing main lacks once merged.
         subprocess.run(["git", "-C", str(data_dir), "worktree", "remove", "--force",

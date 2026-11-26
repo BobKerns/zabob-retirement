@@ -229,7 +229,7 @@ def test_one_job_builds_the_same_video_in_the_same_order(
     assert depth == 0
     parallel = build(folder, out_dir=tmp_path / "b", repo=repo_root, log=lambda _: None, jobs=4)
     assert [(s.id, s.length) for s in serial.scenes] == [(s.id, s.length) for s in parallel.scenes]
-    assert serial.captions.read_text() == parallel.captions.read_text()
+    assert serial.captions.read_text(encoding="utf-8") == parallel.captions.read_text(encoding="utf-8")
 
 
 def test_a_failing_task_stops_the_build_with_its_error(
@@ -279,7 +279,8 @@ def test_a_recording_lags_when_its_picture_froze_past_half_a_second(worst_gap: f
 
 def test_a_timing_report_reads_back(tmp_path: Path) -> None:
     path = tmp_path / "t.json"
-    path.write_text('{"framerate": 30, "frames": 90, "held": 12, "seconds": 3.0, "behind": 0, "worst_gap": 0.2}')
+    path.write_text('{"framerate": 30, "frames": 90, "held": 12, "seconds": 3.0, "behind": 0, "worst_gap": 0.2}',
+                    encoding="utf-8")
     timing = render.Timing.read(path)
     assert timing == render.Timing(90, 12, 0.2)
     timing.write(tmp_path / "again.json")
@@ -305,7 +306,7 @@ def _recorder(monkeypatch: pytest.MonkeyPatch, freezes: list[float]) -> list[flo
 
     def record(tape: str, theme: themes.Theme, prepared: Path, out: Path) -> render.Timing:
         freeze = next(tries)
-        out.write_text(str(freeze))
+        out.write_text(str(freeze), encoding="utf-8")
         return render.Timing(300, 10, freeze)
 
     monkeypatch.setattr(render, "record_tape", record)
@@ -320,7 +321,7 @@ def test_a_tape_that_froze_is_recorded_again_after_a_growing_wait(
     lines: list[str] = []
     builder, scene = _tape_builder(videos_root, repo_root, tmp_path, lines)
     path, still, state, _ = builder.visual(scene)
-    assert (state, still, path.read_text()) == ("made", False, "0.1")
+    assert (state, still, path.read_text(encoding="utf-8")) == ("made", False, "0.1")
     assert waits == [builds.RETRY_WAIT, 2 * builds.RETRY_WAIT]
     assert len(lines) == 2 and all("recording it again" in line for line in lines)
     assert builder.plan_visual(scene).make is None  # kept up: the cache keeps it
@@ -333,7 +334,7 @@ def test_a_tape_that_keeps_freezing_keeps_its_best_try_and_is_redone_next_build(
     lines: list[str] = []
     builder, scene = _tape_builder(videos_root, repo_root, tmp_path, lines)
     path, _, state, _ = builder.visual(scene)
-    assert (state, path.read_text()) == ("made", "0.7")
+    assert (state, path.read_text(encoding="utf-8")) == ("made", "0.7")
     assert "kept the best of 3 tries" in lines[-1]
     assert not list(builder.cache.glob("*.best.mp4"))
     assert builder.plan_visual(scene).make is not None  # froze: not trusted from the cache
@@ -384,10 +385,10 @@ def test_stop_running_kills_children_that_ignore_terminate(tmp_path: Path) -> No
     worker = threading.Thread(target=go)
     worker.start()
     deadline = time.monotonic() + 5
-    while not pid_file.exists() or not pid_file.read_text().strip():
+    while not pid_file.exists() or not pid_file.read_text(encoding="utf-8").strip():
         assert time.monotonic() < deadline
         time.sleep(0.05)
-    child = int(pid_file.read_text())
+    child = int(pid_file.read_text(encoding="utf-8"))
     render.stop_running()
     worker.join(10)
     assert errors and not worker.is_alive()
@@ -404,7 +405,7 @@ def _alive(pid: int) -> bool:
         return False
     # A zombie is dead; only its parent (gone) or init would reap it.
     try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
     # Reaped since the kill above: the open raises FileNotFoundError, and a
     # read after the open raises ProcessLookupError.
     except (FileNotFoundError, ProcessLookupError):
@@ -416,8 +417,8 @@ def test_the_memory_limit_comes_from_this_process_cgroup_and_those_above(tmp_pat
     def group(path: Path, limit: str, used: str, v1: bool = False) -> None:
         path.mkdir(parents=True, exist_ok=True)
         names = ("memory.limit_in_bytes", "memory.usage_in_bytes") if v1 else ("memory.max", "memory.current")
-        (path / names[0]).write_text(limit)
-        (path / names[1]).write_text(used)
+        (path / names[0]).write_text(limit, encoding="utf-8")
+        (path / names[1]).write_text(used, encoding="utf-8")
 
     group(tmp_path / "outer", str(8 * builds.GIB), str(2 * builds.GIB))
     group(tmp_path / "outer" / "inner", "max", str(builds.GIB))

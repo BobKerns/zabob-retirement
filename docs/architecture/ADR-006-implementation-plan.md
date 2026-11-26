@@ -64,7 +64,7 @@ Done. Exit: mean/median/SD/range are one command or one notebook cell away for a
 2. `loader.py`: the §2 checks on a process row, including a level whose lower bound stays above −100%.
 3. `ensemble.py`: after the date pass, each process row's step dates (yearly, to the scenario's end or the next authored `set_rate` for its series); `process_path` turns its level and that year's shocks into yearly rates in growth-factor form; the row takes year 0 and inserts the rest as ordinary `set_rate` rows carrying its payload. `ensemble_draw` records the level.
 4. CLI and guided entry: `--vary-process`, `--vary-persistence`, `--vary-innovation-sd` (in percent) on `set-rate`; `calendar edit` keeps them. The parameters table gains a `process` column.
-5. `analysis historical`: a `Shock SD` column beside Persistence; the calibration guide says how to set a process row from them.
+5. `sim historical`: a `Shock SD` column beside Persistence; the calibration guide says how to set a process row from them.
 6. Tests (`tests/test_rate_paths.py`): the path's flat base case, stationary spread, persistence, median compounding to the level and overflow guard; the loader and CLI rejections; step dates and cutoffs; shocks from the keyed streams; the level draw unchanged by adding a process; an end-to-end ensemble.
 
 ## Risks

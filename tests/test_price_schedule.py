@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 import git
 import pytest
@@ -106,7 +107,7 @@ def test_a_fetch_commits_on_its_branch_and_merges_it_into_a_clean_main(
     assert [p.hexsha for p in merge.parents] == [before, outcome.committed]
     assert merge.author.name == "sim builder"
     assert merge.parents[1].message.startswith("Prices: VTI to 2026-06-10")
-    assert "2026-06-10,110.00" in (data / "prices" / "security_price__VTI.csv").read_text()
+    assert "2026-06-10,110.00" in (data / "prices" / "security_price__VTI.csv").read_text(encoding="utf-8")
     # Only the price files changed, and the user's checkout is clean.
     assert repo.git.diff("--name-only", before, "HEAD").splitlines() == [
         "sim/prices/security_price__VTI.csv"]
@@ -125,7 +126,7 @@ def test_the_merge_waits_for_main_to_be_clean_and_checked_out(
 ) -> None:
     data, repo = priced
     before = repo.head.commit.hexsha
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     outcome = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     assert price_schedule.merge_pending(data, _worktree(data)) == []
     assert outcome.committed and repo.head.commit.hexsha == before
@@ -146,7 +147,7 @@ def test_a_fetch_while_prices_wait_keeps_them_waiting(
     priced: tuple[Path, git.Repo], fetching: None,
 ) -> None:
     data, repo = priced
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     first = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     again = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     assert again.committed is None and again.pending == first.committed
@@ -159,7 +160,7 @@ def test_when_main_moves_first_it_is_merged_into_the_prices_branch(
     priced: tuple[Path, git.Repo], fetching: None,
 ) -> None:
     data, repo = priced
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     first = price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     repo.git.checkout("sim/persons.csv")
     users = commit_files(repo, {"sim/notes.txt": "an edit\n"}, "the user's commit")
@@ -171,8 +172,8 @@ def test_when_main_moves_first_it_is_merged_into_the_prices_branch(
     prices_tip = merge.parents[1]
     assert [p.hexsha for p in prices_tip.parents] == [first.committed, users]
     assert prices_tip.author.name == "sim builder"
-    assert "2026-06-10,110.00" in (data / "prices" / "security_price__VTI.csv").read_text()
-    assert (data / "notes.txt").read_text() == "an edit\n"
+    assert "2026-06-10,110.00" in (data / "prices" / "security_price__VTI.csv").read_text(encoding="utf-8")
+    assert (data / "notes.txt").read_text(encoding="utf-8") == "an edit\n"
     state = price_schedule.read_state(data)
     assert not state.get("pending") and not state.get("refetch")
 
@@ -182,7 +183,7 @@ def test_where_main_and_the_fetch_conflict_mains_side_wins(
     priced: tuple[Path, git.Repo], fetching: None,
 ) -> None:
     data, repo = priced
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     repo.git.checkout("sim/persons.csv")
     commit_files(repo, {"sim/prices/security_price__VTI.csv":
@@ -194,7 +195,7 @@ def test_where_main_and_the_fetch_conflict_mains_side_wins(
     assert price_schedule.merge_pending(data, _worktree(data)) == []
     assert repo.head.commit.message.strip() == "a correction by hand"
     assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == repo.head.commit.hexsha
-    assert (data / "prices" / "security_price__VTI.csv").read_text() == \
+    assert (data / "prices" / "security_price__VTI.csv").read_text(encoding="utf-8") == \
         "effective_date,price\n2025-12-31,301.00\n2026-06-11,999.00\n"
     state = price_schedule.read_state(data)
     assert not state.get("refetch") and not state.get("pending")
@@ -205,7 +206,7 @@ def test_prices_that_wont_merge_with_main_are_fetched_again(
     priced: tuple[Path, git.Repo], fetching: None,
 ) -> None:
     data, repo = priced
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     repo.git.checkout("sim/persons.csv")
     # Deleted on main, changed by the fetch: no side of the merge to prefer.
@@ -229,7 +230,7 @@ def test_a_fetch_starts_the_branch_over_when_main_wont_merge_into_it(
 ) -> None:
     data, repo = priced
     commit_files(repo, {"sim/securities.csv": "symbol,name\nVTI,Total market\n"}, "VTI")
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     repo.git.checkout("sim/persons.csv")
     repo.git.rm("-q", "sim/prices/security_price__VTI.csv")
@@ -245,7 +246,7 @@ def test_prices_merged_by_hand_are_no_longer_pending(
     priced: tuple[Path, git.Repo], fetching: None,
 ) -> None:
     data, repo = priced
-    (data / "persons.csv").write_text((data / "persons.csv").read_text() + "\n")
+    (data / "persons.csv").write_text((data / "persons.csv").read_text(encoding="utf-8") + "\n", encoding="utf-8")
     price_schedule.fetch(data, _worktree(data), provider=FakeProvider(), now=NOW)
     price_schedule.merge_pending(data, _worktree(data))
     assert price_schedule.read_state(data)["pending"]
@@ -435,6 +436,48 @@ def test_install_on_macos_loads_an_hourly_launch_agent(
     assert not plist.exists()
 
 
+def test_install_on_windows_registers_an_hourly_task_run_by_pythonw(
+    tmp_path: Path, fetching: None,
+) -> None:
+    """#748: Task Scheduler, from an XML file (the command line is limited
+    to 261 characters), running the pythonw beside sim so no window opens."""
+    scripts = tmp_path / "zabob retirement" / "Scripts"
+    scripts.mkdir(parents=True)
+    sim, pythonw = scripts / "sim.exe", scripts / "pythonw.exe"
+    pythonw.touch()
+    tasks: dict[str, str] = {}
+
+    def run(args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        name = args[args.index("/TN") + 1]
+        if args[1] == "/Create":
+            tasks[name] = Path(args[args.index("/XML") + 1]).read_text(encoding="utf-16")
+        elif args[1] == "/Delete":
+            del tasks[name]
+        return subprocess.CompletedProcess(args, 0 if args[1] != "/Query" or name in tasks else 1, "", "")
+
+    line = price_schedule.install_timer(tmp_path, sim, run=run, platform="win32")
+    name = f"\\Zabob Retirement\\{price_schedule.timer_label(tmp_path)}"
+    assert name in line
+    task = ElementTree.fromstring(tasks[name].split("?>", 1)[1])
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    assert task.findtext("t:Actions/t:Exec/t:Command", namespaces=ns) == str(pythonw)
+    assert task.findtext("t:Actions/t:Exec/t:Arguments", namespaces=ns) == subprocess.list2cmdline(
+        ["-m", "zabob.retirement", "sim", "builder", "tick", "--data-dir", str(tmp_path.resolve())])
+    assert task.findtext("t:Triggers/t:TimeTrigger/t:Repetition/t:Interval", namespaces=ns) == "PT1H"
+    assert (task.findtext("t:Triggers/t:TimeTrigger/t:StartBoundary", namespaces=ns) or "").endswith(":07:00")
+    assert task.findtext("t:Principals/t:Principal/t:LogonType", namespaces=ns) == "InteractiveToken"
+    assert task.findtext("t:Settings/t:MultipleInstancesPolicy", namespaces=ns) == "IgnoreNew"
+
+    assert "removed" in (price_schedule.uninstall_timer(tmp_path, run=run, platform="win32") or "")
+    assert tasks == {}
+    assert price_schedule.uninstall_timer(tmp_path, run=run, platform="win32") is None
+
+
+def test_on_windows_without_pythonw_the_task_runs_sim_itself(tmp_path: Path) -> None:
+    sim = tmp_path / "sim.exe"
+    assert price_schedule._timer_command(sim, tmp_path, "win32")[0] == str(sim)
+
+
 def test_tests_never_fetch_or_install_a_timer(priced: tuple[Path, git.Repo]) -> None:
     data, _ = priced
     assert price_schedule.switched_off()
@@ -451,7 +494,7 @@ def test_install_records_whether_to_fetch_prices(
     code = tmp_path / "code"
     (code / "data").mkdir(parents=True)
     (code / "data" / "private").symlink_to(data.parent)
-    (data / ".analysis").write_text(f"{code}\n")
+    (data / ".analysis").write_text(f"{code}\n", encoding="utf-8")
     monkeypatch.setattr(builder, "code_dir", lambda: code.resolve())
     paths = builder.BuilderPaths.for_data(data)
 
@@ -517,3 +560,12 @@ def test_a_fetch_ignores_an_inherited_object_directory(
     monkeypatch.delenv("GIT_OBJECT_DIRECTORY")
     assert outcome.committed is not None
     assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == outcome.committed
+
+
+def test_a_scheduled_task_that_cant_be_removed_says_so(tmp_path: Path) -> None:
+    """#748: access denied, say; uninstall doesn't claim it went."""
+    def run(args: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 1 if args[1] == "/Delete" else 0, "", "Access is denied.")
+    line = price_schedule.uninstall_timer(tmp_path, run=run, platform="win32")
+    assert line is not None and line.startswith("couldn't remove the scheduled task") \
+        and "Access is denied." in line

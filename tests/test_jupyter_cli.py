@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -7,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 from zabob.retirement.cli import main
+from zabob.retirement.jupyter import server as srv
 from zabob.retirement.jupyter.config import (
     McpConfigError,
     ensure_jupyter_mcp_config,
@@ -23,7 +26,7 @@ def test_ensure_jupyter_mcp_config_creates_file_with_generated_token(tmp_path: P
     assert len(settings.token) == 64  # secrets.token_hex(32)
 
     config_path = tmp_path / ".mcp.json"
-    data = json.loads(config_path.read_text())
+    data = json.loads(config_path.read_text(encoding="utf-8"))
     assert data["mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"] == settings.token
 
 
@@ -37,13 +40,10 @@ def test_ensure_jupyter_mcp_config_reuses_existing_token(tmp_path: Path) -> None
 
 
 def test_ensure_jupyter_mcp_config_rejects_malformed_file(tmp_path: Path) -> None:
-    (tmp_path / ".mcp.json").write_text('{"mcpServers": {}}')
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
 
-    try:
+    with pytest.raises(McpConfigError, match="jupyter"):
         ensure_jupyter_mcp_config(tmp_path)
-        raise AssertionError("expected McpConfigError")
-    except McpConfigError as exc:
-        assert "jupyter" in str(exc)
 
 
 def test_find_repo_root_falls_back_outside_git(tmp_path: Path) -> None:
@@ -52,53 +52,250 @@ def test_find_repo_root_falls_back_outside_git(tmp_path: Path) -> None:
 
     from git import InvalidGitRepositoryError
 
-    with patch("zabob.retirement.jupyter.config.Repo", side_effect=InvalidGitRepositoryError):
+    with patch("git.Repo", side_effect=InvalidGitRepositoryError):
         root = find_repo_root(outside_git)
 
     assert root == outside_git.resolve()
 
 
-@pytest.mark.checkout
-def test_cli_jupyter_generates_config_and_execs_jupyter_lab(tmp_path: Path) -> None:
-    captured: dict[str, Any] = {}
+def test_analysis_jupyter_is_gone() -> None:
+    assert "jupyter" not in main.commands  # it is `sim jupyter` now (#762)
 
-    def fake_exec(jupyter_bin: str, argv: list[str]) -> None:
-        captured["jupyter_bin"] = jupyter_bin
-        captured["argv"] = argv
 
-    runner = CliRunner()
+def _server(root: Path, pid: int = 4321, port: int = 8888) -> srv.Server:
+    return srv.Server(url=f"http://localhost:{port}/", token="t0k", root_dir=(root / "notebooks").resolve(),
+                      pid=pid, port=port)
+
+
+def _sim(*args: str) -> Any:
+    return CliRunner().invoke(main, ["sim", "jupyter", *args])
+
+
+def test_start_runs_lab_in_the_background_and_opens_the_notebook(notebooks_root: Path) -> None:
+    started: dict[str, Any] = {}
+
+    def fake_start(argv: list[str], log: Path, cwd: Path, root_dir: Path) -> srv.Server:
+        started.update(argv=argv, log=log, cwd=cwd, root_dir=root_dir)
+        return _server(notebooks_root)
+
     with (
-        patch("zabob.retirement.jupyter.cli.find_repo_root", return_value=tmp_path),
-        patch("zabob.retirement.jupyter.cli.shutil.which", return_value="/usr/bin/jupyter"),
-        patch("zabob.retirement.jupyter.cli._exec_jupyter_lab", side_effect=fake_exec),
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", side_effect=fake_start),
+        patch("webbrowser.open") as opened,
     ):
-        result = runner.invoke(main, ["jupyter", "--no-browser"])
+        result = _sim("start", "net_worth", "--", "--ServerApp.answer=42")
 
     assert result.exit_code == 0, result.output
-    assert "Generated" in result.output
-    assert captured["jupyter_bin"] == "/usr/bin/jupyter"
-    argv = captured["argv"]
-    assert argv[0] == "/usr/bin/jupyter"
-    assert argv[1] == "lab"
-    assert argv[2] == "--port=8888"
-    assert argv[3].startswith("--IdentityProvider.token=")
-    assert argv[4] == f"--notebook-dir={tmp_path / 'notebooks'}"
-    assert argv[5:] == ["--no-browser"]
-
-    config_path = tmp_path / ".mcp.json"
-    assert config_path.exists()
-    token = json.loads(config_path.read_text())["mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"]
-    assert argv[3] == f"--IdentityProvider.token={token}"
+    token = json.loads((notebooks_root / ".mcp.json").read_text(encoding="utf-8"))[
+        "mcpServers"]["jupyter"]["env"]["JUPYTER_TOKEN"]
+    assert started["argv"] == [
+        sys.executable, "-m", "jupyterlab", "--port=8888", f"--IdentityProvider.token={token}",
+        f"--notebook-dir={(notebooks_root / 'notebooks').resolve()}", "--no-browser", "--ServerApp.answer=42",
+    ]
+    assert started["log"] == notebooks_root / "state" / "jupyter.log"
+    opened.assert_called_once_with("http://localhost:8888/lab/tree/net_worth.ipynb?token=t0k")
 
 
-@pytest.mark.checkout
-def test_cli_jupyter_reports_missing_jupyter_binary(tmp_path: Path) -> None:
-    runner = CliRunner()
+def test_start_takes_an_option_for_jupyter_without_a_notebook(notebooks_root: Path) -> None:
     with (
-        patch("zabob.retirement.jupyter.cli.find_repo_root", return_value=tmp_path),
-        patch("zabob.retirement.jupyter.cli.shutil.which", return_value=None),
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root)) as start,
     ):
-        result = runner.invoke(main, ["jupyter"])
+        result = _sim("start", "--no-browser", "--ServerApp.answer=42")
 
-    assert result.exit_code != 0
-    assert "jupyter executable not found" in result.output
+    assert result.exit_code == 0, result.output
+    assert start.call_args.args[0][-1] == "--ServerApp.answer=42"
+    assert "lab?token=t0k" in result.output
+
+
+def test_a_notebook_after_an_option_for_jupyter_is_still_the_notebook(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root)) as start,
+    ):
+        result = _sim("start", "--no-browser", "--ServerApp.answer=42", "net_worth")
+
+    assert result.exit_code == 0, result.output
+    assert start.call_args.args[0][-1] == "--ServerApp.answer=42"
+    assert "lab/tree/net_worth.ipynb?token=t0k" in result.output
+
+
+def test_port_serves_on_that_port_or_none(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root, port=9999)) as start,
+    ):
+        result = _sim("start", "--no-browser", "--port", "9999")
+
+    assert result.exit_code == 0, result.output
+    argv = start.call_args.args[0]
+    assert "--port=9999" in argv and "--ServerApp.port_retries=0" in argv
+    assert "on port 9999, as asked" in result.output
+
+
+def test_a_port_given_for_jupyter_is_no_busy_port(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root, port=9999)),
+    ):
+        result = _sim("start", "--no-browser", "--", "--port=9999")
+
+    assert result.exit_code == 0, result.output
+    assert "busy" not in result.output
+
+
+def test_a_notebook_url_is_quoted(tmp_path: Path) -> None:
+    assert _server(tmp_path).lab_url("my plan#2.ipynb") == "http://localhost:8888/lab/tree/my%20plan%232.ipynb?token=t0k"
+
+
+def test_a_server_found_by_its_folder_counts_as_started(notebooks_root: Path, tmp_path: Path) -> None:
+    # On Windows a venv's python.exe starts the real interpreter as a child,
+    # whose pid the runtime file holds.
+    folder = (notebooks_root / "notebooks").resolve()
+    with patch.object(srv, "running", return_value=[_server(notebooks_root, pid=1)]):
+        started = srv.start([sys.executable, "-c", "import time; time.sleep(1)"], tmp_path / "log", tmp_path, folder)
+    assert started.root_dir == folder
+
+
+def test_a_server_file_vanishing_mid_listing_is_read_again() -> None:
+    calls = iter([FileNotFoundError("a runtime file"), []])
+
+    def listing() -> list[dict]:
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    with patch.object(srv, "_runtime_servers", side_effect=listing):
+        assert srv.running() == []
+
+
+def test_start_reuses_a_running_server(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[_server(notebooks_root)]),
+        patch.object(srv, "start") as start,
+    ):
+        result = _sim("start", "--no-browser")
+
+    assert result.exit_code == 0, result.output
+    start.assert_not_called()
+    assert "already running" in result.output
+
+
+def test_start_names_the_notebooks_for_an_unknown_one(notebooks_root: Path) -> None:  # noqa: ARG001
+    with patch.object(srv, "running", return_value=[]):
+        result = _sim("start", "nope", "--no-browser")
+
+    assert result.exit_code == 2
+    assert "no notebook 'nope'" in result.output and "net_worth" in result.output
+
+
+def test_start_shows_the_log_when_lab_exits(notebooks_root: Path) -> None:
+    log = notebooks_root / "state" / "jupyter.log"
+
+    def fail(argv: list[str], log_path: Path, cwd: Path, root_dir: Path) -> srv.Server:  # noqa: ARG001
+        log_path.parent.mkdir(parents=True)
+        log_path.write_text("--- earlier starting JupyterLab ---\nold\n--- now starting JupyterLab ---\nport in use\n",
+                            encoding="utf-8")
+        raise srv.StartError("JupyterLab exited (status 1) before it was ready")
+
+    with patch.object(srv, "running", return_value=[]), patch.object(srv, "start", side_effect=fail):
+        result = _sim("start", "--no-browser")
+
+    assert result.exit_code == 1
+    assert str(log) in result.output and "port in use" in result.output and "old" not in result.output
+
+
+def test_start_warns_when_the_port_was_busy(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root, port=8889)),
+    ):
+        result = _sim("start", "--no-browser")
+
+    assert result.exit_code == 0, result.output
+    assert "on port 8889, since 8888 was busy" in result.output
+
+
+def test_foreground_runs_lab_in_this_terminal(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch("zabob.retirement.jupyter.cli._exec_foreground") as run,
+    ):
+        result = _sim("start", "net_worth", "--foreground", "--no-browser")
+
+    assert result.exit_code == 0, result.output
+    argv = run.call_args.args[0]
+    assert argv[1:3] == ["-m", "jupyterlab"]
+    # In full: jupyter lab reads a file argument against the working folder.
+    assert argv[-2:] == ["--no-browser", str((notebooks_root / "notebooks" / "net_worth.ipynb").resolve())]
+
+
+def test_stop_stops_only_this_folders_server(notebooks_root: Path, tmp_path: Path) -> None:
+    other = _server(tmp_path / "elsewhere", pid=99)
+    mine = _server(notebooks_root)
+    with patch.object(srv, "running", return_value=[other, mine]), patch.object(srv, "stop", return_value=True) as stop:
+        result = _sim("stop")
+
+    assert result.exit_code == 0, result.output
+    stop.assert_called_once_with(mine)
+    assert "Stopped JupyterLab" in result.output
+
+
+def test_stop_all_stops_every_server(notebooks_root: Path, tmp_path: Path) -> None:
+    servers = [_server(tmp_path / "elsewhere", pid=99), _server(notebooks_root)]
+    with patch.object(srv, "running", return_value=servers), patch.object(srv, "stop", return_value=True) as stop:
+        result = _sim("stop", "--all")
+
+    assert result.exit_code == 0, result.output
+    assert stop.call_count == 2
+
+
+def test_stop_with_nothing_running_says_so(notebooks_root: Path) -> None:  # noqa: ARG001
+    with patch.object(srv, "running", return_value=[]):
+        result = _sim("stop")
+
+    assert result.exit_code == 0
+    assert "isn't running" in result.output
+
+
+def test_stop_reports_a_server_it_could_not_stop(notebooks_root: Path) -> None:
+    with patch.object(srv, "running", return_value=[_server(notebooks_root)]), \
+            patch.object(srv, "stop", return_value=False):
+        result = _sim("stop")
+
+    assert result.exit_code == 1
+    assert "couldn't stop: process 4321" in result.output
+
+
+def test_status_shows_the_address_and_counts_the_others(notebooks_root: Path, tmp_path: Path) -> None:
+    servers = [_server(notebooks_root), _server(tmp_path / "elsewhere", pid=99, port=8890)]
+    with patch.object(srv, "running", return_value=servers):
+        result = _sim("status")
+
+    assert result.exit_code == 0, result.output
+    assert "http://localhost:8888/lab?token=t0k" in result.output
+    assert "1 other Jupyter server(s)" in result.output
+
+
+def test_notebook_names_complete(notebooks_root: Path) -> None:
+    import click
+
+    from zabob.retirement.sim import completion
+
+    assert completion.NOTEBOOK.lister(click.Context(click.Command("start")), notebooks_root) == ["net_worth"]
+
+
+@pytest.mark.slow
+def test_start_and_stop_a_real_server(notebooks_root: Path) -> None:
+    # Root may not run JupyterLab without saying so (a container).
+    allow_root = ["--", "--allow-root"] if hasattr(os, "geteuid") and os.geteuid() == 0 else []
+    try:
+        started = _sim("start", "--no-browser", *allow_root)
+        assert started.exit_code == 0, started.output
+        assert "JupyterLab is running" in started.output
+        assert srv.serving(notebooks_root / "notebooks") is not None
+    finally:
+        stopped = _sim("stop")
+    assert stopped.exit_code == 0, stopped.output
+    assert srv.serving(notebooks_root / "notebooks") is None

@@ -148,12 +148,21 @@ argument or `--scenario`) makes it current, and the command says so
 first prints `Using scenario <name>`; with no current scenario (a fresh data
 repo, or after deleting it) the command asks you to name one.
 To look at a scenario without making it current (in a script, or for an AI
-assistant answering questions for you), set `ANALYSIS_KEEP_SCENARIO=1`:
+assistant answering questions for you), set `ZABOB_KEEP_SCENARIO=1`:
 commands then use the scenario they name and leave your current one as it is.
-`sim switch` prints your current scenario, and `sim switch <name>` makes
-`<name>` current, printing the one it replaces. The shell
-prompt that `activate-analysis` sets shows it, as
-`[analysis:<data repo>:<you>:<scenario>]`.
+`sim switch` shows who you are, your data repo and your current scenario,
+and `sim switch <name>` makes `<name>` current, naming the one it replaces.
+The current scenario is yours alone, one for each data repo you use, so
+someone else using the same data repo keeps their own. `sim login [name]`
+says who you are (by default your login name); it is the name put on what you
+make and change, not one of the household's people. `sim switch --data DIR`
+moves you to another data repo, and so does running a `sim` command inside
+one, saying so. The shell prompt that `activate-retirement` sets shows all
+three, as `[retirement:<data repo>:<you>:<scenario>]`.
+
+TAB completes commands, options and these names (scenarios, accounts,
+chains and the rest) once `sim completion install` has set it up for your
+shell: bash, zsh, fish or PowerShell ([Setup](SETUP.md#install-the-program)).
 
 To rename a scenario (or an ensemble; the two commands are the same):
 
@@ -296,8 +305,8 @@ project word could be confused with a general word, that is pointed out.
 | **Lot** | One holding inside an account. A brokerage account can have several lots: different funds, or shares bought on different dates. Every account has at least one lot. It is named `default` unless you split the account into more than one lot. |
 | **Chain** | A named, ordered list of places money can come from, or go to. Think: try this place first, then that place. Every account (and every lot) already has its own one-step chain, automatically. You only write a chain file, `chains/source/<name>.csv` or `chains/destination/<name>.csv`, when you want more than one step. See Part 4.6 and [the chains guide](guides/chains.md). |
 | **Series** | A named set of numbers a scenario can refer to by name: a growth or interest rate (`rate__*`), or an inflation projection (`inflation__*`). These files live in that scenario's own `series/` folder. This is a different idea from *asset class*, below. |
-| **`aux/`** | Shared tax-law facts every scenario uses unless it says otherwise: tax brackets, RMD tables, filing status. |
-| **`series/`** | A scenario's own growth-rate and inflation assumptions. Unlike `aux/`, there is no shared copy at the top of the data repo — each scenario has its own, inherited from its parent the same way `accounts.csv` is. |
+| **`tables/`** | Shared tax-law facts every scenario uses unless it says otherwise: tax brackets, RMD tables, filing status. |
+| **`series/`** | A scenario's own growth-rate and inflation assumptions. Unlike `tables/`, there is no shared copy at the top of the data repo — each scenario has its own, inherited from its parent the same way `accounts.csv` is. |
 | **`prices/`** | Shared security price histories every scenario uses unless it says otherwise. |
 | **Itemization** | A CSV file under `itemizations/<name>.csv`. It lists dollar amounts in a `Value` column, and the loader adds them up into one total. Other files can use that total by writing `@name` instead of a plain number (for example `opening_cost_basis = @home_basis`). **This is a different thing from an *itemized deduction*, a tax term — see the next table.** |
 | **`tax_character`** | A label on a money movement that says how it is taxed: `ordinary`, `ltcg`, `stcg`, `tax_free`, `tax_deferred_out`, `return_of_capital`, `none`, and a few others. This label decides which tax bucket the movement is counted in. |
@@ -364,7 +373,7 @@ met a word gets an answer about how it's used here.
 | <a id="g-correlation"></a>**Correlation (ρ)** | A number from −1 to 1 for how strongly two quantities move together: 1 in lockstep, 0 no tendency, −1 opposite. ρ² is roughly the share of one's variation the other accounts for. | [OpenStax §13.1](https://openstax.org/books/introductory-business-statistics-2e/pages/13-1-the-correlation-coefficient-r) |
 | <a id="g-persistence"></a>**Persistence, autocorrelation** | The correlation between a quantity and its own value some time later, usually the next year. Near 1, this year's value carries over (interest rates); near 0, each year is a fresh draw (stock returns). | [A century of rates](guides/century-of-rates.md#how-much-does-this-year-predict-next-year) |
 | <a id="g-mean-reversion"></a>**Mean reversion** | A tendency for an unusually high or low value to be followed by one closer to the long-run average. An inflation spike is usually followed by a smaller one, then by ordinary years. | [A century of rates](guides/century-of-rates.md#how-much-does-this-year-predict-next-year) |
-| <a id="g-shock"></a>**Shock, shock SD** | The part of one year's value that the past doesn't predict: the surprise. A process row (`vary_process ar1`) builds its yearly path from the level, the share of last year's gap from it that carries over (persistence), and a new random shock each year. The shock SD (`vary_shock_sd`, and Shock SD in `analysis historical`) is the typical size of one year's shock, in growth terms, as a percent. It is smaller than the single-year SD whenever persistence carries part of the spread from year to year. Rows under one factor get correlated shocks each year; in a tree with tail dependence a whole year's shocks can be extreme together. Also called an innovation. | [A rate that moves every year](guides/historical-calibration.md#a-rate-that-moves-every-year) |
+| <a id="g-shock"></a>**Shock, shock SD** | The part of one year's value that the past doesn't predict: the surprise. A process row (`vary_process ar1`) builds its yearly path from the level, the share of last year's gap from it that carries over (persistence), and a new random shock each year. The shock SD (`vary_shock_sd`, and Shock SD in `sim historical`) is the typical size of one year's shock, in growth terms, as a percent. It is smaller than the single-year SD whenever persistence carries part of the spread from year to year. Rows under one factor get correlated shocks each year; in a tree with tail dependence a whole year's shocks can be extreme together. Also called an innovation. | [A rate that moves every year](guides/historical-calibration.md#a-rate-that-moves-every-year) |
 | <a id="g-rank-correlation"></a>**Rank correlation** | Correlation computed on the values' order rather than the values themselves, so it's unchanged by stretching or reshaping either quantity's range. | [Kendall's τ](https://www.socscistatistics.com/tutorials/kendall-tau/) |
 | <a id="g-kendall-tau"></a>**Kendall's τ** | A rank correlation. Take every pair of members: the pair agrees if both rows put the two members in the same order, and disagrees otherwise. τ is the share that agree minus the share that disagree. For the simulator's copulas τ = (2/π)·asin(ρ), so the correlation check reads ρ back from τ. | [Tutorial](https://www.socscistatistics.com/tutorials/kendall-tau/) |
 | <a id="g-r2"></a>**R²** | The share of the outcome's variation that a regression on the inputs explains, from 0 to 1. | [OpenStax §12.3](https://openstax.org/books/introductory-statistics-2e/pages/12-3-the-regression-equation) |
@@ -380,7 +389,8 @@ met a word gets an answer about how it's used here.
 | **Capital gain/loss** | The sale price minus the cost basis. **Long-term** gains (`ltcg`, held more than a year) usually get a lower tax rate. **Short-term** gains (`stcg`, held a year or less) are taxed as ordinary income. See Part 3. |
 | **RMD (Required Minimum Distribution)** | The smallest amount the IRS requires you to withdraw each year from a pre-tax retirement account, once you reach a certain age. A real tax rule; also the name of a rule kind in this tool (`rmd`). |
 | **Traditional vs. Roth** | Traditional money delays tax until you withdraw it (`tax_deferred_out`). Roth money is already taxed, so withdrawals come out tax-free (`tax_free`). An IRA or 401k is an account of subkind `retirement`, and each of its lots says which it is, with `subkind` in `account_lots.csv` (`traditional_ira`, `roth_ira`, `traditional_401k`, `roth_401k`). Traditional money moved into a Roth lot is a conversion, taxed as ordinary income; moved into another traditional lot it is an untaxed rollover. |
-| **Roth five-year rule** | Roth earnings come out tax-free only once you are 59½ and five tax years have passed since January 1 of the year of your first Roth contribution or conversion. Until then the simulator taxes the earnings as ordinary income (`roth_nonqualified`), and a chain skips a Roth step that would pay them unless it is the chain's last. Contributions and conversions (the lot's `opening_cost_basis`) always come out tax-free. Give each conversion its own Roth lot with its `acquired` date. After a death, a surviving spouse who takes the decedent's Roth IRA as their own (`"roth_survivor": "own"` in `scenario.csv` `meta_json`, the default) gets the earlier of the two clocks for all their Roth IRAs, and the 59½ test becomes the survivor's. With `"beneficiary"`, with no surviving spouse, or for a Roth 401k, the decedent's account keeps its own clock and has no age test. |
+| **Roth five-year rule** | Roth earnings come out tax-free only once you are 59½ and five tax years have passed since January 1 of the year of your first Roth contribution or conversion. Until then the simulator taxes the earnings as ordinary income (`roth_nonqualified`), and a chain skips a Roth step that would pay them unless it is the chain's last. Contributions and conversions (the lot's `opening_cost_basis`) always come out tax-free. Give each conversion its own Roth lot with its `acquired` date. After a death, a surviving spouse who takes the decedent's Roth IRA as their own (`"roth_survivor": "own"` in `scenario.csv` `meta_json`, the default) gets the earlier of the two clocks for all their Roth IRAs, and the 59½ test becomes the survivor's. With `"beneficiary"`, with no surviving spouse, or for a Roth 401k, the decedent's account keeps its own clock and has no age test. If your clock started with a Roth IRA that isn't in the scenario (closed, or at another custodian), put that year in `persons.csv`'s `roth_clock_start` (`sim person edit alice --roth-clock-start 2009`). |
+| **Inherited Roth IRA** | A Roth IRA you inherit from someone other than your spouse is a lot of subkind `inherited_roth_ira`, in an account of its own that you own. Its `acquired` date is the death, and its `roth_clock_start` the year the decedent's clock started (blank if it has run, the usual case). It has no age test and never changes your own clock. The law says it must be empty by December 31 of the tenth year after the death: draw it down with your calendar, and the run warns if money is still there then, or if money is moved into it or rolled into your own retirement account. |
 | **Filing status** | `MFJ` (married filing jointly), `Single`, or `MFS` (married filing separately). This tool does not model Head of Household. Filing status changes automatically after a spouse's death, based on `lifespan.csv`; see Part 4.7. |
 | **Standard deduction** | A flat amount the IRS lets you subtract from income before tax is calculated. This simulator always uses the standard deduction; it does not yet model choosing to itemize deductions instead. |
 | **Itemized deduction** | An IRS alternative to the standard deduction: instead of the flat amount, you add up specific expenses (mortgage interest, large medical bills, and so on) and use that total if it's bigger. See Part 4.9 for how to add one for a given year. This is a different idea from this tool's *itemization* files, above, which just add up a list of dollar amounts for any purpose — the similar name is confusing, but it predates this guide. |
@@ -417,7 +427,7 @@ files pays no income tax.
 - **Ordinary income** includes: salary, pension, interest, the taxable part of
   Social Security, taxable withdrawals from Traditional accounts
   (`tax_deferred_out`), and short-term gains (`stcg`).
-- **Long-term gains** (`ltcg`) use the rates in `aux/ltcg_brackets.csv`, if
+- **Long-term gains** (`ltcg`) use the rates in `tables/ltcg_brackets.csv`, if
   that file exists. These rates apply on top of your ordinary taxable income.
   If the file does not exist, long-term gains are taxed the same as ordinary
   income.
@@ -442,7 +452,7 @@ files pays no income tax.
   fund that pays at its own `_yield` series is exempt only when at least
   half of it is municipal bonds, and then only for that share.
 - **Filing status** comes from the `filing_status` aux table for that tax
-  year: your data repo's `aux/filing_status.csv`, one row per date such as
+  year: your data repo's `tables/filing_status.csv`, one row per date such as
   `2026-01-31,MFJ`. The templates leave it empty, and a scenario that
   computes tax fails to load without a row. One exception: MFJ or MFS automatically changes to Single, starting
   the year after a primary person's final month in `lifespan.csv`. You do
@@ -454,7 +464,7 @@ files pays no income tax.
 - **Inflation**: the brackets, the standard deduction and the long-term
   gain bands rise each year with inflation, as the law raises them. The
   supplied tables carry the latest published figures and grow them with
-  `cpi` from then on (`floor_series`/`amount_series`, see the `aux/`
+  `cpi` from then on (`floor_series`/`amount_series`, see the `tables/`
   README). The Social Security thresholds and the $3,000 capital loss limit
   stay fixed, as they are in law.
 - **State tax** starts from the federal return, as most states' forms do:
@@ -469,7 +479,7 @@ files pays no income tax.
   and the state's standard deduction from
   `state_standard_deduction__CA.csv` (named for the same state). Tables for California, the District of Columbia, Idaho, Kansas,
   Nebraska and North Carolina come with the simulator; for another state,
-  put its files in your `aux/`. Without
+  put its files in your `tables/`. Without
   that file the federal standard deduction is used, and loading warns,
   since most states' deduction is much smaller. Capital gains are taxed
   as ordinary income unless the state's own tables say otherwise: a share
@@ -479,7 +489,7 @@ files pays no income tax.
   Security unless your state taxes it: then add
   `state_social_security__XX.csv`, which starts from the federally taxable
   amount and leaves out an exclusion that phases out with income. The
-  `aux/` README describes them all. Two more tables, also named for the
+  `tables/` README describes them all. Two more tables, also named for the
   state, are optional: `state_surcharge__CA.csv` adds California's 1% on
   taxable income over $1 million, and `state_hsa__CA.csv` says California
   doesn't recognize health savings accounts, so it taxes an HSA like a
@@ -503,7 +513,7 @@ files pays no income tax.
 - **Local income tax**: some counties and cities tax income on top of the
   state (a Maryland county, New York City, an Indiana county, the Portland
   area). Where the local tax is figured on the state's taxable income, put
-  your own county's or city's rates in `aux/state_local_tax__<county>.csv`
+  your own county's or city's rates in `tables/state_local_tax__<county>.csv`
   (any name, such as `MD-county`), in the columns of the state's brackets:
   one band for a flat county rate, the city's brackets, or a 0% band below
   a threshold, with rows for each filing status your state brackets have,
@@ -520,8 +530,8 @@ files pays no income tax.
 - **State retirement income exclusions**: most states leave some pension,
   IRA and 401(k) income out, often from an age, up to an amount per person,
   and sometimes only below a household income. Add your state's rules as
-  `state_retirement_exclusion__<state>.csv` in `aux/` (none ships; the
-  `aux/` README lists the columns), and the state's taxable income leaves
+  `state_retirement_exclusion__<state>.csv` in `tables/` (none ships; the
+  `tables/` README lists the columns), and the state's taxable income leaves
   that income out for each of you. `sim report tax` shows what was left out
   as `state_exclusion`. Give a pension income account its owner, so the
   pension counts as that person's; a joint account's income is split
@@ -530,7 +540,7 @@ files pays no income tax.
   the District of Columbia, Kentucky and Virginia let a married couple
   file separately on one state return, each through the brackets and
   standard deduction alone, which saves tax when you both have income.
-  `state_separate_return__<state>.csv` in `aux/` with `allowed` `yes`
+  `state_separate_return__<state>.csv` in `tables/` with `allowed` `yes`
   turns it on (the District's ships): the state tax figures both ways and
   takes the lower, with your income split by whose accounts it comes from
   (a joint account's split evenly). `sim report tax --return state` shows
@@ -538,7 +548,7 @@ files pays no income tax.
 - **State deductions and credits** of the state's own, such as a renter's
   deduction or credit, a 529 or long-term care premium deduction, personal
   exemptions and exemption credits, or a deduction for federal tax paid, are
-  rows of `state_adjustments__<state>.csv` in `aux/`. California's
+  rows of `state_adjustments__<state>.csv` in `tables/`. California's
   exemption credits and renter's credit ship. A row that counts spending
   or income reads a tag: tag the rule that pays your rent
   `tax:rent` (`sim scheduled edit housing --tags tax:rent`) for the
@@ -767,7 +777,7 @@ The same shape sells an investment through a destination chain: give the
 basis step `tax_character` `return_of_capital` and `basis_of` the lot. A sale
 below its basis then records a capital loss. The yearly tax calculation nets
 it against that year's gains, deducts up to $3,000 from ordinary income
-(`aux/capital_loss_limit.csv`), and carries the rest into later years.
+(`tables/capital_loss_limit.csv`), and carries the rest into later years.
 
 A remodel adds to the home's basis: pay it through a destination chain whose
 step has `tax_character` `capital_improvement` and `basis_of` the home.
@@ -849,8 +859,10 @@ A chain drawn from (a `from_account`, a `refill_chain`) goes in
 `sim chain show` draws them as trees; `--graph` draws one chain's flowchart in
 the terminal, and `--mermaid` prints the flowchart's Mermaid source for a
 README. To show the chart in place, `--graph` needs a terminal that shows
-images; iTerm2, kitty, Ghostty, WezTerm or VS Code's integrated terminal are
-recommended. Anywhere else it writes the chart to a PNG and prints its path
+images; iTerm2, kitty, Ghostty, WezTerm, VS Code's integrated terminal or
+Windows Terminal 1.22 or later are recommended. Anywhere else it writes the
+chart to a PNG, prints its path and, when the session is local, opens it in
+your image viewer
 ([Setup](SETUP.md#drawing-chain-flowcharts-in-the-terminal) says why and how).
 `sim chain add` with no arguments builds a chain by asking what it is for;
 `sim chain step add|edit|move|rm`, `rename` and `delete` change one.
@@ -957,7 +969,7 @@ partly with Alice's. `vary_low` can't fall before the scenario starts.
 A triangular range assumes little, but real mortality has a particular
 shape. Deaths are spread over many years before the median and bunched
 into fewer years after it. `vary_distribution` `life_table` gives that shape. The
-age comes from a period life table, by default SSA's (`aux/life_table.csv`),
+age comes from a period life table, by default SSA's (`tables/life_table.csv`),
 for someone of the person's sex who is alive when the scenario starts.
 `age_at_death` is the median you believe, and the base case:
 
@@ -982,7 +994,7 @@ table and another median, to compare. `sim lifespan blend` builds a table
 between two or more, such as one for someone who has lived in both
 countries: `sim lifespan blend us_jp --table default --table jp` averages
 their yearly death rates at each age and writes `life_table__us_jp.csv` to
-the scenario's `aux/` (a mix-in's, to use it wherever the mix-in goes).
+the scenario's `tables/` (a mix-in's, to use it wherever the mix-in goes).
 `--table jp=3` weighs a table more; each weighs 1 by default. A name the
 scenario already reads, such as `jp`, is replaced only with `--replace`.
 Use a country's own table rather than a later
@@ -993,7 +1005,7 @@ the median put at Japan's (about 90), the shifted US table gives about a
 gives 6.5% and 0.5%.
 
 `sim lifespan tables` lists every life table there is to choose from: the
-templates' `aux/`, the data repo's and each scenario's, each at its latest
+templates' `tables/`, the data repo's and each scenario's, each at its latest
 vintage. For each age and sex it gives `q`, the chance of dying before the
 next birthday, and the expected age at death for someone who has just
 reached that age, as the simulator reads the table. `sim lifespan check
@@ -1020,7 +1032,8 @@ percentile, taking the lifespans as independent, since a plan has to last
 until then. `--graph` (or `--graph-file lifespans.png`) draws each person's
 chance of dying at each age and of having died by it, shaded like the
 ensemble fan chart, and the chance that someone in the household is still
-alive each year. In a terminal that reports its size, `--graph` fills its
+alive each year, instead of the tables (`--table` for both, the chart
+first). In a terminal that reports its size, `--graph` fills its
 width and height, less three lines for the prompt. `notebooks/lifespan.ipynb`
 shows the same chart, shrunk to fit the window.
 
@@ -1114,10 +1127,10 @@ the move: the new state's brackets, standard deduction, Social Security,
 gain, gains tax, surcharge, retirement exclusion and HSA tables, or none where it has
 none (the federal standard deduction stands in for a missing one). Washington's
 tables ship, so that move needs none of your own. Another state needs its
-tables, as `aux/state_brackets__OR.csv` say, unless they ship or it has no
+tables, as `tables/state_brackets__OR.csv` say, unless they ship or it has no
 income tax (it then reads a 0% table, `state_brackets__none.csv`). A move to another county is a row too:
 `sim tax move 2033-01 CA --county CA-county` reads
-`aux/state_local_tax__CA-county.csv` from then on. A child scenario adds its
+`tables/state_local_tax__CA-county.csv` from then on. A child scenario adds its
 own rows to its parent's, and one of the same month replaces the parent's.
 
 A move to a territory works the same way. Guam, the Northern Mariana Islands
@@ -1168,9 +1181,9 @@ from an account named directly; through a chain, tag it `tax:property`.
 Pay estimated state tax into an account of its own, not the federal
 tax's: the state tax paid into the federal account can't be told apart,
 and only the April settlement there counts. Married filing separately
-halves each dollar limit. The limits are in `aux/itemized_limits.csv`; a
+halves each dollar limit. The limits are in `tables/itemized_limits.csv`; a
 scenario that wants none of this, federal or state, puts an
-`itemized_limits.csv` with only its header line in its `aux/`.
+`itemized_limits.csv` with only its header line in its `tables/`.
 
 When more state tax was withheld than you owed, the state pays the rest
 back the April after. If you itemized that year, the refund is federal
@@ -1212,7 +1225,7 @@ changes a year (it asks for each expense in turn), and
 `sim deduction delete 2028` takes one away.
 
 The deductions are the current scenario's. The command keeps them in the
-scenario's `aux/federal_deductions.csv`, with the expenses in
+scenario's `tables/federal_deductions.csv`, with the expenses in
 `itemizations/deductions_2028.csv` (`sim itemization show deductions_2028`).
 A scenario built on this one inherits them; changing them there gives that
 scenario its own copy, and the parent keeps its own.
@@ -1221,7 +1234,7 @@ State tax uses the same idea, with `--state` on each command. If you don't
 add any, the state figure uses the federal one; most states don't need
 their own. The state figures its own lines from the same spending, but
 never deducts state income tax. It figures them only under its own limits,
-`aux/state_itemized_limits__<state>.csv` (California's ship: no SALT cap,
+`tables/state_itemized_limits__<state>.csv` (California's ship: no SALT cap,
 $1,000,000 of mortgage debt, charity up to half of AGI); a state without
 them gets only the hand-typed total, since its rules may differ from the
 federal ones. A state that taxes an HSA, as California does, counts the medical
@@ -1658,7 +1671,7 @@ scenario starts. Give those in `scenario.csv`'s `meta_json`:
 
 Without them those two years charge no surcharge, and loading warns.
 
-The tiers are in `aux/irmaa_tiers.csv`, with CMS's figures for the year
+The tiers are in `tables/irmaa_tiers.csv`, with CMS's figures for the year
 (CMS publishes the next year's each November). Each row names three
 optional growth series, one each for its income floor and its Part B and
 Part D surcharges. Each series is an `inflation__<name>.csv` file in your
@@ -2346,7 +2359,7 @@ total tax by year, the `total_tax` `sim report tax` prints, with each run's
 lifetime tax, Social Security and final net worth (what a Roth conversion
 plan costs in tax, and what it buys). `--account NAME`
 adds that account's balance, `--section` prints only the parts you name, and
-`--chart` draws net worth (or the account) over time in the terminal instead of
+`--graph` draws net worth (or the account) over time in the terminal instead of
 the tables (`--table` too for both); with `--section social-security` or
 `--section tax`, it draws that section's chart. Leave
 out BASELINE to start from the current scenario.
@@ -2365,9 +2378,23 @@ None of them need you to write any code.
 | `events.ipynb` | Every dollar movement in a run, filterable by reason (which rule fired, a refill/overflow, a catch-up fact), tax character, account, and date range, with a running balance for one account and each refill linked to the debit that triggered it — good for auditing "why did this happen." `sim items` shows the same table, with the same filters, at the command line. |
 | `ensemble.ipynb` | For an ensemble recipe (Part 4.10): net worth's mean/median over quintile bands shaded out to the 5th–95th percentiles, plus a year-end table of mean/median/SD and the 5th, 20th, ... 95th percentiles, and the share of members past each guard rail. |
 
-Open one with `analysis jupyter` (or the **Jupyter** VS Code task, below), or
-in VS Code directly if it runs well enough there for your machine
+Open them with `sim jupyter start` (or the **Jupyter** VS Code task, below),
+or in VS Code directly if it runs well enough there for your machine
 ([notebooks/README.md](../notebooks/README.md) has notes on this).
+`sim jupyter start` runs JupyterLab in the background and opens it in your
+browser; if it is already running, it opens that one again. Name a notebook
+to open it directly (`sim jupyter start net_worth`; TAB completes the
+names). `--port N` serves on port N, or fails if it is taken; by default it
+uses 8888, or the next free port. `--no-browser` prints the address instead, and `--foreground` keeps
+JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
+it is running and its address, and `sim jupyter stop` stops it and its
+notebooks' kernels: save your notebooks first.
+
+For the rest of the household, `sim jupyter hub` runs a JupyterHub: each
+person logs in with their own account on the machine and gets their own
+JupyterLab, on a data repo they share or one of their own
+(`sim jupyter user add`). [Share with your household](guides/jupyterhub.md)
+sets it up.
 
 ### The same views from the terminal
 
@@ -2380,7 +2407,7 @@ machine too small for a notebook comfortably.
 | accounts and their opening balances | `sim account list` |
 | the lots in one account | `sim account holdings <account>` (balances from a run), `sim account lot list <account>` (as entered) |
 | the accounts holding a symbol | `sim account holders <symbol>` |
-| the portfolio by asset class | `sim allocation [--chart]` |
+| the portfolio by asset class | `sim allocation [--graph]` |
 | scheduled transactions | `sim scheduled list` |
 | one-time transfers | `sim transfer list` |
 | a scenario's description, lineage, dates, seed, ensemble size, reserve and latest run | `sim scenario show [scenario]` |
@@ -2391,17 +2418,17 @@ machine too small for a notebook comfortably.
 | itemizations and their totals | `sim itemization list`, `sim itemization show <name>` |
 | itemized deductions, by tax year | `sim deduction list` (`--state` for the state's) |
 | a run's year-end net worth, its lots, its load warnings and its negative-balance warnings | `sim explain [scenario]` |
-| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--chart]` |
-| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--chart]` |
-| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--chart]` |
-| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--chart]` |
-| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--chart]` |
-| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--chart]` |
+| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--graph]` |
+| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--graph]` |
+| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--graph]` |
+| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--graph]` |
+| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--graph]` |
+| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--graph]` |
 | a scenario's guard rails | `sim guard-rail list` |
-| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--chart]` |
-| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--chart] [--mermaid]` |
+| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--graph]` |
+| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--graph] [--mermaid]` |
 
 The result views read the scenario's latest run (or `--runfile`) and show
 CPI-constant (today's) dollars unless you pass `--dollars nominal`.
@@ -2413,20 +2440,22 @@ the whole run, such as `sim compare`'s break-even, a guard rail's summary or
 cumulative margin, or an ensemble's share ever below the reserve, still
 covers the whole run. `sim account history` takes a month or a bare year.
 
-`--chart` shows the notebook's chart of the view instead of its table: drawn
-in the terminal when it shows images (iTerm2, kitty, Ghostty and others),
-else written to a temporary PNG whose name it prints. `--chart-file NAME.png`
+`--graph` shows the notebook's chart of the view instead of its table: drawn
+in the terminal when it shows images (iTerm2, kitty, Ghostty, Windows
+Terminal and others), else written to a temporary PNG whose name it prints,
+and opened in your image viewer when the session is local. `--graph-file NAME.png`
 (or `.svg`) writes it to that file instead. `--table` with either prints the
-table too, after the chart. The chart follows the command's
+table too, after the chart. `--chart` and `--chart-file` are the same
+options under other names, on every command that draws. The chart follows the command's
 options: `--dollars`, `--pre-tax`, `--by`, `--year`, `--lot`, `--exclude` and
-the rest. `sim networth --chart` draws every month, after-tax net worth with
+the rest. `sim networth --graph` draws every month, after-tax net worth with
 the pre-tax total dashed above it, so the gap is the tax still owed.
-`sim report income --chart` stacks the income by group above economic income
+`sim report income --graph` stacks the income by group above economic income
 carried down to the change in net worth; with `--year`, it draws a bar per
-group. `sim report tax --chart` stacks federal, state and any local tax with the
+group. `sim report tax --graph` stacks federal, state and any local tax with the
 effective rate on its own axis (with `--reconciliation`, each April's balance
-due and refund). `sim report spending --chart` draws delivered spending as a
-bar per year with the plan as a dashed line over them. `sim allocation --chart` draws a pie of the asset classes, a
+due and refund). `sim report spending --graph` draws delivered spending as a
+bar per year with the plan as a dashed line over them. `sim allocation --graph` draws a pie of the asset classes, a
 bar per class split by the group with `--by`, and a line per class with
 `--drift`.
 
@@ -2444,7 +2473,7 @@ you wrote it there. JSON also says what the table's heading says (which
 dollars, which run), and a command that prints several tables, such as
 `sim compare`, names each one; CSV holds one table, a command's first unless
 `--section` picks another. Anything else the command would say goes to stderr,
-so the output is only the data. Neither goes with `--chart`.
+so the output is only the data. Neither goes with `--graph`.
 
 `sim report income` tells the whole story of each year. Its total,
 `economic_income`, is income plus paper gains, net of losses: what the year
@@ -2476,7 +2505,7 @@ notebook views don't have a terminal command yet.
 If your workspace has these set up (Command Palette → "Tasks: Run Task"),
 three common jobs are one click instead of a typed command:
 
-- **Jupyter** — opens JupyterLab (same as `analysis jupyter`).
+- **Jupyter** — opens JupyterLab (same as `sim jupyter start`).
 - **Fetch Prices** — runs `sim prices fetch` (Part 4.2).
 - **Run All Scenarios** — runs every scenario in the data repo (`sim all`).
 
@@ -2511,7 +2540,7 @@ asset-class mix; see Part 4.11.
 
 - [templates/README.md](../templates/README.md) — full CSV column reference and conventions.
 - [`docs/architecture/ADR-003-registries-and-csv-schemas.md`](architecture/ADR-003-registries-and-csv-schemas.md) — authoritative
-  schema, including the aux/prices/series/itemizations override mechanism (§4.1d)
+  schema, including the tables/prices/series/itemizations override mechanism (§4.1d)
   and the data-repo structure diagrams (§4.0).
 - [`docs/architecture/ADR-005-lots-and-per-lot-state.md`](architecture/ADR-005-lots-and-per-lot-state.md) — lots in depth.
 - [notebooks/README.md](../notebooks/README.md) — the same information as interactive widgets.

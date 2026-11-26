@@ -14,6 +14,7 @@ from zabob.retirement.sim import rename
 from zabob.retirement.sim import scenario as sc
 from zabob.retirement.sim.lineage import read_parents
 from zabob.retirement.sim.loader import load_scenario
+from zabob.retirement.sim.loader import read_current_scenario, write_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None) -> Result:  # noqa: A002 -- CliRunner's name
@@ -38,12 +39,12 @@ def test_scenario_copy_makes_a_sibling(
     test_data_dir: Path, test_scenarios_dir: Path, loads: Callable[[str], None],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_USER", "bill")
+    monkeypatch.setenv("ZABOB_USER", "bill")
     old = test_scenarios_dir / "retire_alice"
     readme = old / "README.md"
     readme.write_text("# retire_alice\n\nSee [lots](../retire_alice/account_lots.csv) and "
                       "[base](../base/README.md).\n", encoding="utf-8")
-    (test_data_dir / ".current_scenario").write_text("base\n")
+    write_current_scenario(test_data_dir, "base")
     before = {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()}
 
     result = _sim(test_data_dir, "scenario", "copy", "retire_alice", "retire_early")
@@ -63,7 +64,7 @@ def test_scenario_copy_makes_a_sibling(
         "# retire_early\n\nSee [lots](../retire_early/account_lots.csv) and [base](../base/README.md).\n")
     # The original is untouched, and the copy is current.
     assert {p.relative_to(old): p.read_bytes() for p in old.rglob("*") if p.is_file()} == before
-    assert (test_data_dir / ".current_scenario").read_text().strip() == "retire_early"
+    assert read_current_scenario(test_data_dir) == "retire_early"
     assert "Current scenario is now retire_early (was base)" in result.stderr
     loads("retire_early")
 

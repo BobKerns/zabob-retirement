@@ -44,7 +44,7 @@ other, so marking ``base`` marks every what-if built on it; one opts out with
   price files can). The merge pokes the builder through the data repo's
   ``post-merge`` hook, so the rolled scenarios, and what is built on them,
   are built again.
-- Never under ``ANALYSIS_ROLL=off`` (the tests set it) or ``sim builder
+- Never under ``ZABOB_ROLL=off`` (the tests set it) or ``sim builder
   install --no-roll``, nor without a builder config.
 
 The state shared by the data repo's worktrees is in git's common directory:
@@ -66,21 +66,22 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from zabob.retirement.sim import price_schedule, registries
+from zabob.retirement.oscompat import is_link, link_dir
+from zabob.retirement.sim import price_schedule, registries, shared_writer
 from zabob.retirement.sim.lineage import is_pool, is_template_name, load_order, read_meta, scenario_dir, scenario_start
 from zabob.retirement.sim.loader import DISABLE_FILE
 from zabob.retirement.sim.locks import BUILDER_SWITCH_ENV
 
 __all__ = [
     "DEFAULT_WINDOW", "ROLL_BRANCH", "SWITCH_ENV", "RollOutcome", "RollScheduleError",
-    "describe", "due", "due_scenarios", "enabled", "marked", "merge_pending", "parse_window",
+    "configured", "describe", "due", "due_scenarios", "enabled", "marked", "merge_pending", "parse_window",
     "read_state", "roll", "switched_off", "window_of",
 ]
 
 ROLL_BRANCH = "builder/roll"
 _ROLL_REF = f"refs/heads/{ROLL_BRANCH}"
 _MAIN_REF = f"refs/heads/{price_schedule.DATA_BRANCH}"
-SWITCH_ENV = "ANALYSIS_ROLL"
+SWITCH_ENV = "ZABOB_ROLL"
 DEFAULT_WINDOW = "01:00-05:00"
 STATE_FILE = "analysis-roll.json"
 LOCK_FILE = "analysis-roll.lock"
@@ -98,13 +99,23 @@ class RollScheduleError(Exception):
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_ROLL=off`` (or 0/no/false): no roll."""
+    """``ZABOB_ROLL=off`` (or 0/no/false): no roll."""
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
+
+
+def configured(config: dict[str, Any] | None) -> bool:
+    """Whether a workspace with builder ``config`` was installed to roll scenarios,
+    and isn't switched off: as :func:`enabled`, whichever clone writes. What
+    it committed before another clone became the writer is merged while
+    this holds (#785)."""
+    return config is not None and bool(config.get("roll", True)) and not switched_off()
 
 
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` rolls scenarios."""
-    return config is not None and bool(config.get("roll", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and configured(config) \
+        and shared_writer.writes_here(config.get("data_dir"), config)
 
 
 # -- the window -------------------------------------------------------------------
@@ -286,12 +297,12 @@ def _prepare(top: Path, worktree: Path, data_dir: Path, rel: str) -> Path:
 
     runs = find_state_dir(data_dir, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
     linked = find_state_dir(data, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
-    if not linked.is_symlink():
+    if not is_link(linked):
         if linked.is_dir():
             shutil.rmtree(linked)
         linked.parent.mkdir(parents=True, exist_ok=True)
         runs.mkdir(parents=True, exist_ok=True)
-        linked.symlink_to(runs, target_is_directory=True)
+        link_dir(linked, runs)
     return data
 
 
@@ -302,7 +313,7 @@ def _sim() -> list[str]:
 def _roll_one(data: Path, name: str, month: str, *, own: bool = False) -> tuple[int, list[str]]:
     """``sim scenario roll`` in the worktree: its exit status and output."""
     # Not waiting on the builder: the daemon may be this roll's parent.
-    env = {**os.environ, BUILDER_SWITCH_ENV: "off", "ANALYSIS_DATA_DIR": str(data)}
+    env = {**os.environ, BUILDER_SWITCH_ENV: "off", "ZABOB_DATA_DIR": str(data)}
     try:
         done = subprocess.run(
             [*_sim(), "scenario", "roll", name, month, "--yes", "--no-keep",

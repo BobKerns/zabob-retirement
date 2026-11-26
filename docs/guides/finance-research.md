@@ -23,10 +23,10 @@ That's why the plugin is opt-in: nothing loads until you install it.
 ## Install it
 
 ```sh
-.venv/bin/analysis research-plugin install
+.venv/bin/sim symbol research-plugin install
 ```
 
-Installed with `uv tool install`, the command is `analysis research-plugin
+Installed with `uv tool install`, the command is `sim symbol research-plugin
 install`.
 
 `scripts/setup.sh` offers this once, defaulting to no, when `claude` is on
@@ -37,6 +37,11 @@ install`, to `zabob-retirement/finance-research/` in your data folder:
 `$XDG_DATA_HOME`, by default `~/.local/share`), and
 installs it for your user from there. It says which settings it used.
 
+Sign in to Claude Code first: run `claude` once and follow its sign-in.
+A run from `sim symbol research` asks you to sign in if you haven't, but
+the background builder's morning research runs with no one to ask, so
+those runs fail until you have.
+
 Claude Code reads the installed plugin in place, so don't delete that
 folder. After changing `research.yaml`, run the command
 again (setup does, once the plugin is installed) and start a new Claude Code
@@ -46,7 +51,7 @@ Then ask in Claude Code, from any folder: "tear sheet on ABCDX". To remove
 it:
 
 ```sh
-.venv/bin/analysis research-plugin uninstall
+.venv/bin/sim symbol research-plugin uninstall
 ```
 
 **Without the household settings.** The repo's own copy,
@@ -56,14 +61,14 @@ marketplace; once you trust the folder in Claude Code, `/plugin install
 finance-research@analysis` installs it. This is the copy a collaborator
 gets.
 
-**In claude.ai.** `analysis research-plugin render --skill-zips` also writes
+**In claude.ai.** `sim symbol research-plugin render --skill-zips` also writes
 `out/finance-research/skills/<skill>.skill`, one archive per skill, to
 upload in claude.ai's skill settings.
 
 ## Settings: `research.yaml`
 
 The settings are a household's choice, so they live in the data repo, as
-`research.yaml` beside `allocations.csv` (`$ANALYSIS_DATA_DIR/research.yaml`):
+`research.yaml` beside `allocations.csv` (`$ZABOB_DATA_DIR/research.yaml`):
 
 ```yaml
 languages: [en, ja]   # tab languages; en first. Each other language adds a
@@ -76,8 +81,10 @@ tabs:
   glossary: true      # false drops the glossary, in every language
 ```
 
-Every setting is optional. With no file, the plugin is neutral: English
-only, and state-tax points say that the treatment depends on your state,
+`sim init` writes this file with every setting commented out, and
+`sim symbol research-plugin install` writes it into a data repo that has
+none; uncomment a line to change that setting. Every setting is optional.
+With none set, or no file, the plugin is neutral: English only, and state-tax points say that the treatment depends on your state,
 with no state rate bands. Only Japanese (`ja`) has a translation file
 today.
 
@@ -121,7 +128,7 @@ no rules file still works: the skill finds that state's rules itself.
 
 To change the skills' text, edit `skills/` directly. To change a defaults
 block, edit its template, then run
-`.venv/bin/analysis research-plugin render --neutral` to update the
+`.venv/bin/sim symbol research-plugin render --neutral` to update the
 committed block; a test fails until they match, and another fails if any
 Japanese text appears outside `overlays/`. To add a language, add
 `overlays/<code>/language.yaml` (its English name, its parent-tab label and
@@ -148,7 +155,7 @@ expect the settings in `evals/research.yaml` (Japanese tabs, California),
 so render with those first; `evals-neutral/` checks the neutral plugin:
 
 ```sh
-.venv/bin/analysis research-plugin render \
+.venv/bin/sim symbol research-plugin render \
   --config plugins/finance-research/evals/research.yaml --out out/finance-research-eval
 claude plugin eval out/finance-research-eval/finance-research
 claude plugin eval plugins/finance-research --eval-dir evals-neutral
@@ -188,7 +195,8 @@ are ignored, and file tools stay in the run's folder), no MCP servers, and
 `dontAsk`, which refuses anything not on the allow list instead of
 prompting. The list allows web search and fetch, reading the run's folder
 and the plugin, writing only in the run's folder, and running only the
-skill's own scripts, by their path in the plugin.
+skill's own scripts, by their path in the plugin, under the Python `sim`
+itself runs on (not whatever `python3` is on Claude Code's path).
 
 Nothing here holds a key or calls the API itself: every run uses Claude
 Code's own login. Signed in with a claude.ai account, runs count against

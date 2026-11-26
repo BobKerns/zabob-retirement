@@ -3,7 +3,7 @@
 ADR-004 §10 is the specification. Run files and ensemble batches pile up
 under ``state/runs`` (and member intents under ``state/intent``), so
 ``sim load`` and ``sim run`` prune them after their own work, following
-rules in ``$ANALYSIS_DATA_DIR/.retention.yaml``, which they create with
+rules in ``$ZABOB_DATA_DIR/.retention.yaml``, which they create with
 ``DEFAULT_RETENTION`` when it is missing::
 
     intents:            # ensemble/sensitivity batches' member intents
@@ -517,7 +517,7 @@ def prune_state(
     retention = read_retention(data_dir)
     if retention is None:
         path = Path(data_dir) / RETENTION_FILENAME
-        path.write_text(DEFAULT_RETENTION)
+        path.write_text(DEFAULT_RETENTION, encoding="utf-8")
         result.created = path
         retention = parse_retention(DEFAULT_RETENTION, base=Path(data_dir).resolve().parent)
     state_dir = find_state_dir(data_dir, DEFAULT_STATE_DIR)

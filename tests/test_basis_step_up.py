@@ -393,8 +393,8 @@ def test_a_joint_lot_steps_up_half_however_many_survive(
 ) -> None:
     # No primary persons: the household is everyone with a role, here three.
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text().replace(",primary,", ",secondary,")
-                       + "carol,Carol (fake),1990-01-01,f,secondary,{}\n")
+    persons.write_text(persons.read_text(encoding="utf-8").replace(",primary,", ",secondary,")
+                       + "carol,Carol (fake),1990-01-01,f,secondary,{}\n", encoding="utf-8")
     write_lifespans(ALICE_DIES)
     assert _plan(load_test_copy) == {
         ALICE_FINAL: {(BROKERAGE, "alice", 2), ("Asset_Home", "alice", 2)},

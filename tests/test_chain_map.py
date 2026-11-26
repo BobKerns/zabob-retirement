@@ -226,7 +226,7 @@ def test_an_accounts_lots_share_a_box_named_for_it(
     set_brokerage_lots([{"lot": "default", "opening_balance": "1000.00"},
                         {"lot": "growth", "opening_balance": "2000.00"}])
     bridge = retire_alice_csv("chains/source/bridge.csv")
-    bridge.write_text(bridge.read_text() + "Asset_Brokerage_Joint,growth,,,,\n")
+    bridge.write_text(bridge.read_text(encoding="utf-8") + "Asset_Brokerage_Joint,growth,,,,\n", encoding="utf-8")
     with open_scenario(guide_chains, "retire_alice") as sc:
         chart = chain_map.mermaid(chain_map.chain_map(sc), ["retirement_draw"])
     boxes = sorted(_boxes(chart).values())
@@ -454,7 +454,7 @@ def test_list_finds_a_chain_whose_name_looks_like_a_glob(
     guide_chains: Path, retire_alice_csv: Callable[[str], Path],
 ) -> None:
     (retire_alice_csv("chains/source") / "odd[1].csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     result = _sim(guide_chains, "list")
     assert result.exit_code == 0, result.output
     row = next(line for line in result.output.splitlines() if "odd[1]" in line)
@@ -476,9 +476,9 @@ def test_names_that_look_like_markup_print_as_written(
 ) -> None:
     chains = retire_alice_csv("chains/source")
     (chains / "tag[red].csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Savings,,,,,\n", encoding="utf-8")
     (chains / "out[bold]er.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\ntag[red],,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\ntag[red],,,,,\n", encoding="utf-8")
     listed = _sim(guide_chains, "list")
     assert listed.exit_code == 0, listed.output
     assert "tag[red]" in listed.output and "out[bold]er" in listed.output

@@ -80,7 +80,7 @@ def test_sim_networth_chart_draws_only_the_years_asked_for(
         return real(lines, *args, **kwargs)
 
     monkeypatch.setattr(run_charts, "net_worth_figure", spy)
-    result = _sim("networth", "--end", "2028", "--chart-file", str(tmp_path / "nw.png"),
+    result = _sim("networth", "--end", "2028", "--graph-file", str(tmp_path / "nw.png"),
                   "--runfile", str(report_run_file))
     assert result.exit_code == 0, result.output
     (lines,) = drawn
@@ -174,7 +174,7 @@ def test_sim_ensemble_log_needs_a_chart(
     names = ["baseline", "child"] if command == "compare" else ["baseline"]
     result = _sim("ensemble", command, *names, "--runs-dir", str(runs_dir), "--log")
     assert result.exit_code == 2
-    assert "--log needs --chart or --chart-file" in result.output
+    assert "--log needs --graph or --graph-file" in result.output
 
 
 @pytest.mark.slow
@@ -197,7 +197,7 @@ def test_sim_ensemble_summary_log_chart_of_the_years_asked_for(
     seeded_ensemble_batch("baseline", 1)
     result = _sim("ensemble", "summary", "baseline", "--runs-dir", str(runs_dir),
                   "--start", "2028", "--end", "2030", "--log",
-                  "--chart-file", str(tmp_path / "fan.png"))
+                  "--graph-file", str(tmp_path / "fan.png"))
     assert result.exit_code == 0, result.output
     (figure,), (summary,) = figures, shown
     assert figure.axes[0].get_yscale() == "log"
@@ -222,7 +222,7 @@ def test_sim_ensemble_compare_log_chart_uses_symmetric_log(
     seeded_ensemble_batch("baseline", 1)
     seeded_ensemble_batch("child", 1)
     result = _sim("ensemble", "compare", "baseline", "child", "--runs-dir", str(runs_dir),
-                  "--end", "2030", "--log", "--chart-file", str(tmp_path / "compare.png"))
+                  "--end", "2030", "--log", "--graph-file", str(tmp_path / "compare.png"))
     assert result.exit_code == 0, result.output
     (figure,) = figures
     assert {ax.get_yscale() for ax in figure.axes} == {"symlog"}

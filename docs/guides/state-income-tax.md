@@ -22,7 +22,7 @@ Each rule is marked:
   tracks it, it's linked.
 
 The tables are in the code repository's
-[`templates/aux/README.md`](../../templates/aux/README.md):
+[`templates/tables/README.md`](../../templates/tables/README.md):
 
 | Table | Says |
 | --- | --- |

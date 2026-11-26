@@ -11,7 +11,7 @@ it needs no kernel or browser, works over SSH and in scripts, and is what to sug
 machine too small for a notebook. Every so often (say after each batch of notebook work),
 walk the notebooks and `zabob.retirement.sim.notebook_ui`, check each view against `analysis sim
 --help`, and add the missing command or note why there isn't one. Charts count too: a
-notebook chart wants a `--chart`/`--chart-file` on its terminal equivalent, with the
+notebook chart wants a `--graph`/`--graph-file` on its terminal equivalent, with the
 plot in a widget-free module both share (as `ensemble_plots.py` and `compare_charts.py`
 are). Update the table in [notebooks/README.md](notebooks/README.md) when a command is
 added.

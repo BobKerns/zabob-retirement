@@ -14,7 +14,7 @@ from zabob.retirement.sim import provenance
 
 def _prices(data: Path, *rows: str) -> None:
     path = data / "prices" / "security_price__VTI.csv"
-    path.write_text("effective_date,price\n" + "".join(f"{row}\n" for row in rows))
+    path.write_text("effective_date,price\n" + "".join(f"{row}\n" for row in rows), encoding="utf-8")
 
 
 def test_prices_after_the_start_leave_the_tree_unchanged(

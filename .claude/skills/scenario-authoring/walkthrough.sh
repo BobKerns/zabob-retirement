@@ -7,7 +7,7 @@
 #
 # OUT_DIR (default: $TMPDIR/analysis-authoring) is rebuilt each time. Exits
 # non-zero at the first command that fails. Afterwards, in your own shell:
-#   source OUT_DIR/datarepo/sim/activate-analysis
+#   source OUT_DIR/datarepo/sim/activate-retirement
 # to look around. Takes about a minute (two 6-member ensembles and a pool).
 set -euo pipefail
 
@@ -26,20 +26,20 @@ printf 'state/\n' > "$data/.gitignore"
 # Runs record the data's git commit, so the data must be a repo of its own.
 git -C "$data" init -q -b main
 # shellcheck disable=SC1091
-source "$data/sim/activate-analysis" </dev/null >/dev/null
+source "$data/sim/activate-retirement" </dev/null >/dev/null
 commit() {
     git -C "$data" add -A
     git -C "$data" -c user.name=walkthrough -c user.email=walkthrough@example.invalid \
         -c commit.gpgsign=false commit -qm "$1"
 }
 commit "prototype data"
-export ANALYSIS_KEEP_SCENARIO=1 COLUMNS=160
+export ZABOB_KEEP_SCENARIO=1 COLUMNS=160
 
 step() { printf '\n== %s\n' "$*"; "$@" </dev/null; }
 expect_in() {  # FILE PATTERN: fail unless FILE has a line matching PATTERN
     grep -q -- "$2" "$1" || { echo "walkthrough: $1 lacks $2" >&2; exit 1; }
 }
-s="$ANALYSIS_DATA_DIR/scenarios"
+s="$ZABOB_DATA_DIR/scenarios"
 
 # A derived scenario, with changes now and at future dates.
 X=downsize_2032
@@ -59,7 +59,7 @@ step sim person lifespan set alice 92 --scenario $X
 step sim guard-rail edit budget --threshold 95000 --scenario $X
 expect_in "$s/$X/scheduled.csv" '^living,'
 expect_in "$s/$X/calendar.csv" '^2032-07,set_amount,,housing'
-expect_in "$ANALYSIS_DATA_DIR/securities.csv" '^ABCDX,'  # shared, not per-scenario
+expect_in "$ZABOB_DATA_DIR/securities.csv" '^ABCDX,'  # shared, not per-scenario
 
 # A household mix-in, built on the scenario holding the accounts it names.
 step sim scenario create m_high_healthcare retire_alice --description "Mix-in: higher healthcare"

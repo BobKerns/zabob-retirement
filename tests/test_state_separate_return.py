@@ -399,12 +399,12 @@ def test_the_loader_wants_mfs_rows_where_spouses_may_file_separately(
     test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
     add_state_tax()
-    brackets = test_data_dir / "aux" / "state_brackets__CA.csv"
+    brackets = test_data_dir / "tables" / "state_brackets__CA.csv"
     dated = _first_date(brackets)
     write_aux("state_separate_return__CA.csv", f"effective_date,allowed\n{dated},yes\n")
-    rows = brackets.read_text().splitlines(keepends=True)
-    brackets.write_text("".join(r for r in rows if ",MFS," not in r))
-    with pytest.raises(LoadError, match=rf"aux/state_brackets__CA.csv \({dated}\): no MFS rows"):
+    rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
+    brackets.write_text("".join(r for r in rows if ",MFS," not in r), encoding="utf-8")
+    with pytest.raises(LoadError, match=rf"tables/state_brackets__CA.csv \({dated}\): no MFS rows"):
         load_test_copy()
 
 
@@ -415,12 +415,12 @@ def test_the_loader_wants_mfs_rows_in_the_gain_tables_too(
     """A gain table without MFS rows would tax a spouse's gain as ordinary
     income, so it's refused too."""
     add_state_tax()
-    dated = _first_date(test_data_dir / "aux" / "state_brackets__CA.csv")
+    dated = _first_date(test_data_dir / "tables" / "state_brackets__CA.csv")
     write_aux("state_separate_return__CA.csv", f"effective_date,allowed\n{dated},yes\n")
     write_aux("state_ltcg_brackets__CA.csv",
               "effective_date,filing_status,bracket_index,floor,marginal_rate\n"
               f"{dated},MFJ,0,0.00,3%\n{dated},Single,0,0.00,3%\n")
-    with pytest.raises(LoadError, match=rf"aux/state_ltcg_brackets__CA.csv \({dated}\): no MFS"):
+    with pytest.raises(LoadError, match=rf"tables/state_ltcg_brackets__CA.csv \({dated}\): no MFS"):
         load_test_copy()
 
 
@@ -434,14 +434,14 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
     way to ones with them before then are fine; ones still in force then
     are refused."""
     add_state_tax()
-    brackets = test_data_dir / "aux" / "state_brackets__CA.csv"
+    brackets = test_data_dir / "tables" / "state_brackets__CA.csv"
     dated = _first_date(brackets)
     later = _years_on(dated, mfs_from)
     write_aux("state_separate_return__CA.csv",
               f"effective_date,allowed\n{dated},no\n{_years_on(dated, 5)},yes\n")
-    header, *rows = brackets.read_text().splitlines(keepends=True)
+    header, *rows = brackets.read_text(encoding="utf-8").splitlines(keepends=True)
     brackets.write_text(header + "".join(r for r in rows if ",MFS," not in r)
-                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)))
+                        + "".join(later + r[len(dated):] for r in rows if r.startswith(dated)), encoding="utf-8")
     if refused:
         with pytest.raises(LoadError, match=rf"state_brackets__CA.csv \({dated}\): no MFS"):
             load_test_copy()
@@ -451,7 +451,7 @@ def test_the_loader_wants_mfs_rows_only_while_separate_returns_are_allowed(
 
 def _first_date(path: Path) -> str:
     """The earliest effective date in aux table ``path``."""
-    return min(line.split(",", 1)[0] for line in path.read_text().splitlines()[1:])
+    return min(line.split(",", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()[1:])
 
 
 def _years_on(dated: str, years: int) -> str:

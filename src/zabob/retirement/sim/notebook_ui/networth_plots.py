@@ -4,7 +4,7 @@ All take a :class:`~zabob.retirement.sim.connection.RunConnection` and pull thei
 data from its cached derived-data methods and :mod:`zabob.retirement.sim.reports`
 -- no notebook-local pandas code. The charts are
 :mod:`zabob.retirement.sim.run_charts`' (#327), the ones ``sim networth`` and
-``sim report ... --chart`` draw.
+``sim report ... --graph`` draw.
 """
 
 from __future__ import annotations

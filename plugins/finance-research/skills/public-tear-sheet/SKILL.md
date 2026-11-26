@@ -7,7 +7,7 @@ description: Build an investment research tear sheet (one-pager, company profile
 
 Build a company tear sheet from public sources, and show where every number came from. The default reader is an investor. For a public company that means the stock. For a private company it means what the company tells you about the public market: who it takes share from, whose revenue it is, and what its valuation implies. A paid terminal hands you clean, pre-computed fields. Here you assemble them yourself from filings and web pages that sometimes disagree, go stale or fail to load. The skill's value lies in that discipline: clear sources, dates and arithmetic, and visible gaps.
 
-<!-- defaults:start (rendered from defaults/public-tear-sheet.md.j2; edit the template, then run: analysis research-plugin render --neutral) -->
+<!-- defaults:start (rendered from defaults/public-tear-sheet.md.j2; edit the template, then run: sim symbol research-plugin render --neutral) -->
 ## Defaults for this installation
 - **Tabs:** Overview, Tear sheet, Price chart, Detail, Glossary.
 - **Translated tabs:** none.
@@ -102,7 +102,7 @@ If a check fails, recompute from raw components. If it still disagrees, show "n/
   - open questions and data gaps.
 
   When cutting the tear sheet to budget, move material to Detail rather than deleting it, unless it's genuinely uninformative. Each page-one section whose evidence lives in Detail ends with a short pointer ("detail: regional comps").
-- **Hold the length budget.** Each audience file gives a word budget for the body, *excluding* the sources list. Count with `python scripts/wordcount.py <file>` (body before the Sources heading, ignoring table syntax and URLs) before finishing, and if you're over, apply the file's cut order, moving what you cut to Detail. A tear sheet that runs to five pages has stopped being one. Depth belongs in the Detail tab, not in longer page-one paragraphs.
+- **Hold the length budget.** Each audience file gives a word budget for the body, *excluding* the sources list. Count with `scripts/wordcount.py <file>` (body before the Sources heading, ignoring table syntax and URLs) before finishing, and if you're over, apply the file's cut order, moving what you cut to Detail. A tear sheet that runs to five pages has stopped being one. Depth belongs in the Detail tab, not in longer page-one paragraphs.
 
 - **Lead with the point.** The doc's first sentence and each section's first sentence state the finding with its number, not "This section covers…".
 - **Rewrite for the audience.** A filing's business description is an input, never output. Investment research wants what's *changing* and who else it affects; IB wants pitchbook prose; corp dev wants an acquirer's lens; sales wants plain language.

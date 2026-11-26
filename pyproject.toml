@@ -1,7 +1,6 @@
 [project]
 name = "zabob-retirement"
-# packages/zabob-retire pins this same version; tests/test_release.py and
-# publish.yml hold them, and a release tag, together.
+# publish.yml checks a release tag against it.
 version = "1.0.0b1"
 description = "Zabob Retirement: a retirement simulator for your future, with scenario comparison and Monte Carlo ensembles"
 # PyPI shows this; README.md's relative links and images only work on GitHub.
@@ -16,6 +15,7 @@ classifiers = [
   "Framework :: Jupyter",
   "Intended Audience :: End Users/Desktop",
   "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3.14",
   "Topic :: Office/Business :: Financial",
@@ -25,6 +25,8 @@ dependencies = [
   "gitpython>=3.2.1",
   "ipywidgets>=8.1.9",
   "matplotlib>=3.11.2",
+  # Sixel images (#777); matplotlib needs it too
+  "pillow>=13.0.0",
   "pandas>=3.1.1",
   "rich>=15.0.0",
   "ipykernel>=7.4.0",
@@ -40,6 +42,13 @@ dependencies = [
   "pyyaml>=6.0.3",
   "jinja2>=3.1.6",
   "ofxtools>=1.1.1",
+]
+
+[project.optional-dependencies]
+# `sim jupyter hub` (#766): a JupyterHub serving the household's logins, on
+# Linux and macOS. Its proxy, configurable-http-proxy, comes from npm.
+hub = [
+  "jupyterhub>=6.2.0; sys_platform != 'win32'",
 ]
 
 [project.scripts]
@@ -65,6 +74,7 @@ dev = [
   "ruff>=0.17.5",
   "pytest-xdist>=3.8.0",
   "ty>=0.0.104",
+  "pytest-split>=0.11.0",
 ]
 
 [build-system]
@@ -113,7 +123,12 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# PLW1514 (#687): text files name their encoding, or Windows reads and
+# writes them in its locale's (cp1252), not UTF-8. It is a preview rule, so
+# only explicitly selected preview rules are on.
+preview = true
+explicit-preview-rules = true
+select = ["E", "F", "I", "UP", "B", "PLW1514"]
 ignore = ["I001", "F541"]
 
 [tool.ruff.lint.per-file-ignores]

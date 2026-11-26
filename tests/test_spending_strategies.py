@@ -31,12 +31,12 @@ FLEX = "strategies/flex.csv"
 
 def _rewrite(path: Path, name: str, **changes: str) -> None:
     """Change the row named ``name`` of a CSV file."""
-    with path.open(newline="") as f:
+    with path.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     for row in rows:
         if row["name"] == name:
             row.update(changes)
-    with path.open("w", newline="") as f:
+    with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -45,10 +45,10 @@ def _rewrite(path: Path, name: str, **changes: str) -> None:
 def _rewrite_flex(strategy_csv: Callable[[str, str], Path], **changes: str) -> None:
     """Change the ``flex`` strategy's file (one row)."""
     path = strategy_csv(SCENARIO, FLEX)
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     rows[0].update(changes)
-    with path.open("w", newline="") as f:
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -66,7 +66,7 @@ def _down_year(strategy_csv: Callable[[str, str], Path]) -> None:
     strategy_csv(SCENARIO, "calendar.csv").write_text(
         f"{header}\n"
         "2030-01-31,set_rate,,,,,,stock_us,-25%,,,,a down year,,crash\n"
-        "2031-01-31,set_rate,,,,,,stock_us,6%,,,,recovery,,recovery\n")
+        "2031-01-31,set_rate,,,,,,stock_us,6%,,,,recovery,,recovery\n", encoding="utf-8")
 
 
 def _query(run: Path, sql: str) -> list[tuple]:
@@ -354,12 +354,12 @@ def test_only_fixed_amount_rules_can_be_owned(
     strategy_scenarios: Path, intent_dir: Path, strategy_csv: Callable[[str, str], Path],
 ) -> None:
     path = strategy_csv(SCENARIO, "scheduled.csv")
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         header = f.readline()
-    path.write_text(path.read_text() + (
+    path.write_text(path.read_text(encoding="utf-8") + (
         "mortgage_pmt,Asset_Checking,,Liability_Mortgage,,monthly,,mortgage_payment,"
         "Expense_Interest_Mortgage,,,6%,,1850.00,2026-05-31,,none,,2026-05-31,,300,,,30yr fixed 6%,"
-        "{},,flex:optional\n"))
+        "{},,flex:optional\n"), encoding="utf-8")
     assert header.rstrip().endswith(",tags")
     errors = _load_errors(strategy_scenarios, intent_dir)
     assert "rule 'mortgage_pmt' carries tag flex:optional but is mortgage_payment" in errors
@@ -369,7 +369,7 @@ def test_two_strategies_cannot_own_one_rule(
     strategy_scenarios: Path, intent_dir: Path, strategy_csv: Callable[[str, str], Path],
 ) -> None:
     path = strategy_csv(SCENARIO, FLEX)
-    path.with_name("second.csv").write_text(path.read_text())
+    path.with_name("second.csv").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     errors = _load_errors(strategy_scenarios, intent_dir)
     assert "rule 'gifts' (tag flex:optional) is already owned by strategy 'flex'" in errors
 
@@ -387,7 +387,7 @@ def test_strategy_add_asks_for_the_rule_tag(
                   input="threshold\nflex:optional\nportfolio:invest\n\n\n")
     assert result.exit_code == 0, result.output
     assert "rule tags: category:gifts, category:travel, flex:optional" in result.output
-    text = strategy_csv(SCENARIO, "strategies/trim.csv").read_text()
+    text = strategy_csv(SCENARIO, "strategies/trim.csv").read_text(encoding="utf-8")
     assert 'threshold,,flex:optional,,,,,"{""portfolio"":""portfolio:invest""}",' in text
     result = _cli(strategy_scenarios, "strategy", "list", SCENARIO)
     assert "trim                threshold on rules flex:optional" in result.output
@@ -429,18 +429,18 @@ def test_spending_report_chart_file(
     strategy_scenarios: Path, strategy_csv: Callable[[str, str], Path],
     run_strategy_scenario: Callable[[str], Path], tmp_path: Path,
 ) -> None:
-    """#430: --chart-file writes the notebook's chart; the table only with --table."""
+    """#430: --graph-file writes the notebook's chart; the table only with --table."""
     _strategy(strategy_csv, "threshold", minimum="900000.00")
     run = str(run_strategy_scenario(SCENARIO))
     chart = tmp_path / "spending.svg"
     result = _cli(strategy_scenarios, "report", "spending", "--runfile", run,
-                  "--by", "tag:category", "--chart-file", str(chart))
+                  "--by", "tag:category", "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
-    assert "Spending against plan by category" in chart.read_text()
+    assert "Spending against plan by category" in chart.read_text(encoding="utf-8")
     assert "redirected" not in result.output
     chart.unlink()
     result = _cli(strategy_scenarios, "report", "spending", "--runfile", run,
-                  "--chart-file", str(chart), "--table")
+                  "--graph-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
     assert chart.stat().st_size > 0
     assert "spending against plan by category" in result.output
@@ -453,7 +453,7 @@ def test_spending_report_chart_without_strategies(
     """The plan alone is still drawn when no strategy changed it."""
     run = str(run_strategy_scenario("alice_rebalance"))
     chart = tmp_path / "spending.png"
-    result = _cli(strategy_scenarios, "report", "spending", "--runfile", run, "--chart-file", str(chart))
+    result = _cli(strategy_scenarios, "report", "spending", "--runfile", run, "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
     assert chart.stat().st_size > 0
 
@@ -486,10 +486,11 @@ def test_compare_lists_a_rules_only_strategy_that_differs(
     child.mkdir()
     (child / "scenario.csv").write_text(
         "name,description,start,end,seed,parent_scenario,created_by,meta_json\n"
-        "alice_spending_trim,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n")
-    (child / "README.md").write_text("# alice_spending_trim\n\nBuilds on: alice_spending\n")
+        "alice_spending_trim,,2026-05-31,2040-12-31,42,alice_spending,alice,{}\n", encoding="utf-8")
+    (child / "README.md").write_text("# alice_spending_trim\n\nBuilds on: alice_spending\n", encoding="utf-8")
     (child / "strategies").mkdir()
-    (child / FLEX).write_text(strategy_csv(SCENARIO, FLEX).read_text().replace("guardrail,", "threshold,"))
+    (child / FLEX).write_text(
+        strategy_csv(SCENARIO, FLEX).read_text(encoding="utf-8").replace("guardrail,", "threshold,"), encoding="utf-8")
     for name in (SCENARIO, "alice_spending_trim"):
         result = _cli(strategy_scenarios, "run", name, "--allow-dirty-data", "--allow-dirty-code")
         assert result.exit_code == 0, result.output

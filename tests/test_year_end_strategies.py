@@ -32,7 +32,7 @@ def _strategy(strategy_csv: Callable[[str, str], Path], name: str, kind: str, **
     """Write ``strategies/<name>.csv`` with one strategy of ``kind``."""
     cells = json.dumps(params).replace('"', '""')
     strategy_csv(SCENARIO, f"strategies/{name}.csv").write_text(
-        f'kind,chain,rules,start,end,enabled,params_json,description\n{kind},,,,,,"{cells}",\n')
+        f'kind,chain,rules,start,end,enabled,params_json,description\n{kind},,,,,,"{cells}",\n', encoding="utf-8")
 
 
 def _kept(run: Path, as_name: str) -> Path:
@@ -130,7 +130,7 @@ def test_harvest_losses_carry_into_the_next_year(run_strategy_scenario, strategy
               "tax_character,params_json,description,tags,name")
     strategy_csv(SCENARIO, "calendar.csv").write_text(
         f"{header}\n2027-01-31,set_rate,,,,,,stock_us,-60%,,,,a crash,,crash\n"
-        "2028-01-31,set_rate,,,,,,stock_us,6%,,,,recovery,,recovery\n")
+        "2028-01-31,set_rate,,,,,,stock_us,6%,,,,recovery,,recovery\n", encoding="utf-8")
     _strategy(strategy_csv, "harvest", "harvest", portfolio="portfolio:invest", losses=True)
     run = run_strategy_scenario(SCENARIO)
     month, _moved, note, detail = next(d for d in _year_ends(run) if "losses" in d[2])

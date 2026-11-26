@@ -251,7 +251,7 @@ def test_sim_ensemble_draws_lists_a_node_and_writes_csv(
     output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--csv-file", str(csv))
     assert "0 (base)" in output and "$20,000" in output
     assert "wrote 7 member(s)" in output
-    header = csv.read_text().splitlines()[0].split(",")
+    header = csv.read_text(encoding="utf-8").splitlines()[0].split(",")
     assert header[0] == "member_index" and "gift" in header
 
 
@@ -287,10 +287,10 @@ def test_sim_ensemble_draws_will_not_chart_a_sensitivity_batch(
 ) -> None:
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "draws", "retire_alice", "--runs-dir", str(runs_dir),
-        "--intent-dir", str(intent_dir), "--mode", "sensitivity", "--node", "early", "--chart",
+        "--intent-dir", str(intent_dir), "--mode", "sensitivity", "--node", "early", "--graph",
     ])
     assert result.exit_code == 2
-    assert "--chart draws a Monte Carlo batch" in result.output
+    assert "--graph draws a Monte Carlo batch" in result.output
 
 
 def test_sim_ensemble_draws_reads_the_monte_carlo_batch_over_a_newer_sensitivity_one(
@@ -419,20 +419,20 @@ def test_sim_ensemble_draws_rejects_a_bad_pair(
 def test_sim_ensemble_draws_charts_a_node_and_a_pair(
     mc_batch: Path, runs_dir: Path, intent_dir: Path, tmp_path: Path,
 ) -> None:
-    """#330: --chart-file writes the notebook's chart; the tables only with --table."""
+    """#330: --graph-file writes the notebook's chart; the tables only with --table."""
     a, b = pair_options(draws_frames(mc_batch))[0][1]
     png = tmp_path / "gift.png"
-    output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--chart-file", str(png))
+    output = _draws_cli(runs_dir, intent_dir, "--node", "gift", "--graph-file", str(png))
     assert png.read_bytes()[:4] == b"\x89PNG" and output.strip() == f"wrote {png}"
     svg = tmp_path / "pair.svg"
-    output = _draws_cli(runs_dir, intent_dir, "--pair", f"{a},{b}", "--chart-file", str(svg), "--table")
-    assert svg.read_text().lstrip().startswith("<?xml")
+    output = _draws_cli(runs_dir, intent_dir, "--pair", f"{a},{b}", "--graph-file", str(svg), "--table")
+    assert svg.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     assert output.startswith(f"wrote {svg}") and f"{a} ~ {b}" in output
 
 
 @pytest.mark.parametrize(("args", "message"), [
-    (["--chart"], "name one"),
-    (["--node", "gift", "--pair", "gift,x", "--chart-file", "x.png"], "--node or --pair, not both"),
+    (["--graph"], "name one"),
+    (["--node", "gift", "--pair", "gift,x", "--graph-file", "x.png"], "--node or --pair, not both"),
 ])
 def test_sim_ensemble_draws_chart_needs_one_subject(
     mc_batch: Path, runs_dir: Path, intent_dir: Path, args: list[str], message: str,

@@ -15,6 +15,7 @@ from zabob.retirement.sim import scenario as sc
 from zabob.retirement.sim.lineage import MIXIN_ONLY_DESCRIPTION, read_parents
 from zabob.retirement.sim.loader import load_scenario
 from zabob.retirement.sim.readme import parse_readme_summary
+from zabob.retirement.sim.loader import read_current_scenario, write_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None):
@@ -40,7 +41,7 @@ def test_create_writes_a_readme_listings_show(test_data_dir: Path, test_scenario
     result = _sim(test_data_dir, "scenario", "create", "kid", "retire_alice", "base")
     assert result.exit_code == 0, result.output
     assert "next: edit" in result.output and "README.md" in result.output
-    text = (test_scenarios_dir / "kid" / "README.md").read_text()
+    text = (test_scenarios_dir / "kid" / "README.md").read_text(encoding="utf-8")
     summary = parse_readme_summary(text)
     assert summary.title == "kid"
     assert summary.paragraph == "Derived from `retire_alice` + `base`."
@@ -54,7 +55,8 @@ def test_create_writes_a_readme_listings_show(test_data_dir: Path, test_scenario
 def test_create_readme_carries_a_given_description(test_child_scenario: Path) -> None:
     folder = sc.create_scenario(test_child_scenario.parent.parent, "other", "child",
                                 description="What if Bill retires early?")
-    assert parse_readme_summary((folder / "README.md").read_text()).paragraph == "What if Bill retires early?"
+    assert parse_readme_summary((folder / "README.md").read_text(encoding="utf-8")).paragraph == (
+        "What if Bill retires early?")
 
 
 def test_ensemble_create_suggests_editing_the_readme(test_data_dir: Path, test_scenarios_dir: Path) -> None:
@@ -123,7 +125,7 @@ def test_edit_description_follows_into_a_generated_readme(test_data_dir: Path, t
     result = _sim(test_data_dir, "scenario", "edit", "child", "--description", "Bill works two more years")
     assert result.exit_code == 0, result.output
     assert "README.md: updated to match" in result.output
-    readme = (test_child_scenario / "README.md").read_text()
+    readme = (test_child_scenario / "README.md").read_text(encoding="utf-8")
     assert parse_readme_summary(readme).paragraph == "Bill works two more years"
     assert _row(test_child_scenario)["description"] == "Bill works two more years"
 
@@ -131,11 +133,11 @@ def test_edit_description_follows_into_a_generated_readme(test_data_dir: Path, t
 def test_edit_description_warns_about_a_hand_written_readme(test_data_dir: Path,
                                                             test_child_scenario: Path) -> None:
     hand = "# Child\n\nMy own words.\n"
-    (test_child_scenario / "README.md").write_text(hand)
+    (test_child_scenario / "README.md").write_text(hand, encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", "--description", "New words")
     assert result.exit_code == 0, result.output
     assert "edited by hand" in result.output
-    assert (test_child_scenario / "README.md").read_text() == hand
+    assert (test_child_scenario / "README.md").read_text(encoding="utf-8") == hand
 
 
 def test_edit_parents_moves_the_default_description_and_readme(
@@ -146,7 +148,7 @@ def test_edit_parents_moves_the_default_description_and_readme(
     assert result.exit_code == 0, result.output
     assert read_parents(test_child_scenario) == ["retire_alice", "mix"]
     assert _row(test_child_scenario)["description"] == "Derived from retire_alice + mix"
-    readme = (test_child_scenario / "README.md").read_text()
+    readme = (test_child_scenario / "README.md").read_text(encoding="utf-8")
     assert "Derived from `retire_alice` + `mix`." in readme
     assert "Builds on `retire_alice`, with mix-in `mix`." in readme
 
@@ -155,12 +157,12 @@ def test_edit_leaves_a_partly_hand_written_readme_alone(test_data_dir: Path, tes
                                                         derive_scenario) -> None:
     derive_scenario("mix", "base")
     readme = test_child_scenario / "README.md"
-    edited = readme.read_text().replace("Builds on `retire_alice`.", "Builds on Alice's plan.")
-    readme.write_text(edited)
+    edited = readme.read_text(encoding="utf-8").replace("Builds on `retire_alice`.", "Builds on Alice's plan.")
+    readme.write_text(edited, encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "retire_alice:mix")
     assert result.exit_code == 0, result.output
     assert "edited by hand" in result.output
-    assert readme.read_text() == edited
+    assert readme.read_text(encoding="utf-8") == edited
 
 
 def test_a_dated_root_keeps_the_description(test_child_scenario: Path) -> None:
@@ -171,7 +173,7 @@ def test_a_dated_root_keeps_the_description(test_child_scenario: Path) -> None:
     assert sc.follow_readme(test_child_scenario, {"description": "Derived from retire_alice",
                                                   "parent_scenario": "retire_alice"},
                             _row(test_child_scenario)) is True
-    assert "Builds on no other scenario." in (test_child_scenario / "README.md").read_text()
+    assert "Builds on no other scenario." in (test_child_scenario / "README.md").read_text(encoding="utf-8")
 
 
 def test_no_parents_and_no_dates_describes_a_mix_in(test_data_dir: Path, test_child_scenario: Path) -> None:
@@ -180,7 +182,7 @@ def test_no_parents_and_no_dates_describes_a_mix_in(test_data_dir: Path, test_ch
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", "--yes")
     assert result.exit_code == 0, result.output
     assert _row(test_child_scenario)["description"] == MIXIN_ONLY_DESCRIPTION
-    readme = (test_child_scenario / "README.md").read_text()
+    readme = (test_child_scenario / "README.md").read_text(encoding="utf-8")
     assert MIXIN_ONLY_DESCRIPTION in readme and "Derived from" not in readme, readme
     # And back: given a parent again, it is derived from that one.
     assert _sim(test_data_dir, "scenario", "edit", "child", "--parents", "retire_alice").exit_code == 0
@@ -192,7 +194,7 @@ def test_blank_description_restores_the_default(test_data_dir: Path, test_child_
     result = _sim(test_data_dir, "scenario", "edit", "child", "--description", "")
     assert result.exit_code == 0, result.output
     assert _row(test_child_scenario)["description"] == "Derived from retire_alice"
-    assert parse_readme_summary((test_child_scenario / "README.md").read_text()).paragraph == (
+    assert parse_readme_summary((test_child_scenario / "README.md").read_text(encoding="utf-8")).paragraph == (
         "Derived from `retire_alice`.")
 
 
@@ -207,7 +209,7 @@ def test_edit_writes_a_readme_a_scenario_lacks(test_data_dir: Path, test_scenari
     result = _sim(test_data_dir, "scenario", "edit", "old", "--seed", "3")
     assert result.exit_code == 0, result.output
     assert "README.md: written" in result.output
-    summary = parse_readme_summary((folder / "README.md").read_text())
+    summary = parse_readme_summary((folder / "README.md").read_text(encoding="utf-8"))
     assert (summary.title, summary.paragraph) == ("old", "Made before #190")
 
 
@@ -250,24 +252,25 @@ def test_guided_ensemble_edit_asks_only_for_an_ensemble(test_data_dir: Path, tes
 
 def test_guided_edit_without_changes_or_cancelled_writes_nothing(test_data_dir: Path,
                                                                  test_child_scenario: Path) -> None:
-    before = (test_child_scenario / "scenario.csv").read_text()
+    before = (test_child_scenario / "scenario.csv").read_text(encoding="utf-8")
     assert "no change" in _guided(test_data_dir, "child", answers=["write"]).output
     assert "Cancelled" in _guided(test_data_dir, "child", answers=["seed", "5", "cancel"]).output
-    assert (test_child_scenario / "scenario.csv").read_text() == before
+    assert (test_child_scenario / "scenario.csv").read_text(encoding="utf-8") == before
 
 
 def test_edit_readme_for_a_blank_description_uses_the_default(test_data_dir: Path, derive_scenario) -> None:
     folder = derive_scenario("old", "retire_alice")
     result = _sim(test_data_dir, "scenario", "edit", "old", "--seed", "3")
     assert result.exit_code == 0, result.output
-    assert parse_readme_summary((folder / "README.md").read_text()).paragraph == "Derived from `retire_alice`."
+    assert parse_readme_summary((folder / "README.md").read_text(encoding="utf-8")).paragraph == (
+        "Derived from `retire_alice`.")
 
 
 def test_rename_follows_a_generated_readme(test_data_dir: Path, test_scenarios_dir: Path,
                                            test_child_scenario: Path) -> None:
     result = _sim(test_data_dir, "scenario", "rename", "child", "kid")
     assert result.exit_code == 0, result.output
-    summary = parse_readme_summary((test_scenarios_dir / "kid" / "README.md").read_text())
+    summary = parse_readme_summary((test_scenarios_dir / "kid" / "README.md").read_text(encoding="utf-8"))
     assert summary.title == "kid"
     assert [s.description for s in sc.scenario_summaries(test_data_dir) if s.name == "kid"] == [
         "Derived from `retire_alice`."]
@@ -283,18 +286,18 @@ def test_rename_follows_a_generated_readme(test_data_dir: Path, test_scenarios_d
     (("--parents", "child"), "can't build on itself"),
 ])
 def test_edit_refuses(test_data_dir: Path, test_child_scenario: Path, args: tuple[str, ...], message: str) -> None:
-    before = (test_child_scenario / "scenario.csv").read_text()
+    before = (test_child_scenario / "scenario.csv").read_text(encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", *args)
     assert result.exit_code != 0 and message in result.output, result.output
-    assert (test_child_scenario / "scenario.csv").read_text() == before
+    assert (test_child_scenario / "scenario.csv").read_text(encoding="utf-8") == before
 
 
 def test_edit_refuses_a_cycle_through_a_descendant(test_data_dir: Path, test_child_scenario: Path,
                                                    test_grandchild_scenario: Path) -> None:
-    before = (test_child_scenario / "scenario.csv").read_text()
+    before = (test_child_scenario / "scenario.csv").read_text(encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "grandchild")
     assert result.exit_code != 0 and "nothing was written" in result.output, result.output
-    assert (test_child_scenario / "scenario.csv").read_text() == before
+    assert (test_child_scenario / "scenario.csv").read_text(encoding="utf-8") == before
 
 
 def test_edit_asks_before_making_scenarios_mix_in_only(test_data_dir: Path, test_child_scenario: Path,
@@ -311,20 +314,20 @@ def test_edit_asks_before_making_scenarios_mix_in_only(test_data_dir: Path, test
 
 def test_no_to_mix_in_only_leaves_everything(test_data_dir: Path, test_child_scenario: Path,
                                              at_a_terminal: None) -> None:
-    before = (test_child_scenario / "scenario.csv").read_text()
-    readme = (test_child_scenario / "README.md").read_text()
+    before = (test_child_scenario / "scenario.csv").read_text(encoding="utf-8")
+    readme = (test_child_scenario / "README.md").read_text(encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", input="n\n")
     assert result.exit_code != 0 and "nothing was written" in result.output, result.output
-    assert (test_child_scenario / "scenario.csv").read_text() == before
-    assert (test_child_scenario / "README.md").read_text() == readme
+    assert (test_child_scenario / "scenario.csv").read_text(encoding="utf-8") == before
+    assert (test_child_scenario / "README.md").read_text(encoding="utf-8") == readme
 
 
 def test_off_a_terminal_mix_in_only_needs_yes(test_data_dir: Path, test_child_scenario: Path) -> None:
     # No one to ask: refused, saying how to go ahead, until --yes.
-    before = (test_child_scenario / "scenario.csv").read_text()
+    before = (test_child_scenario / "scenario.csv").read_text(encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "")
     assert result.exit_code != 0 and "--yes" in result.output and "child" in result.output, result.output
-    assert (test_child_scenario / "scenario.csv").read_text() == before
+    assert (test_child_scenario / "scenario.csv").read_text(encoding="utf-8") == before
     result = _sim(test_data_dir, "scenario", "edit", "child", "--parents", "", "--yes")
     assert result.exit_code == 0, result.output
     assert read_parents(test_child_scenario) == []
@@ -349,11 +352,11 @@ def test_edit_unknown_scenario(test_data_dir: Path) -> None:
 # ---------- delete ----------
 
 def test_delete_removes_the_folder_and_clears_current(test_data_dir: Path, test_child_scenario: Path) -> None:
-    (test_data_dir / ".current_scenario").write_text("child\n")
+    write_current_scenario(test_data_dir, "child")
     result = _sim(test_data_dir, "scenario", "delete", "child", "--yes")
     assert result.exit_code == 0, result.output
     assert not test_child_scenario.exists()
-    assert not (test_data_dir / ".current_scenario").exists()
+    assert read_current_scenario(test_data_dir) is None
     assert "No scenario is current now (was child)" in result.stderr
 
 
@@ -377,14 +380,14 @@ def test_delete_refuses_a_parent_or_mix_in(test_data_dir: Path, test_scenarios_d
 
 
 def test_delete_lists_markdown_still_mentioning_it(test_data_dir: Path, test_child_scenario: Path) -> None:
-    (test_data_dir / "README.md").write_text("See [child](scenarios/child/README.md).\n")
+    (test_data_dir / "README.md").write_text("See [child](scenarios/child/README.md).\n", encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "delete", "child", "--yes")
     assert result.exit_code == 0, result.output
     assert "README.md still mentions it" in result.output
 
 
 def test_delete_takes_a_scenario_that_fails_to_load(test_data_dir: Path, test_child_scenario: Path) -> None:
-    (test_child_scenario / "accounts.csv").write_text("not,a,valid\nheader,at,all\n")
+    (test_child_scenario / "accounts.csv").write_text("not,a,valid\nheader,at,all\n", encoding="utf-8")
     result = _sim(test_data_dir, "scenario", "delete", "child", "--yes")
     assert result.exit_code == 0, result.output
     assert not test_child_scenario.exists()

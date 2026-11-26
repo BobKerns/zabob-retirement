@@ -17,6 +17,7 @@ from zabob.retirement.frames import named_rows
 from zabob.retirement.sim import compare, roll
 from zabob.retirement.sim.connection import RunConnection
 from zabob.retirement.sim.dates import month_before
+from zabob.retirement.sim.loader import read_current_scenario
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None) -> Result:  # noqa: A002 -- CliRunner's name
@@ -80,7 +81,7 @@ def test_roll_takes_the_projection_keeps_the_old_plan_and_pins_last_years_rows(
     # The old plan is kept as it stood, and the rolled one stays current.
     kept = test_scenarios_dir / "retire_alice-2026"
     assert (kept / "account_lots.csv").read_bytes() == before
-    assert (test_data_dir / ".current_scenario").read_text().strip() == "retire_alice"
+    assert read_current_scenario(test_data_dir) == "retire_alice"
 
 
 def test_roll_asks_for_each_lot_offering_the_current_value_without_a_run(

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+from zabob.retirement.oscompat import login_name
+from zabob.retirement.user_config import current_user
 
 STATE_DB_FILENAME = "state.sqlite3"
 
@@ -93,6 +95,12 @@ ITEM_TABLE_COLUMNS: list[tuple[str, str]] = [
 
 ITEM_COLUMN_NAMES = [name for name, _ in ITEM_TABLE_COLUMNS]
 ITEM_NON_KEY_COLUMN_NAMES = [name for name in ITEM_COLUMN_NAMES if name != "order_id"]
+
+
+def _operator() -> str:
+    """Who an event is credited to. This store belongs to no data repo, so
+    the user of the one the commands would use (#687), else the login."""
+    return current_user() or login_name("")
 
 
 class JsonStateStore:
@@ -183,7 +191,7 @@ class JsonStateStore:
             )
 
     def insert_event(self, payload: dict[str, Any]) -> None:
-        user = str(payload.get("user") or os.getenv("USER", ""))
+        user = str(payload.get("user") or _operator())
         event_payload = dict(payload)
         event_payload.setdefault("user", user)
 
@@ -453,7 +461,7 @@ class JsonStateStore:
             # credit them the way new events are credited.
             self._conn.execute(
                 "UPDATE events SET user = ? WHERE user IS NULL OR TRIM(user) = ''",
-                (os.getenv("ANALYSIS_USER") or os.getenv("USER", ""),),
+                (_operator(),),
             )
 
 

@@ -30,6 +30,7 @@ sim chain show Asset_Checking   # just the chains that reach this account
 sim chain show bridge --graph   # one chain's flowchart, drawn in the terminal
 sim chain show bridge --graph --rules    # with the rules that use it
 sim chain show bridge --graph --depth lots  # only as far as the first lot on each path
+sim chain show bridge --graph --table    # the flowchart, then the tree
 sim chain show bridge --mermaid # its Mermaid source, to paste into markdown
 sim chain show bridge --graph-file bridge.svg  # saved as an image (.png or .svg)
 ```
@@ -41,7 +42,9 @@ everything. A box with a dashed outline is where the chart stopped short of
 what it leads to.
 
 `--graph` needs a terminal that shows images, such as iTerm2, kitty, Ghostty,
-WezTerm or VS Code's; anywhere else it writes a PNG and prints its path. See
+WezTerm, VS Code's or Windows Terminal 1.22 or later; anywhere else it writes
+a PNG, prints its path and, when the session is local, opens it in your
+image viewer. See
 [Setup](../SETUP.md#drawing-chain-flowcharts-in-the-terminal).
 
 The [scenario overview notebook](../../notebooks/scenario_overview.ipynb)

@@ -73,7 +73,8 @@ def test_a_dated_allocation_applies_from_its_month(
     """USSTK becomes half bonds from 2030: the stretch of months on each side
     of the as_of gets its own weights."""
     path = strategy_scenarios / "allocations.csv"
-    path.write_text(path.read_text() + "USSTK,2030-01,stock_us,50%\nUSSTK,2030-01,bond,50%\n")
+    path.write_text(path.read_text(encoding="utf-8") + "USSTK,2030-01,stock_us,50%\nUSSTK,2030-01,bond,50%\n",
+                    encoding="utf-8")
     con = _con(run_strategy_scenario("alice_rebalance"))
     try:
         frame = drift.class_dollars(con, portfolios=[PORTFOLIO])[PORTFOLIO]
@@ -180,7 +181,7 @@ def test_sim_ensemble_drift_reports_by_year(
 ) -> None:
     result = CliRunner().invoke(main, [
         "sim", "ensemble", "drift", "alice_rebalance", "--data-dir", str(strategy_scenarios),
-        "--runs-dir", str(runs_dir), "--chart-file", str(tmp_path / "drift.png"), "--table",
+        "--runs-dir", str(runs_dir), "--graph-file", str(tmp_path / "drift.png"), "--table",
     ], terminal_width=200)
     assert result.exit_code == 0, result.output
     assert ("3 member(s); drift from target set main (accounts tagged portfolio:invest), "
@@ -214,6 +215,7 @@ def test_the_drift_widget_draws_a_run(
         rc.close()
 
 
+@pytest.mark.slow
 def test_the_ensemble_drift_widget_draws_a_batch(
     strategy_ensemble_batch: Path, strategy_scenarios: Path, runs_dir: Path,
     capsys: pytest.CaptureFixture[str],

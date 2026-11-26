@@ -94,7 +94,7 @@ def test_a_pre_130_column_names_the_conversion(
     scheduled = pd.read_csv(path, dtype=str, keep_default_na=False)
     scheduled.rename(columns={"rate": "rate_micros"}).to_csv(path, index=False)
     issues = _issues(load_test_copy)
-    for where, column in (("aux/inflation__cpi.csv", "annual_rate_micros"),
+    for where, column in (("tables/inflation__cpi.csv", "annual_rate_micros"),
                           ("scheduled.csv", "rate_micros")):
         assert any(i.startswith(f"{where}: column {column}") and "(#130)" in i
                    for i in issues), issues
@@ -104,7 +104,7 @@ def test_a_pre_130_header_with_no_rows_is_still_refused(
     write_aux: Callable[[str, str], Path], load_test_copy: Callable[[], LoadResult],
 ) -> None:
     write_aux("rmd_factors.csv", "effective_date,age,factor_micros\n")
-    assert any(i.startswith("aux/rmd_factors.csv: column factor_micros")
+    assert any(i.startswith("tables/rmd_factors.csv: column factor_micros")
                for i in _issues(load_test_copy))
 
 

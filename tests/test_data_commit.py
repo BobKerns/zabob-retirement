@@ -38,7 +38,7 @@ def _state(intent_dir: Path, runs_dir: Path) -> tuple[str, ...]:
 def _edit(data: Path, relative: str, text: str = "# edited\n") -> None:
     path = data / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as fh:
+    with path.open("a", encoding="utf-8") as fh:
         fh.write(text)
 
 
@@ -111,7 +111,7 @@ def test_no_commit_in_the_middle_of_an_operation(data: Path, repo: git.Repo, mar
     _edit(data, "scenarios/retire_alice/README.md")
     path = Path(repo.git_dir) / marker
     if marker == "MERGE_HEAD":
-        path.write_text(repo.head.commit.hexsha + "\n")
+        path.write_text(repo.head.commit.hexsha + "\n", encoding="utf-8")
     else:
         path.mkdir()
     with pytest.raises(data_commit.CommitError, match="middle of"):
@@ -135,17 +135,17 @@ def test_a_missing_identity_is_set_in_the_data_repo_only(
     env_email: str, email: str,
 ) -> None:
     empty = tmp_path / "empty-gitconfig"
-    empty.write_text("")
+    empty.write_text("", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    monkeypatch.setenv("ANALYSIS_USER", "alice")
+    monkeypatch.setenv("ZABOB_USER", "alice")
     monkeypatch.setenv("EMAIL", env_email)
     _edit(data, "scenarios/retire_alice/README.md")
     data_commit.commit(data, scoped_changes(data, ["retire_alice"]))
     reader = repo.config_reader("repository")
     assert reader.get_value("user", "email") == email
     assert str(reader.get_value("user", "name")).startswith("Alice")
-    assert empty.read_text() == ""
+    assert empty.read_text(encoding="utf-8") == ""
 
 
 # --- the CLI -------------------------------------------------------------------
@@ -285,7 +285,7 @@ def test_sim_init_gives_a_new_repo_an_identity(
     from zabob.retirement.sim import data_repo
 
     empty = tmp_path / "empty-gitconfig"
-    empty.write_text("[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n")
+    empty.write_text("[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.delenv("EMAIL", raising=False)

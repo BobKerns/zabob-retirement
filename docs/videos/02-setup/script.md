@@ -6,25 +6,24 @@ subtitle = "From nothing to a data folder of your own"
 data = "prototype_data"
 
 [youtube]
-# Video 2a (WSL) is a side trip from here, for Windows viewers; the series
-# goes on to video 3.
 next = "03-base-scenario"
 summary = """
 Alice installs the simulator on her own computer from PyPI, and starts a \
 folder for her household's data. Setup guide: \
 https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md
 
-On Windows, set up WSL first: https://youtu.be/yHr90VdoHGQ"""
+On Windows, the same commands work in PowerShell; the setup guide's Windows \
+section has the line that installs uv there."""
 contents = [
-  "Getting uv, on a Mac, Linux, or Windows under WSL",
+  "Getting uv, on a Mac, Linux, or Windows",
   "Installing the simulator (uv tool install zabob-retirement)",
   "Terminals that can show charts",
   "The program, and your data",
   "Starting a data folder (sim init)",
   "What's inside it",
-  "Activating your data, and the current scenario (sim switch)",
+  "Who you are, your data, and the current scenario (sim login, sim switch)",
   "A plan of your own (sim scenario create)",
-  "The notebooks (analysis jupyter)",
+  "The notebooks (sim jupyter start)",
   "Saving your work, so every run can be repeated (sim run, sim commit)",
   "Upgrading (uv tool upgrade)",
 ]
@@ -32,8 +31,8 @@ contents = [
 
 The second video of #366 (issue #374): installing from PyPI with
 `uv tool install zabob-retirement`, as SETUP.md's "Install the program"
-does, starting a data repo with `sim init`, activating it and the current
-scenario, the notebooks, what `sim run` offers to commit, and upgrading.
+does, starting a data repo with `sim init` (which makes it the default, so
+there is nothing to activate, #687), the current scenario, the notebooks, what `sim run` offers to commit, and upgrading.
 
 The tapes record the program as installed, not this checkout's venv: the
 builder installs a wheel built from the checkout into the demo's home, and
@@ -64,10 +63,10 @@ Sleep 16s
 
 The simulator is installed with a tool called {uv|U V}, which also fetches
 the right version of Python for it. Open a terminal, on a Mac, on Linux, or
-on Windows under WSL. If you don't have {uv|U V} yet, this line from the {uv|U V}
-website installs it; then open a new terminal window. On Windows, set
-up WSL first: there's a short video for that, linked in the description,
-along with the setup guide.
+on Windows, where PowerShell is fine. If you don't have {uv|U V} yet, this
+line from the {uv|U V} website installs it; then open a new terminal window.
+On Windows, the website gives a PowerShell line instead, and you'll want git
+too; the setup guide, linked in the description, has both.
 
 > Production note: the tape stops short of Enter. uv's installer changes
 > the shell's startup files, and the recording machine has uv already.
@@ -94,10 +93,10 @@ commands where your terminal finds them. The first time, it may take a
 minute or two. You don't need to know git, or anything about how the code
 is kept.
 
-> Production note: until 1.0.0b1 is on PyPI, the install comes from the
-> wheel the builder made from this checkout (`UV_FIND_LINKS`, set while
-> hidden), with the lock's versions; the line typed is the one SETUP.md
-> gives.
+> Production note: the install comes from the wheel the builder made from
+> this checkout (`UV_FIND_LINKS`, set while hidden), with the lock's
+> versions, so the video shows the code being released, not the last
+> release on PyPI; the line typed is the one SETUP.md gives.
 
 ## Scene `terminals`: A terminal that shows pictures
 
@@ -143,7 +142,7 @@ it.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && rm -rf ~/zabob-retirement && cd && clear"
+Type "export HOME=$PWD/home && rm -rf ~/zabob-retirement $XDG_CONFIG_HOME/zabob-retirement/user && cd && clear"
 Enter
 Sleep 300ms
 Show
@@ -180,13 +179,16 @@ your age for things like Medicare and required distributions. Your sex,
 which picks a life table if you want the simulator to vary how long you
 live; you can leave it blank. And the household's tax filing status: married
 filing jointly is the default. Then it builds the folder, checks that the
-starting scenario, base, loads, copies in the notebooks, and saves a first
-version of everything with git. On a Mac, if a window offers to install the
-command line tools, which include git, let it finish, and run sim init
-again.
+starting scenario, base, loads, copies in the notebooks, saves a first
+version of everything with git, and makes it your data folder from now on.
+On a Mac, if a window offers to install the command line tools, which
+include git, let it finish, and run sim init again.
 
-> Production note: the tapes' environment sets `ANALYSIS_NO_BUILDER`, so
+> Production note: the tapes' environment sets `ZABOB_NO_BUILDER`, so
 > this `sim init` doesn't turn on background builds, which a real one does.
+> The recordings start logged in as alice (`render._sandbox`); the hidden
+> line removes that, so init asks for `sim login` as it does for a new
+> user, and the next scene does it.
 
 ## Scene `inside`: What's inside
 
@@ -219,44 +221,43 @@ money between them. For now it's nearly empty; the next video fills it in.
 The tax tables and other standard assumptions aren't copied here. They're
 {read|red} from the program, so they stay current when you upgrade it.
 
-## Scene `activate`: Activating your data
+## Scene `current`: Who you are, your data, and the current scenario
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR && clear"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR && clear"
 Enter
 Sleep 300ms
 Show
 Sleep 500ms
-Type "source ~/zabob-retirement/sim/activate-analysis"
+Type "sim login alice"
 Sleep 400ms
 Enter
 Wait
-Sleep 9s
-Type "sim switch"
-Sleep 400ms
-Enter
-Wait
-Sleep 8s
+Sleep 10s
 ```
 
-Each time you open a new terminal window, you activate your data with this
-one line. It tells the sim command where your data is, and changes the
-prompt to show it: your data, you, and the current scenario, base.
-Most commands work on the current scenario unless you name another one.
-Sim switch says which one is current.
+There's nothing to set up before you start. Sim init made this your data
+folder, so every sim command finds it, in any terminal window you open.
+One thing it asked for: sim login, which says who you are. That's you, the
+person at the keyboard, and it's how your saved changes and runs say who
+made them. It's the same in every data folder you use. Then it shows where
+you are: you, your data folder, and the current scenario, base. Most
+commands work on the current scenario unless you name another one, and sim
+switch shows all three again whenever you want. In bash or zsh, an optional
+line in the setup guide also shows them in the prompt, and lets the tab
+key finish names for you.
 
-> Production note: the prompt's first part is the data directory's own
-> name, `sim`, rather than the data repo's; the narration doesn't name it.
+> Production note: the recordings set `ZABOB_DATA_DIR` to the prototype
+> copy, so each tape unsets it while hidden; a new user has none, and the
+> default `sim init` recorded is what the commands use.
 
 ## Scene `plan`: A plan of your own
 
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR"
-Enter
-Type "source ~/zabob-retirement/sim/activate-analysis > /dev/null && clear"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR && clear"
 Enter
 Sleep 2s
 Show
@@ -274,8 +275,7 @@ Sleep 6s
 ```
 
 A new scenario builds on another one. Sim scenario create makes my plan,
-building on base, and makes it the current scenario: the prompt changes to
-match. It starts with nothing of its own, so for now it's the same as base.
+building on base, and makes it the current scenario. It starts with nothing of its own, so for now it's the same as base.
 Sim switch, with a scenario's name, changes the current scenario back. So
 does naming a scenario on any other command.
 
@@ -288,7 +288,7 @@ does naming a scenario on any other command.
 template = "card"
 heading = "The notebooks"
 body = [
-  "In an activated terminal: analysis jupyter",
+  "In a terminal: sim jupyter start",
   "They're in your data folder, in notebooks",
   "Charts and tables, no code to write",
 ]
@@ -298,17 +298,16 @@ speaker = "bill"
 Besides the terminal, the simulator comes with Jupyter notebooks: pages of
 charts and tables that you explore with menus and sliders, without writing
 any code. Sim init put them in your data folder. To open them, type
-analysis jupyter in an activated terminal. JupyterLab opens in your web
-browser, with the notebooks on the left. Video four goes through them.
+sim jupyter start in a terminal. JupyterLab opens in your web
+browser, with the notebooks on the left, and sim jupyter stop closes it
+when you're done. Video four goes through them.
 
 ## Scene `commit`: Saving your work
 
 ```tape
 Set FontSize 26
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR"
-Enter
-Type "source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR"
 Enter
 Type "sim scenario create my_plan base --description 'Our first plan' > /dev/null 2>&1 && clear"
 Enter

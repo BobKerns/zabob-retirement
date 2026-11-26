@@ -5,7 +5,7 @@
 The template scenarios (``t_*``) and the aux tables aren't copied: the loader
 reads them from ``templates/`` itself (ADR-003 §4.5a, #317), so a copy would
 only hide their later updates. What is copied is what a household edits:
-``persons.csv``, the shared CSVs, ``activate-analysis`` and ``scenarios/base``.
+``persons.csv``, the shared CSVs, ``activate-retirement`` and ``scenarios/base``.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from zabob.retirement.research_plugin import write_default_config
 from zabob.retirement.resources import CHECKOUT_DIR, NOTEBOOKS_DIR, PROTOTYPE_DIR, program_home
 from zabob.retirement.sim import registries
 from zabob.retirement.sim.data_commit import CommitError, ensure_identity
@@ -30,14 +31,14 @@ CODE_REPO_DIR: Path | None = CHECKOUT_DIR
 START_SCENARIO = "base"
 
 # Per-machine files under sim/, kept out of the data repo's history as
-# activate-analysis and link-data.sh keep them out.
+# activate-retirement and link-data.sh keep them out.
 _IGNORED = (".analysis", ".current_scenario", ".analysis_user", RETENTION_FILENAME)
 
 # templates/ paths not copied: the code repository's own documentation of
 # them (it describes the t_ scenarios and tables left behind), and the
 # template's sample user and ignore list, which are written fresh.
 _NOT_COPIED = frozenset({
-    "README.md", "aux/README.md", "scenarios/README.md",
+    "README.md", "tables/README.md", "scenarios/README.md",
     ".analysis_user", ".gitignore", RETENTION_FILENAME, "persons.csv",
 })
 
@@ -64,8 +65,8 @@ def _copied(relative: Path) -> bool:
     parts = relative.parts
     if parts[0] == "scenarios" and len(parts) > 1 and parts[1].startswith(TEMPLATE_PREFIX):
         return False
-    # Every aux table is read from templates/aux but the household's status.
-    return not (parts[0] == "aux" and relative.name != "filing_status.csv")
+    # Every aux table is read from templates/tables but the household's status.
+    return not (parts[0] == "tables" and relative.name != "filing_status.csv")
 
 
 def _copy_templates(sim: Path) -> None:
@@ -126,9 +127,10 @@ def create_data_repo(
     _write_csv(sim / "persons.csv", registries.PERSONS_CSV_HEADER,
                [{**person, "role": "primary", "meta_json": person.get("meta_json") or "{}"}])
     start = _start_scenario(sim, person["id"])
-    _write_csv(sim / "aux" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
+    _write_csv(sim / "tables" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
                [{"effective_date": start, "filing_status": filing_status}])
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return _finish(root, person, commit=commit, notebooks=notebooks)
 
@@ -149,6 +151,7 @@ def create_example_repo(root: Path, *, commit: bool = True, notebooks: bool = Fa
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         person = next(row for row in csv.DictReader(fh) if row["role"] == "primary")
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return person["id"], _finish(root, person, commit=commit, notebooks=notebooks)
 
@@ -163,17 +166,23 @@ def _refuse_existing(root: Path) -> None:
 
 def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: bool) -> str | None:
     """What every new data repo gets beside its CSVs: the files kept out of
-    git, the pointers activate-analysis reads, and the first commit."""
+    git, the pointers activate-retirement reads, and the first commit."""
     sim = root / "sim"
     (sim / ".gitignore").write_text("".join(f"{name}\n" for name in _IGNORED), encoding="utf-8")
-    # activate-analysis finds the program and the user from these, so it
-    # needn't ask for either.
+    # activate-retirement finds the program from .analysis. .analysis_user is
+    # the person the repo was made for: git's committer for its commits while
+    # nobody has said who they are with `sim login` (#773).
     home = str(CODE_REPO_DIR) if CODE_REPO_DIR is not None else program_home()
-    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8")
-    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8")
+    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8", newline="\n")
+    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8", newline="\n")
     # state/ (beside sim/) holds runs, rebuilt from the data; the code repo's
     # cspell.json reads .cspell/data-words.txt for the household's words.
     _ignore(root / ".gitignore", "/state/")
+    # Git stores text with LF line endings whatever the machine or the
+    # user's core.autocrlf (#687): a CSV saved by Excel on Windows would
+    # otherwise commit CRLF, which changes the scenario's tree id and makes
+    # every line a change. Kept in the repository, so every clone has it.
+    _ignore(root / ".gitattributes", "* text=auto")
     (root / ".cspell").mkdir(exist_ok=True)
     (root / ".cspell" / "data-words.txt").touch()
     if notebooks:
@@ -182,7 +191,7 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
         # outputs show the household's numbers, which a pushed data repo
         # shouldn't carry in its history.
         _ignore(root / ".gitignore", "/notebooks/")
-        # `analysis jupyter` keeps its token here.
+        # `sim jupyter start` keeps its token here.
         _ignore(root / ".gitignore", "/.mcp.json")
     if commit:
         return _commit(root, person)
@@ -210,7 +219,7 @@ def copy_notebooks(folder: Path, *, replace: bool = False) -> tuple[list[Path], 
 
 
 def _ignore(path: Path, pattern: str) -> None:
-    """Add ``pattern`` to the ignore file at ``path`` unless it's there:
+    """Add the line ``pattern`` to ``path`` (an ignore or attributes file) unless it's there:
     ``root`` may be an existing repository with its own."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if pattern in text.splitlines():
@@ -229,7 +238,7 @@ def _commit(root: Path, person: Mapping[str, str]) -> str | None:
         done = _git(root, "init", "-q")
         if done.returncode:
             return done.stderr.strip() or "git init failed"
-    paths = ("sim", ".gitignore", ".cspell")
+    paths = ("sim", ".gitignore", ".gitattributes", ".cspell")
     # A new user often has no git identity, and the commit would fail (#308).
     try:
         ensure_identity(root, person["id"], person.get("display") or "")

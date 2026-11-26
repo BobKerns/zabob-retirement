@@ -5,23 +5,26 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any
 
 import git
 import pytest
 
-from zabob.retirement.sim import builder, freshness, locks, price_schedule, provenance
+from zabob.retirement.sim import builder, flock, freshness, locks, price_schedule, provenance
 from zabob.retirement.sim.builder import BuilderPaths
+from zabob.retirement.sim.loader import write_current_scenario
 
 
 
 
 @pytest.fixture
 def builder_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANALYSIS_BUILDER", raising=False)
+    monkeypatch.delenv("ZABOB_BUILDER", raising=False)
 
 
 def test_builds_only_from_committed_code_matching_main(
@@ -41,7 +44,7 @@ def test_builds_only_from_committed_code_matching_main(
     assert builder.main_check("nope") == (None, "no local nope branch")
 
     code_repo.git.checkout("main")
-    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("dirty\n")
+    (Path(str(code_repo.working_tree_dir)) / "src" / "engine.py").write_text("dirty\n", encoding="utf-8")
     assert builder.main_check() == (None, "uncommitted code in src, templates, pyproject.toml, uv.lock")
 
 
@@ -53,7 +56,7 @@ def pair(tmp_path: Path, data_repo_sim: Path,
     code = tmp_path / "code"
     (code / "data").mkdir(parents=True, exist_ok=True)
     (code / "data" / "private").symlink_to(data_repo)
-    (data_dir / ".analysis").write_text(f"{code}\n")
+    (data_dir / ".analysis").write_text(f"{code}\n", encoding="utf-8")
     monkeypatch.setattr(builder, "code_dir", lambda: code.resolve())
     return code.resolve(), data_dir.resolve()
 
@@ -61,7 +64,7 @@ def pair(tmp_path: Path, data_repo_sim: Path,
 def test_a_pair_must_name_each_other(pair: tuple[Path, Path], tmp_path: Path) -> None:
     code, data_dir = pair
     assert builder.pair_problems(code, data_dir) == []
-    (data_dir / ".analysis").write_text(f"{tmp_path / 'elsewhere'}\n")
+    (data_dir / ".analysis").write_text(f"{tmp_path / 'elsewhere'}\n", encoding="utf-8")
     assert builder.pair_problems(code, data_dir) == [f"{data_dir / '.analysis'} doesn't name {code}"]
 
 
@@ -74,17 +77,17 @@ def test_install_records_the_pair_and_chains_existing_hooks(
     seen = tmp_path / "seen"
     # An early exit: anything appended after it would never run.
     mine = f'#!/bin/sh\necho "$1" > {seen}\nexit 3\necho never\n'
-    (hooks / "post-merge").write_text(mine)
+    (hooks / "post-merge").write_text(mine, encoding="utf-8")
     (hooks / "post-merge").chmod(0o755)
     builder.install(data_dir)
     assert builder.read_config(BuilderPaths.for_data(data_dir)) is not None
-    assert builder.HOOK_MARKER in (hooks / "post-commit").read_text()
-    assert builder.HOOK_MARKER in (hooks / "post-merge").read_text()
-    assert (hooks / "post-merge.before-builder").read_text() == mine
+    assert builder.HOOK_MARKER in (hooks / "post-commit").read_text(encoding="utf-8")
+    assert builder.HOOK_MARKER in (hooks / "post-merge").read_text(encoding="utf-8")
+    assert (hooks / "post-merge.before-builder").read_text(encoding="utf-8") == mine
     builder.install(data_dir)  # again: nothing moved twice
-    assert (hooks / "post-merge.before-builder").read_text() == mine
+    assert (hooks / "post-merge.before-builder").read_text(encoding="utf-8") == mine
     ran = subprocess.run([str(hooks / "post-merge"), "1"], cwd=data_dir, check=False)
-    assert ran.returncode == 3 and seen.read_text() == "1\n"  # theirs ran, status kept
+    assert ran.returncode == 3 and seen.read_text(encoding="utf-8") == "1\n"  # theirs ran, status kept
 
 
 def test_install_refuses_when_a_hook_has_nowhere_to_move(pair: tuple[Path, Path]) -> None:
@@ -92,8 +95,8 @@ def test_install_refuses_when_a_hook_has_nowhere_to_move(pair: tuple[Path, Path]
     _code, data_dir = pair
     hooks = data_dir.parent / ".git" / "hooks"
     hooks.mkdir(exist_ok=True)
-    (hooks / "post-merge").write_text("#!/bin/sh\necho one\n")
-    (hooks / "post-merge.before-builder").write_text("#!/bin/sh\necho two\n")
+    (hooks / "post-merge").write_text("#!/bin/sh\necho one\n", encoding="utf-8")
+    (hooks / "post-merge.before-builder").write_text("#!/bin/sh\necho two\n", encoding="utf-8")
     with pytest.raises(ValueError, match="post-merge.before-builder both exist"):
         builder.install(data_dir)
     assert builder.read_config(BuilderPaths.for_data(data_dir)) is None
@@ -141,9 +144,198 @@ def test_notify_starts_the_builder_only_where_installed(
     builder.install(data_dir)
     assert builder.notify(data_dir) == "started the background builder"
     assert started == [data_dir]
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     assert "off" in builder.notify(data_dir)
     assert started == [data_dir]
+
+
+def test_on_windows_install_keeps_the_timers_and_installs_the_hooks(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: Windows has the daemon, its timers and its hooks, as elsewhere."""
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    builder.install(data_dir, prices=True, roll=True, research=True)
+    config = builder.read_config(BuilderPaths.for_data(data_dir)) or {}
+    assert (config["prices"], config["roll"], config["research"]) == (True, True, True)
+    assert builder._ours(data_dir.parent / ".git" / "hooks" / "post-commit")
+
+
+def test_on_windows_notify_starts_the_daemon(
+    pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    started: list[Path] = []
+    monkeypatch.setattr(builder, "spawn_daemon", lambda _paths, d: started.append(d))
+    builder.install(data_dir)
+    assert builder.notify(data_dir) == "started the background builder"
+    assert started == [data_dir]
+
+
+def test_on_windows_stopping_the_daemon_asks_it_rather_than_signals_it(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: a signal on Windows ends a process outright, before the daemon
+    could cancel its build or record that it stopped."""
+    _code, data_dir = pair
+    paths = BuilderPaths.for_data(data_dir)
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    monkeypatch.setattr(builder.os, "kill", lambda *_a: pytest.fail("signalled"))
+    builder._write_json(paths.status, {"pid": 4321})
+    assert builder.stop_daemon(paths) == 4321
+    assert [r["kind"] for r in builder._drain_requests(paths)] == ["stop"]
+
+
+def test_stopping_a_daemon_that_is_not_running_does_nothing(pair: tuple[Path, Path]) -> None:
+    _code, data_dir = pair
+    paths = BuilderPaths.for_data(data_dir)
+    assert builder.stop_daemon(paths) is None
+    assert builder._drain_requests(paths) == []
+
+
+def test_a_stop_request_stops_the_daemon_before_it_starts_anything(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every scenario is stale, but no scan, build, fetch, roll or research
+    starts in the pass that reads the stop."""
+    real = builder._drain_requests
+    monkeypatch.setattr(builder, "_drain_requests", lambda paths: [
+        *real(paths), {"kind": "stop", "made": time.time() + 60}])
+    monkeypatch.setattr(daemon, "scan", lambda: pytest.fail("scanned"))
+    monkeypatch.setattr(daemon, "prices_tick", lambda _now: pytest.fail("looked at prices"))
+    assert daemon.run() == 0
+    assert builder.read_status(daemon.paths)["state"] == "stopped"
+
+
+def test_a_stop_request_left_for_an_earlier_daemon_is_ignored(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One made while the last daemon was already exiting doesn't stop the
+    next one on its first pass."""
+    builder._request(daemon.paths, "stop")
+    scanned: list[bool] = []
+
+    def scan() -> None:
+        scanned.append(True)
+        daemon.stopping = True
+    monkeypatch.setattr(daemon, "scan", scan)
+    assert daemon.run() == 0
+    assert scanned == [True]
+
+
+def test_on_windows_a_stopping_daemon_waits_for_its_fetch_roll_and_research(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: each is a Job Object only the daemon holds, so exiting would
+    end it in the middle of a commit."""
+    monkeypatch.setattr(builder, "release_tree", lambda _p: None)
+    fetch = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.5)"])
+    daemon.fetcher = fetch  # a stand-in fetch
+    logged: list[str] = []
+    monkeypatch.setattr(daemon, "log", logged.append)
+    daemon.await_children()
+    assert fetch.returncode == 0 and logged == ["waiting for the price fetch to finish before stopping",
+                                                "the price fetch finished (exit 0)"]
+
+
+def test_the_data_hook_is_written_with_lf_and_reads_analysis_without_its_cr(
+    pair: tuple[Path, Path],
+) -> None:
+    """#748: Git for Windows's sh reads a CR as part of the word before it,
+    and `sim init` on Windows used to write sim/.analysis with CRLF."""
+    _code, data_dir = pair
+    builder.install(data_dir)
+    hook = builder._data_hooks_dir(data_dir.parent) / "post-commit"
+    assert b"\r" not in hook.read_bytes()
+    assert "tr -d '\\r' 2>/dev/null < \"$top/sim/.analysis\"" in hook.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(builder.WINDOWS, reason="POSIX reaping")
+def test_on_posix_a_detached_daemon_is_left_to_be_reaped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A return code would keep the collected Popen from being reaped by
+    the next one, leaving a zombie in a long-lived process (a notebook)."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    builder._detach(process)
+    assert process.returncode is None
+    process.wait()
+
+
+def test_on_windows_a_daemon_whose_code_changed_starts_the_next_one(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: no execv on Windows, where it would only start a new process."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder.os, "execv", lambda *_a: pytest.fail("exec'd"))
+    started: list[Path] = []
+    monkeypatch.setattr(builder, "spawn_daemon", lambda _paths, d: started.append(d))
+    monkeypatch.setattr(daemon, "scan", lambda: setattr(daemon, "restart", True))
+    assert daemon.run() == 0
+    assert started == [daemon.data_dir]
+
+
+def test_on_windows_a_restarting_daemon_honours_a_stop_made_meanwhile(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The old daemon reads no more requests once out of its loop, and the
+    next would take the stop for an earlier daemon's."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("started the next one"))
+
+    def scan() -> None:
+        daemon.restart = True
+        builder._request(daemon.paths, "stop")
+    monkeypatch.setattr(daemon, "scan", scan)
+    assert daemon.run() == 0
+
+
+def test_on_windows_a_stop_needs_no_pid_from_a_daemon_that_has_written_none(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first daemon writes its status only after its first scan."""
+    _code, data_dir = pair
+    paths = BuilderPaths.for_data(data_dir)
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    assert builder.stop_daemon(paths) == 0
+    assert [r["kind"] for r in builder._drain_requests(paths)] == ["stop"]
+
+
+def test_on_windows_a_status_file_held_open_is_replaced_once_let_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: Windows refuses to replace a file a reader has open."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    real, tries = os.replace, []
+
+    def replace(src: Any, dst: Any) -> None:
+        tries.append(dst)
+        if len(tries) < 3:
+            raise PermissionError(5, "Access is denied")
+        real(src, dst)
+    monkeypatch.setattr(builder.os, "replace", replace)
+    builder._write_json(tmp_path / "status.json", {"state": "idle"})
+    assert len(tries) == 3 and json.loads((tmp_path / "status.json").read_text())["state"] == "idle"
+
+
+def test_the_builders_children_take_no_optional_git_locks() -> None:
+    """#748: a build ended on Windows mid `git status` leaves no index.lock."""
+    assert builder._child_env()["GIT_OPTIONAL_LOCKS"] == "0"
+
+
+def test_on_windows_research_is_on_unless_turned_off(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#795: its scripts run under the builder's own Python, so no python3
+    on PATH (on Windows often only the Store's alias) is needed."""
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: None)
+    builder.install(data_dir)
+    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is True
+    builder.install(data_dir, research=False)
+    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is False
 
 
 @pytest.fixture
@@ -185,7 +377,7 @@ def _wait_until_done(d: builder._Daemon) -> None:
 
 
 def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("retire_alice\n")
+    write_current_scenario(daemon.data_dir, "retire_alice")
     daemon.scan()
     assert daemon.queue[0] == "retire_alice" and "base" in daemon.queue
     assert daemon.state == "building"
@@ -197,9 +389,9 @@ def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
 def test_queue_follows_the_working_set_then_runs_before_ensembles(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("base\n")
+    write_current_scenario(daemon.data_dir, "base")
     daemon.paths.dir.mkdir(parents=True, exist_ok=True)
-    daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n")
+    daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n", encoding="utf-8")
     (daemon.paths.runs_dir / "ens_a").mkdir(parents=True)
     (daemon.paths.runs_dir / "ens_b").mkdir(parents=True)
     queue = ["ens_a", "base", "zed", "retire_alice", "ens_b"]
@@ -305,20 +497,18 @@ def test_readers_dont_wait_where_the_builder_is_off_or_not_installed(
     # of the scenario waits for, so it never waits on the builder.
     with locks.building():
         builder.await_fresh(paths.runs_dir, "base")
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     builder.await_fresh(paths.runs_dir, "base")
 
 
 @pytest.fixture
 def running_daemon(pair: tuple[Path, Path]) -> Generator[BuilderPaths]:
     """The pair, installed, with its daemon lock held as a daemon would."""
-    import fcntl
-
     _code, data_dir = pair
     builder.install(data_dir)
     paths = BuilderPaths.for_data(data_dir)
     fd = os.open(paths.daemon_lock, os.O_RDWR | os.O_CREAT, 0o644)
-    fcntl.flock(fd, fcntl.LOCK_EX)
+    flock.lock(fd)
     yield paths
     os.close(fd)
 
@@ -356,7 +546,7 @@ def test_the_builder_never_queues_a_disabled_scenario(
 
     daemon.scan()
     assert "base" in daemon.queue and "base" not in daemon.cancelled
-    (daemon.data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("")
+    (daemon.data_dir / "scenarios" / "base" / DISABLE_FILE).write_text("", encoding="utf-8")
     daemon.scan()
     assert "base" not in daemon.queue and daemon.queue
     assert daemon.cancelled["base"]["why"] == "it was disabled"  # for a reader waiting on it
@@ -474,6 +664,7 @@ def test_a_reader_waiting_on_a_cancelled_build_says_so(
                          "opening its latest results, which are out of date")
 
 
+@pytest.mark.slow
 def test_a_reader_waits_for_a_job_its_run_turned_up(
     running_daemon: BuilderPaths, builder_on: None,
 ) -> None:
@@ -623,7 +814,7 @@ def test_jobs_are_named_for_their_scenario_and_step() -> None:
 def test_the_builder_runs_everything_then_series_stores_then_sensitivities(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("b\n")
+    write_current_scenario(daemon.data_dir, "b")
     queue = ["a:sensitivity", "b:series", "a", "b:sensitivity", "b", "a:series"]
     assert daemon.order(queue) == ["b", "a", "b:series", "a:series", "b:sensitivity", "a:sensitivity"]
 
@@ -747,7 +938,7 @@ def test_a_sensitivity_reader_waits_only_for_the_sensitivity_batch(
 
     def finish() -> None:
         time.sleep(1.0)
-        [request] = [json.loads(p.read_text()) for p in paths.requests.glob("*.json")]
+        [request] = [json.loads(p.read_text(encoding="utf-8")) for p in paths.requests.glob("*.json")]
         assert request["steps"] == ["sensitivity"]
         builder._write_json(paths.status, {"state": "building", "current": {"job": "base"},
                                            "queue": [], "updated": time.time()})
@@ -774,7 +965,7 @@ def _fetched_upstream(commit_files: Callable[..., str], repo: git.Repo, files: d
     commit_files(repo, files, "upstream")
     repo.git.update_ref("refs/remotes/origin/main", "upstream")
     repo.git.checkout("main")
-    (Path(repo.git_dir) / "FETCH_HEAD").write_text("")
+    (Path(repo.git_dir) / "FETCH_HEAD").write_text("", encoding="utf-8")
 
 
 def test_main_behind_counts_only_code_commits(commit_files: Callable[..., str], code_repo: git.Repo) -> None:
@@ -886,7 +1077,7 @@ def test_the_daemon_merges_fetched_prices_only_between_builds(
 
     monkeypatch.delenv(price_schedule.SWITCH_ENV)
     builder._write_json(daemon.paths.config, {"data_dir": str(daemon.data_dir), "prices": True})
-    (daemon.data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market\n")
+    (daemon.data_dir / "securities.csv").write_text("symbol,name\nVTI,Total market\n", encoding="utf-8")
     with git.Repo(daemon.data_dir.parent) as repo:
         commit_files(repo, {}, "VTI")
         before = repo.head.commit.hexsha
@@ -916,7 +1107,80 @@ def test_notify_forgets_the_repository_of_the_hook_that_ran_it(
 def test_the_builder_hooks_start_notify_without_the_hooks_repository(
     repo_root: Path, hook: str,
 ) -> None:
-    text = (repo_root / ".githooks" / hook).read_text()
+    text = (repo_root / ".githooks" / hook).read_text(encoding="utf-8")
     assert "builder notify" in text
     for name in price_schedule.HOOK_GIT_ENV:
         assert f"-u {name} " in text
+
+
+def test_the_daemon_looks_to_catch_up_with_origin_between_builds(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#785: so what another clone's builder pushed arrives here. The hour
+    is ``catch_up_if_due``'s, shared with the timer; the daemon looks at
+    most once a minute."""
+    from zabob.retirement.sim import price_schedule
+
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", lambda d: calls.append(d) or ["caught up"])
+    daemon.build = object()  # ty: ignore[invalid-assignment]  # building: not now
+    daemon.catch_up_tick()
+    assert calls == []
+    daemon.build = None
+    daemon.catch_up_tick()
+    daemon.catch_up_tick()  # within the minute: not again
+    assert calls == [daemon.data_dir]
+    daemon.caught_up -= 60
+    daemon.catch_up_tick()
+    assert calls == [daemon.data_dir] * 2
+
+
+def test_a_failed_catch_up_is_logged_and_the_daemon_goes_on(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zabob.retirement.sim import price_schedule
+
+    def broken(_d: Path) -> list[str]:
+        raise price_schedule.PriceScheduleError("git rev-parse failed")
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", broken)
+    logged: list[str] = []
+    monkeypatch.setattr(daemon, "log", logged.append)
+    daemon.catch_up_tick()
+    assert logged == ["not caught up with origin: git rev-parse failed"]
+
+
+def test_a_clone_that_no_longer_writes_still_merges_what_it_fetched(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#785: a fetch committed here before another machine became the
+    writer is merged, but no new one starts."""
+    from zabob.retirement.sim import price_schedule, shared_writer
+
+    builder.install(daemon.data_dir)
+    monkeypatch.setattr(shared_writer, "elsewhere", lambda *_a: "bill@desk")
+    monkeypatch.setattr(price_schedule, "switched_off", lambda: False)
+    merged: list[Path] = []
+    monkeypatch.setattr(price_schedule, "merge_pending", lambda d, _w: merged.append(d) or [])
+    monkeypatch.setattr(price_schedule, "due", lambda *_a: pytest.fail("looked for a due fetch"))
+    daemon.prices_tick(True)
+    assert merged == [daemon.data_dir] and daemon.fetcher is None
+
+
+def test_the_timer_catches_up_when_no_daemon_runs(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from click.testing import CliRunner
+
+    from zabob.retirement.sim import price_schedule
+    from zabob.retirement.sim.cli import sim_group_command
+
+    _code, data_dir = pair
+    builder.install(data_dir)
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up_if_due", lambda d: calls.append(d) or ["caught up"])
+    out = CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert out.exit_code == 0, out.output
+    assert calls == [data_dir] and "caught up" in out.output
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert calls == [data_dir]  # the daemon does it

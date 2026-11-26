@@ -8,14 +8,13 @@ a name belongs to may come later on the line. Once the whole line is parsed,
 mistyped one); otherwise the command checks the name itself.
 
 Completion reads what the line has so far. The data repo is ``--data-dir``
-or ``$ANALYSIS_DATA_DIR``; the scenario is the ``--scenario`` option or the
+or ``user_config.data_dir_setting()``; the scenario is the ``--scenario`` option or the
 command's scenario argument, else the current scenario; a lot belongs to
 the account argument it pairs with (``--from-lot`` with FROM_ACCOUNT).
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -25,6 +24,7 @@ from click.shell_completion import CompletionItem
 
 from zabob.retirement.sim import names, registries, series_files
 from zabob.retirement.sim.loader import read_current_scenario
+from zabob.retirement.user_config import data_dir_setting
 
 __all__ = [
     "ACCOUNT", "ACCOUNT_OR_NEW", "ANY_TAG", "AUX_KIND", "CALENDAR_ROW", "CHAIN",
@@ -79,7 +79,7 @@ def _given(ctx: click.Context, key: str) -> Any:
 
 
 def _data_dir(ctx: click.Context) -> Path | None:
-    given = _given(ctx, "data_dir") or os.environ.get("ANALYSIS_DATA_DIR")
+    given = _given(ctx, "data_dir") or data_dir_setting()
     return Path(given) if given else None
 
 
@@ -403,6 +403,34 @@ def _import_sources(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: A
     return sources_with_maps(data_dir)
 
 
+def _notebooks(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import server
+
+    folder = _given(ctx, "notebook_dir") or server.root() / "notebooks"
+    return [n.removesuffix(".ipynb") for n in server.notebook_names(Path(folder))]
+
+
+# A notebook `sim jupyter start` opens. Unchecked: the command checks it
+# itself, since its place may hold an option meant for jupyter lab.
+NOTEBOOK = NameType(_notebooks, "notebook", check=False)
+
+
+def _logins(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return hub.logins()
+
+
+def _hub_users(ctx: click.Context, data_dir: Path) -> list[str]:  # noqa: ARG001
+    from zabob.retirement.jupyter import hub
+
+    return list(hub.read_users())
+
+
+# A login on this machine, to add to the hub (#766); checked against the
+# machine's logins by the command, since system logins aren't offered.
+LOGIN = NameType(_logins, "login", check=False)
+HUB_USER = NameType(_hub_users, "hub user")
 # A source with saved mappings: a folder under the data dir's imports/.
 IMPORT_SOURCE = NameType(_import_sources, "import source")
 # A lot may hold a symbol nothing names yet, and prices can fetch one.

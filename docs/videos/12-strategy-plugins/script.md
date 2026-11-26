@@ -104,7 +104,7 @@ No built-in strategy does that, so they write one that does.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/trips && cd ~/zabob-retirement/sim && sim switch travel > /dev/null 2>&1; clear"
 Enter
@@ -160,7 +160,7 @@ look = "files"
 heading = "A strategy plugin is a file in the data repo"
 title = "sim"
 address = "~/zabob-retirement/sim"
-lines = ["strategies", "scenarios", "aux", "allocations.csv", "persons.csv", "securities.csv"]
+lines = ["strategies", "scenarios", "tables", "allocations.csv", "persons.csv", "securities.csv"]
 note = "strategies/whole_trips.py: for every scenario, versioned with the data, copied into each run"
 speaker = "bill"
 ```
@@ -262,7 +262,7 @@ two runs of one plan could differ.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/check && cd ~/zabob-retirement/sim && sim switch trips > /dev/null 2>&1; clear"
 Enter
@@ -309,7 +309,7 @@ compares every decision: six hundred and eight, the same in both runs.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/use && cd ~/zabob-retirement/sim && sim switch trips-whole > /dev/null 2>&1; clear"
 Enter
@@ -334,7 +334,7 @@ spends the plan. Raises add nothing; only cuts change what they do.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/futures && cd ~/zabob-retirement/sim && sim switch trips-whole > /dev/null 2>&1; clear"
 Enter
@@ -370,7 +370,7 @@ of it.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/compare && cd ~/zabob-retirement/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
 Enter
@@ -398,7 +398,7 @@ spending above the plan, not only skipping whole trips.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/lumpy && cd ~/zabob-retirement/sim && sim switch trips-whole-mc > /dev/null 2>&1; clear"
 Enter

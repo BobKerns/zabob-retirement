@@ -39,7 +39,7 @@ from zabob.retirement.videos.script import Script, ScriptError
 CHANNEL_FILE = "youtube.toml"
 PUBLISHED_FILE = "published.toml"
 # Where the OAuth client and the signed-in token live; never in git.
-SECRETS_ENV = "ANALYSIS_VIDEO_SECRETS"
+SECRETS_ENV = "ZABOB_VIDEO_SECRETS"
 
 # YouTube's limits (videos resource): checked before anything is sent.
 MAX_TITLE = 100

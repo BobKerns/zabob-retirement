@@ -79,8 +79,14 @@ def test_state_store_does_not_create_json_state_files(tmp_path: Path) -> None:
     assert not (state_dir / "events.jsonl").exists()
 
 
-def test_insert_event_uses_user_env_var(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("USER", "test-user")
+def test_insert_event_credits_the_login_name(tmp_path: Path, monkeypatch) -> None:
+    """With no ZABOB_USER and no `sim login`, the login name (#687, #773),
+    which getpass reads from LOGNAME before USER (and USERNAME on Windows)."""
+    from zabob.retirement import user_config
+
+    (user_config.config_dir() / "user").unlink()
+    for name in ("LOGNAME", "USER", "LNAME", "USERNAME"):
+        monkeypatch.setenv(name, "test-user")
 
     state_dir = tmp_path / "state"
     store = JsonStateStore(state_dir)

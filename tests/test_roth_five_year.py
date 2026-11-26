@@ -129,7 +129,7 @@ def test_nonqualified_earnings_are_ordinary_income(
 
 def _roth_chain(retire_alice_csv: Callable[[str], Path], *steps: str) -> None:
     (retire_alice_csv("chains/source") / "spend.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\n" + "".join(f"{s}\n" for s in steps))
+        "account_name,lot,maximum,percent,series,cadence\n" + "".join(f"{s}\n" for s in steps), encoding="utf-8")
 
 
 def test_a_roth_step_that_would_pay_taxed_earnings_is_skipped(
@@ -191,7 +191,7 @@ def test_a_roth_distribution_through_a_chain_is_taxed_on_earnings(
 ) -> None:
     young_roth("0.00")
     (retire_alice_csv("chains/destination") / "out.csv").write_text(
-        "account_name,lot,maximum,percent,series,cadence\nAsset_Checking,,,,,\n")
+        "account_name,lot,maximum,percent,series,cadence\nAsset_Checking,,,,,\n", encoding="utf-8")
     append_calendar_row(date="2027-01-31", kind="one_off_transfer", account_1=ROTH, lot_1="default",
                         account_2="out", amount="10000.00")
     assert _legs(_run(load_test_copy, runs_dir)) == [
@@ -208,7 +208,7 @@ def test_a_roth_step_inside_a_chain_with_later_steps_above_it_is_skipped(
     a step that can pay, so the taxed draw is skipped."""
     young_roth("0.00")
     (retire_alice_csv("chains/source") / "roth_only.csv").write_text(
-        f"account_name,lot,maximum,percent,series,cadence\n{ROTH},default,,,,\n")
+        f"account_name,lot,maximum,percent,series,cadence\n{ROTH},default,,,,\n", encoding="utf-8")
     _roth_chain(retire_alice_csv, "roth_only,,,,,", "Asset_Savings,,,,,")
     append_calendar_row(date="2027-01-31", kind="one_off_transfer", account_1="spend",
                         account_2="Asset_Checking", amount="15000.00")
@@ -225,7 +225,7 @@ def test_a_roth_rollover_through_a_chain_is_not_a_distribution(
     young_roth("0.00")
     add_account_value(ROTH, lot="b", opening_balance="0.00")
     (retire_alice_csv("chains/destination") / "into_b.csv").write_text(
-        f"account_name,lot,maximum,percent,series,cadence\n{ROTH},b,,,,\n")
+        f"account_name,lot,maximum,percent,series,cadence\n{ROTH},b,,,,\n", encoding="utf-8")
     append_calendar_row(date="2027-01-31", kind="one_off_transfer", account_1=ROTH, lot_1="default",
                         account_2="into_b", amount="15000.00")
     assert _legs(_run(load_test_copy, runs_dir)) == [("2027-01-31", ROTH, 1_500_000, "none")]
@@ -305,7 +305,7 @@ def test_a_person_needs_a_birthdate(
     role: str, test_data_dir: Path, load_test_copy: Callable[[], LoadResult],
 ) -> None:
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + f"carol,Carol (fake),,,{role},{{}}\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + f"carol,Carol (fake),,,{role},{{}}\n", encoding="utf-8")
     with pytest.raises(LoadError, match=f"carol.*{role} person needs a birthdate"):
         load_test_copy()
 
@@ -328,7 +328,7 @@ def test_a_basis_step_may_not_name_a_retirement_account(
     (retire_alice_csv("chains/destination") / "roth_sale.csv").write_text(
         "account_name,lot,maximum,percent,series,cadence,tax_character,basis_of,basis_of_lot\n"
         f"Asset_Checking,,,,,,return_of_capital,{ROTH},default\n"
-        "Asset_Checking,,,,,,ltcg,,\n")
+        "Asset_Checking,,,,,,ltcg,,\n", encoding="utf-8")
     with pytest.raises(LoadError, match=f"basis_of '{ROTH}' is a retirement account"):
         load_test_copy()
 

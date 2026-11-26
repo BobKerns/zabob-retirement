@@ -94,7 +94,7 @@ def _use_docker(where: str | None) -> bool:
 def _docker(args: list[str], out: Path | None = None) -> int:
     env = dict(os.environ)
     if out is not None:
-        env["ANALYSIS_VIDEO_OUT"] = str(out.resolve())
+        env["ZABOB_VIDEO_OUT"] = str(out.resolve())
     script = _videos_root().parent.parent / "scripts" / "videos" / "docker.sh"
     return subprocess.run(["bash", str(script), *args], env=env, check=False).returncode
 
@@ -207,13 +207,11 @@ def check_command(videos: tuple[str, ...], where: str | None) -> None:
 
 
 @video_group_command.command(name="shell")
-@click.argument("video", shell_complete=_complete_video)
-def shell_command(video: str) -> None:
-    """Open bash in the container with VIDEO's own data repo at /data."""
-    folder = _video_folder(video)
+def shell_command() -> None:
+    """Open bash in the container, in the videos' data repo at /data."""
     if not docker_running():
         raise click.ClickException("shell needs Docker, and it isn't installed here or isn't running")
-    raise SystemExit(_docker(["shell", folder.name]))
+    raise SystemExit(_docker(["shell"]))
 
 
 @video_group_command.command(name="image")

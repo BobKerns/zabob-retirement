@@ -19,8 +19,11 @@ import pytest
 from zabob.retirement import resources
 from zabob.retirement.sim import provenance
 
-# Each runs the program in a subprocess, which takes seconds.
-pytestmark = [pytest.mark.installed, pytest.mark.slow]
+# Each runs the program in a subprocess, which takes seconds. Through bash and
+# activate-retirement, so not on native Windows: test_install_native is its
+# shell-free twin (#687).
+pytestmark = [pytest.mark.installed, pytest.mark.slow,
+              pytest.mark.skipif(sys.platform == "win32", reason="bash and activate-retirement")]
 
 BIN = Path(sys.executable).parent
 """The installed program's scripts: `sim`, `analysis`, `jupyter`."""
@@ -29,7 +32,7 @@ BIN = Path(sys.executable).parent
 @pytest.fixture(scope="module")
 def session(new_user_env: dict[str, str]) -> dict[str, str]:
     """A new user's environment, with this install's commands on PATH."""
-    return {**new_user_env, "PATH": f"{BIN}:/usr/bin:/bin", "ANALYSIS_NO_BUILDER": "1"}
+    return {**new_user_env, "PATH": f"{BIN}:/usr/bin:/bin", "ZABOB_NO_BUILDER": "1"}
 
 
 def _shell(env: dict[str, str], command: str) -> str:
@@ -47,12 +50,12 @@ def data_repo(session: dict[str, str]) -> Path:
 
 
 def _activated(env: dict[str, str], root: Path, command: str) -> str:
-    return _shell(env, f"source {root / 'sim' / 'activate-analysis'} && {command}")
+    return _shell(env, f"source {root / 'sim' / 'activate-retirement'} && {command}")
 
 
 def test_the_package_is_installed_with_no_checkout() -> None:
     assert resources.CHECKOUT_DIR is None
-    assert (resources.TEMPLATES_DIR / "activate-analysis").is_file()
+    assert (resources.TEMPLATES_DIR / "activate-retirement").is_file()
     assert (resources.PROTOTYPE_DIR / "persons.csv").is_file()
     # Stamped with the commit it was built from, so runs record which build made them.
     stamped, _dirty = provenance.installed_version()
@@ -60,7 +63,7 @@ def test_the_package_is_installed_with_no_checkout() -> None:
 
 
 def test_init_example_makes_a_data_repo_paired_with_this_install(data_repo: Path) -> None:
-    assert (data_repo / "sim" / ".analysis").read_text() == f"{resources.INSTALLED}{BIN}\n"
+    assert (data_repo / "sim" / ".analysis").read_text(encoding="utf-8") == f"{resources.INSTALLED}{BIN}\n"
     assert (data_repo / "notebooks" / "net_worth.ipynb").is_file()
 
 

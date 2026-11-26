@@ -57,8 +57,8 @@ def test_retire_alice_matches_baseline(name: str, retire_alice_run_file: Path) -
     golden = BASELINE_DIR / f"{name}.csv"
     if os.environ.get("UPDATE_BASELINE"):
         BASELINE_DIR.mkdir(parents=True, exist_ok=True)
-        golden.write_text(actual)
-    expected = golden.read_text()
+        golden.write_text(actual, encoding="utf-8")
+    expected = golden.read_text(encoding="utf-8")
     if actual != expected:
         got, want = actual.splitlines(), expected.splitlines()
         first = next(

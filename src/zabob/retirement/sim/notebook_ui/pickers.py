@@ -49,6 +49,7 @@ from zabob.retirement.sim.types import (
     AccountName, ScenarioName, AttributionAxis, DeltaScale, HeatmapValue,
 )
 from zabob.retirement.sim.notebook_ui.styled import StyledMarkdown, styled_html
+from zabob.retirement.user_config import default_data_dir
 
 
 def to_month(year: int, month: int) -> datetime.date:
@@ -502,8 +503,8 @@ def find_data_dir(data_dir: Path | str | None = None) -> Path:
     ----------
     data_dir : Path | str | None, optional
         The base directory for the data repository. If None, defaults to
-        the current repo's data/private/sim or the value of the
-        $ANALYSIS_DATA_DIR environment variable.
+        the value of the $ZABOB_DATA_DIR environment variable, the
+        current repo's data/private/sim, or the user's default data repo.
 
     Returns
     -------
@@ -511,8 +512,14 @@ def find_data_dir(data_dir: Path | str | None = None) -> Path:
         The resolved data directory.
     """
     if data_dir is None:
-        env = os.environ.get("ANALYSIS_DATA_DIR")
-        return Path(env) if env is not None else _checkout_data_dir()
+        if env := os.environ.get("ZABOB_DATA_DIR"):
+            return Path(env)
+        # The notebook's own data repo, then the user's default (#687): a
+        # notebook opened from an editor has no activated shell behind it.
+        found = _checkout_data_dir()
+        if not (found / "persons.csv").exists() and (default := default_data_dir()) is not None:
+            return default
+        return found
     return Path(data_dir)
 
 
@@ -540,11 +547,11 @@ def find_state_dir(*,
     ----------
     state_dir : Path | None, optional
         The state directory to use. If None, defaults to the value of the
-        $ANALYSIS_STATE_DIR environment variable or the repo's data/state directory.
+        $ZABOB_STATE_DIR environment variable or the repo's data/state directory.
     data_dir : Path | str | None, optional
         The base directory for the data repository. If None, defaults to
         the current repo's data/private/sim or the value of the
-        $ANALYSIS_DATA_DIR environment variable.
+        $ZABOB_DATA_DIR environment variable.
     default_state_dir : Path | None, optional
         The default state directory to use if the environment variable is not set.
 
@@ -558,7 +565,7 @@ def find_state_dir(*,
         return data_dir / state_dir
     if default_state_dir is None:
         default_state_dir = data_dir.parent / "state"
-    return Path(os.environ.get("ANALYSIS_STATE_DIR", default_state_dir))
+    return Path(os.environ.get("ZABOB_STATE_DIR", default_state_dir))
 
 
 def find_runs_dir(data_dir: Path | str | None = None,
@@ -573,7 +580,7 @@ def find_runs_dir(data_dir: Path | str | None = None,
     data_dir : Path | str | None, optional
         The base directory for the data repository. If None, defaults to
         the current repo's data/private/sim or the value of the
-        $ANALYSIS_DATA_DIR environment variable.
+        $ZABOB_DATA_DIR environment variable.
     state_dir : Path | None, optional
     runs_dir : Path | str | None, optional
         The default runs directory to use if the environment variable is not set.
@@ -587,7 +594,7 @@ def find_runs_dir(data_dir: Path | str | None = None,
                                state_dir=state_dir)
     if runs_dir is None:
         runs_dir = state_dir / "runs"
-    return Path(os.environ.get("ANALYSIS_RUNS_DIR", runs_dir))
+    return Path(os.environ.get("ZABOB_RUNS_DIR", runs_dir))
 
 
 def scenario_picker(
@@ -611,7 +618,7 @@ def scenario_picker(
         repo's data/private/sim.
     default : str | None, optional
         The default scenario to select. If None, resolves using
-        $ANALYSIS_SCENARIO, .current_scenario, or "base".
+        $ZABOB_SCENARIO, the current scenario (ADR-004 §4a), or "base".
     scenarios_dir : Path | None, optional
         The directory containing scenario definitions. Defaults to None.
     runs_dir : Path | None, optional
@@ -652,10 +659,10 @@ def scenario_picker(
 
     data_dir = find_data_dir(data_dir)
     if default is None:
-    # Same resolution the CLI uses: $ANALYSIS_SCENARIO, else the data repo's
-    # .current_scenario, else "current".
+    # Same resolution the CLI uses: $ZABOB_SCENARIO, else the data repo's
+    # the current scenario (ADR-004 §4a), else "current".
         default = resolve_scenario_name(
-            data_dir, os.environ.get("ANALYSIS_SCENARIO") or None,
+            data_dir, os.environ.get("ZABOB_SCENARIO") or None,
             scenarios_dir=scenarios_dir,
             runs_dir=runs_dir,
         ).name
@@ -877,10 +884,11 @@ def _load_multi(
     scenarios = [baseline, *resolved_variants]
     compare.align_cpi(connections, baseline)
 
-    import matplotlib.pyplot as plt
+    import matplotlib
 
+    # matplotlib.rcParams, not pyplot's: importing pyplot is all it would add.
     colors = dict(
-        zip(scenarios, plt.rcParams["axes.prop_cycle"].by_key()["color"], strict=False)
+        zip(scenarios, matplotlib.rcParams["axes.prop_cycle"].by_key()["color"], strict=False)
     )
 
     warnings = []
@@ -911,7 +919,7 @@ def multi_scenario_picker(
         repo's data/private/sim.
     default_baseline : str | None, optional
         The default baseline scenario to select. If None, resolves using
-        $ANALYSIS_SCENARIO, .current_scenario, or "current".
+        $ZABOB_SCENARIO, the current scenario (ADR-004 §4a), or "current".
     default_variants : list[str] | None, optional
         The default variant scenarios to select. If None, selects the first
         few available variants up to max_variants.
@@ -931,10 +939,10 @@ def multi_scenario_picker(
         data_dir = find_data_dir()
     data_dir = Path(data_dir)
     if default_baseline is None:
-        # Same resolution the CLI uses: $ANALYSIS_SCENARIO, else the data repo's
-        # .current_scenario, else "current".
+        # Same resolution the CLI uses: $ZABOB_SCENARIO, else the data repo's
+        # the current scenario (ADR-004 §4a), else "current".
         default_baseline = resolve_scenario_name(
-            data_dir, os.environ.get("ANALYSIS_SCENARIO") or None,
+            data_dir, os.environ.get("ZABOB_SCENARIO") or None,
             intent_dir=intent_dir, runs_dir=runs_dir,
         ).name
     available = enabled_scenario_names(data_dir, keep=[default_baseline, *(default_variants or [])])

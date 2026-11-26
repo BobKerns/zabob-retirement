@@ -170,14 +170,14 @@ def person_ids(data_dir: Path) -> list[str]:
 
 def series_names(data_dir: Path, scenario: str, kind: str | None = None) -> list[str]:
     """The series of ``kind`` (``rate``, ``inflation``, ...), or of any kind,
-    that the scenario's ``series/`` and ``aux/`` folders and the shared
-    ``aux/`` (and the code repository's ``templates/aux/``, #317) have a
+    that the scenario's ``series/`` and ``tables/`` folders and the shared
+    ``tables/`` (and the code repository's ``templates/tables/``, #317) have a
     file for: ``<kind>__<name>.csv``. A rate or inflation series the
     scenario has emptied (``sim series delete``, #471) is left out, since it
     has no rates here."""
-    folders = [TEMPLATE_AUX_DIR, data_dir / "aux"]
+    folders = [TEMPLATE_AUX_DIR, data_dir / "tables"]
     for d in _lineage_dirs(data_dir, scenario):
-        folders += [d / "series", d / "aux"]
+        folders += [d / "series", d / "tables"]
     found: set[tuple[str, str]] = set()
     for stem in _stems(folders, f"{kind}__*.csv" if kind else "*__*.csv"):
         kind_of, _, name = stem.partition("__")

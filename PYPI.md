@@ -28,11 +28,14 @@ have it):
 uv tool install zabob-retirement
 sim init --example     # Alice and Bill's household, to try things on
 sim init               # or your own, in ~/zabob-retirement
-source ~/zabob-retirement/sim/activate-analysis
 ```
 
+`sim init` makes the data repo your default, so the commands find it from any
+folder and shell, Windows PowerShell included.
+
 Upgrade with `uv tool upgrade zabob-retirement`, then `sim notebooks copy
---replace` for the new notebooks. `analysis jupyter` opens the notebooks.
+--replace` for the new notebooks. `sim jupyter start` opens the notebooks,
+and `sim jupyter stop` stops JupyterLab.
 
 ## Learn more
 

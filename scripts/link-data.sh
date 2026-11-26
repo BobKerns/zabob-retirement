@@ -12,7 +12,7 @@
 #   scripts/link-data.sh             ask for PATH; a blank answer, or no terminal
 #                                    (CI), means --template
 #
-# Either way, `source data/private/sim/activate-analysis` then gives a working
+# Either way, `source data/private/sim/activate-retirement` then gives a working
 # environment. Safe to re-run: an existing data/private is reported and left alone.
 set -eu
 
@@ -76,10 +76,10 @@ if [ "$mode" = template ]; then
     # §4.5a); a copy in the data would replace them and go stale.
     find "$PRIVATE/sim/scenarios" -mindepth 1 -maxdepth 1 -name 't_*' -exec rm -r {} +
     # So are the aux tables (#317), all but the household's filing status.
-    find "$PRIVATE/sim/aux" -name '*.csv' ! -name filing_status.csv -delete
+    find "$PRIVATE/sim/tables" -name '*.csv' ! -name filing_status.csv -delete
     printf '%s\n' "$REPO" > "$PRIVATE/sim/.analysis"
     echo "Built template data in $PRIVATE, used as 'test'."
-    echo "Activate it with: source $PRIVATE/sim/activate-analysis"
+    echo "Activate it with: source $PRIVATE/sim/activate-retirement"
     exit 0
 fi
 
@@ -127,7 +127,7 @@ if [ ! -f "$PRIVATE/.cspell/data-words.txt" ]; then
     : > "$PRIVATE/.cspell/data-words.txt"
 fi
 
-# Keep the per-machine files out of the data repo, as activate-analysis does.
+# Keep the per-machine files out of the data repo, as activate-retirement does.
 for ignored in .analysis .current_scenario .analysis_user; do
     if [ ! -f "$PRIVATE/sim/.gitignore" ] || ! grep -qxF "$ignored" "$PRIVATE/sim/.gitignore"; then
         printf '%s\n' "$ignored" >> "$PRIVATE/sim/.gitignore"
@@ -142,6 +142,6 @@ elif user="$("$PYTHON" -m zabob.retirement.sim.choose_user "$PRIVATE/sim")"; the
     printf '%s\n' "$user" > "$PRIVATE/sim/.analysis_user"
     echo "Linked $PRIVATE to $target, used as '$user'."
 else
-    echo "Linked $PRIVATE to $target; no user chosen, so activate-analysis will ask." >&2
+    echo "Linked $PRIVATE to $target; no user chosen, so activate-retirement will ask." >&2
 fi
-echo "Activate it with: source $PRIVATE/sim/activate-analysis"
+echo "Activate it with: source $PRIVATE/sim/activate-retirement"

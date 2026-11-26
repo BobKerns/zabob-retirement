@@ -195,7 +195,7 @@ def test_a_county_move_needs_no_local_tax_before_it(
     load_test_copy()
     add_residence("2029-01", "CA", county="CA-misspelt")
     with pytest.raises(LoadError, match=r"county 'CA-misspelt' has no "
-                                        r"aux/state_local_tax__CA-misspelt\.csv"):
+                                        r"tables/state_local_tax__CA-misspelt\.csv"):
         load_test_copy()
 
 
@@ -287,7 +287,7 @@ def test_local_bands_without_a_local_file_name_the_command(
 ) -> None:
     add_state_tax()
     write_aux("state_local_tax__CA.csv", _local_rows("3%"))
-    with pytest.raises(LoadError, match=r"aux/state_local_tax__CA\.csv: a local income tax is its "
+    with pytest.raises(LoadError, match=r"tables/state_local_tax__CA\.csv: a local income tax is its "
                                         r"own jurisdiction now.*`sim tax add local`"):
         load_test_copy()
 

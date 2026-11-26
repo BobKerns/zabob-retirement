@@ -727,7 +727,7 @@ def ensemble_guard_rails_widget(*_,
         if not scenarios_dir.is_dir():
             clear_output(wait=True)
             display(StyledMarkdown(f"**Guard rails are read from the data repo, and there is "
-                                   f"none at {resolved_data_dir}.** Source `activate-analysis` "
+                                   f"none at {resolved_data_dir}.** Source `activate-retirement` "
                                    "or pass `data_dir=`."))
             return
         try:
@@ -1366,7 +1366,7 @@ def ensemble_guard_rails_table_widget(*_,
         if not scenarios_dir.is_dir():
             clear_output(wait=True)
             display(StyledMarkdown(f"**Guard rails are read from the data repo, and there is "
-                                   f"none at {resolved_data_dir}.** Source `activate-analysis` "
+                                   f"none at {resolved_data_dir}.** Source `activate-retirement` "
                                    "or pass `data_dir=`."))
             return
         mode = dollar_picker.value

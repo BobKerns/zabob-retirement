@@ -16,33 +16,76 @@ fetches Python 3.14 if you don't have it:
 uv tool install zabob-retirement
 ```
 
-(`zabob-retire` is the same program under a shorter name.) Then make your
-data repo, the git repository of CSV files that holds your household, and
-activate it:
+Then make your data repo, the git repository of CSV files that holds your
+household:
 
 ```sh
-sim init                                          # in ~/zabob-retirement, asking who you are
-source ~/zabob-retirement/sim/activate-analysis   # in each new shell
+sim init        # in ~/zabob-retirement, asking about your household
 ```
+
+Then say who you are, by default your login name:
+
+```sh
+sim login       # or: sim login Alice
+```
+
+That's all: `sim init` makes it your data repo, so every `sim` command finds
+it, from any folder and in any new terminal, and `sim login` records your name
+on what you make and change. `sim switch` shows both, and your current
+scenario; `sim switch --data DIR` switches to another data repo, as does
+running a `sim` command inside one.
+
+To have TAB complete `sim`'s commands, options and the names your scenarios
+define (accounts, chains, scenarios...), set it up once for your shell:
+
+```sh
+sim completion install       # your shell; or name it: bash, zsh, fish, powershell
+```
+
+It writes the completion script under your settings folder (fish's own
+`~/.config/fish/completions/` for fish) and adds a line that reads it to
+`~/.bashrc`, `~/.zshrc` or PowerShell's `$PROFILE`; open a new terminal to
+use it. Running it again changes nothing but the script, so run it again
+after an upgrade if TAB stops completing. To put the script somewhere of
+your own, `sim completion show zsh` prints it. Bash needs version 4.4 or
+later: macOS's own `/bin/bash` is older, so on a Mac use zsh, its default.
+In bash or zsh, `source ~/zabob-retirement/sim/activate-retirement` adds the
+data repo and you to the prompt; it's optional.
 
 `sim init` saves a first version with git: on macOS, if a window offers to
 install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
-notebooks, in its `notebooks/`; `analysis jupyter` opens them.
+notebooks, in its `notebooks/`; `sim jupyter start` opens them. To give
+everyone in the household their own JupyterLab, see [Share with your
+household](guides/jupyterhub.md).
 
 To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
 
+Upgrading past 1.0.0b1, the environment variables are `ZABOB_*` instead of
+`ANALYSIS_*`, and the data repo's `activate-analysis` is
+`activate-retirement` ([#782](https://github.com/BobKerns/zabob-retirement/issues/782)).
+A command run with an old name set stops and says what to do: in a shell
+that sourced the old script, it gives the two commands that replace it.
+Rename any of these variables you set yourself.
+
+On Windows, this works in PowerShell or Windows Terminal as it stands; see
+[Windows](#windows) for what differs.
+
+Video: [Setup and install](https://youtu.be/_-NY-h16hsk) walks through
+installing from PyPI, a new data repo, and saving your work
+([日本語](https://youtu.be/VSZ0j2qAJuI)).
+
 The rest of this page is for working from a clone of the code.
 
 ## Install with one line
 
 If you don't have the code yet, or don't use git, paste this into a terminal
-(macOS, Linux or WSL; on Windows, [set up WSL](#windows-set-up-wsl-first)
+(macOS, Linux or WSL; on Windows, [set up WSL](#windows-wsl)
 first):
 
 ```sh
@@ -61,16 +104,46 @@ pass the answers as options, `... | sh -s -- --yes --id alice --display
 "Alice Example" --birthdate 1960-05-01 --filing-status MFJ`; the comment at
 the top of [`scripts/install.sh`](../scripts/install.sh) lists them all.
 
-Video: [Setup and install](https://youtu.be/qnug-0zzlqA) walks through the
-install, a new data repo, activating it, and saving your work
-([日本語](https://youtu.be/Eu0r0Hk1ghM)).
+## Windows
 
-## Windows: set up WSL first
+The program runs on Windows itself. In PowerShell (or a Windows Terminal
+tab), install uv as its
+[installation page](https://docs.astral.sh/uv/getting-started/installation/)
+says:
 
-The simulator runs on Linux and macOS. On Windows it runs in WSL, the Windows
-Subsystem for Linux, which runs Ubuntu inside Windows 11, or Windows 10
-version 2004 or later. The video [WSL for Windows](https://youtu.be/yHr90VdoHGQ)
-walks through this ([日本語](https://youtu.be/zeTFTujsWwI)).
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+The data repo keeps its versions with git, so install
+[Git for Windows](https://git-scm.com/downloads/win) too, with its defaults.
+Open a new terminal, so it finds both, and go on with
+[Install the program](#install-the-program): `uv tool install
+zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
+
+- The background builder's hourly wake is a task in Task Scheduler's
+  **Zabob Retirement** folder
+  ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
+  runs only while you are logged in; nothing asks for a password or an
+  administrator.
+- TAB completion works in PowerShell, both Windows' own and PowerShell 7:
+  `sim completion install` adds it to your profile. If it says the execution
+  policy is `Restricted`, Windows PowerShell won't read a profile at all
+  until you run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
+  later (its Settings, **About**, gives the version; the Microsoft Store
+  updates it). In an older one, or the plain console window, it saves the
+  chart as a PNG, prints its path and opens it in your image viewer. If a
+  current Windows Terminal saves a PNG anyway, set
+  `ZABOB_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
+
+### Windows: WSL
+
+For the one-line install below, or to work from a clone of the code, use
+WSL, the Windows Subsystem for Linux, which runs Ubuntu inside Windows 11, or
+Windows 10 version 2004 or later. The video
+[WSL for Windows](https://youtu.be/yHr90VdoHGQ) walks through this
+([日本語](https://youtu.be/zeTFTujsWwI)).
 
 1. Right-click Start and choose **Terminal (Admin)** (on Windows 10,
    **Windows PowerShell (Admin)**), then run `wsl --install`. Restart when
@@ -93,15 +166,14 @@ To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
 extension, and open a folder from Ubuntu with `code .` (in a clone of the
 code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
-Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
-the chart as a PNG and prints its path (see
+Terminal 1.22 or later shows them too (see
 [Drawing chain flowcharts](#drawing-chain-flowcharts-in-the-terminal)).
-`analysis jupyter` works too: if no browser opens, Ctrl+click the link it
+`sim jupyter start` works too: if no browser opens, Ctrl+click the link it
 prints.
 
 If `wsl --install` fails with a message about virtualization, it is turned
@@ -131,7 +203,7 @@ It installs [uv](https://github.com/astral-sh/uv) if missing, configures the
 `.githooks` hooks (which keep runtime data and real account names out of
 commits), sets `merge.ff false` and `pull.ff true` in this repo and the linked
 data repo (an explicit merge always makes a merge commit; a pull still
-fast-forwards when it can), runs `uv sync --group dev` (installing the Python
+fast-forwards when it can), runs `uv sync --group dev --extra hub` (installing the Python
 version pinned in `.python-version` only if `uv sync` can't find a usable
 interpreter), and installs the notebook-cleaning `nbstripout` filter (strips
 outputs and per-run/per-machine metadata churn like `kernelspec.display_name`
@@ -154,7 +226,7 @@ verification gates do.
 Last, it links the data and code repositories together. It asks for the path to
 your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
-to create one there with `sim init`, which asks who you are. Leave the path
+to create one there with `sim init`, which asks about your household. Leave the path
 blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,
@@ -162,13 +234,13 @@ blank and it fills `data/private` with the template data instead, used as a
 Either way, this then gives you a working environment:
 
 ```sh
-source data/private/sim/activate-analysis
+source data/private/sim/activate-retirement
 ```
 
 A checkout's data repo is always found at its `data/private`. In a checkout
 that has none yet, `sim init` with no arguments makes one right there, and
 `sim init DIR` makes it at `DIR` and links `data/private` to it. Sourced
-through `data/private`, `activate-analysis` activates the code of the checkout
+through `data/private`, `activate-retirement` activates the code of the checkout
 you are in, so several worktrees can share one data repo and each run its
 own code. If you run `sim init` while another checkout's venv is active, it
 runs the `sim init` of the checkout you are in instead (making its `.venv`
@@ -182,14 +254,14 @@ scenario's run waits for a pending build of it. It builds only while the code
 is committed and matches your local `main` (or the branch
 `sim builder install BRANCH` names). Setup skips this under CI or an
 agent (`CI`, `CLAUDECODE`, `CLAUDE_CODE_REMOTE` or `AI_AGENT` set) or with
-`ANALYSIS_NO_BUILDER=1`; `sim builder install` turns it on later, and
+`ZABOB_NO_BUILDER=1`; `sim builder install` turns it on later, and
 `sim builder uninstall` off. `sim builder status` says what it's doing,
 and `sim builder log` what it did in the last hour (`-v` adds build output).
 
 The builder also fetches prices after each weekday's US market close, so a lot
 held by shares stays current without `sim prices fetch`. `sim builder install`
 adds an hourly timer that runs `sim builder tick` (a launchd agent on macOS,
-a crontab line elsewhere; `uninstall` removes it). A timer installed before
+a scheduled task on Windows, a crontab line elsewhere; `uninstall` removes it). A timer installed before
 nightly rolls (below) runs `sim builder prices --if-due`; run
 `sim builder install` again to replace it. The fetch never
 touches your checkout: it commits on the data repo's `builder/prices` branch,
@@ -201,7 +273,18 @@ log` says why it didn't (run `git pull` on `main` when it lacks commits).
 that `origin` should live; never make the data repo public. `sim builder status` shows the last
 fetch, prices waiting to merge and why, and any symbol that keeps failing;
 `sim builder prices` fetches now. `sim builder install --no-prices`, or
-`ANALYSIS_PRICE_FETCH=off`, turns the fetches off.
+`ZABOB_PRICE_FETCH=off`, turns the fetches off.
+
+When the data repo has more than one clone (another computer, another login,
+a container), only one builder fetches prices, rolls scenarios and researches
+symbols ([#785](https://github.com/BobKerns/zabob-retirement/issues/785)):
+the one `sim/.builder.toml` names, committed, so every clone agrees.
+`sim builder install` names its machine, and pushes that, when the data repo
+has a remote, nothing is named yet, and this install fetches, rolls or
+researches. The others only build runs, and once an hour fetch
+`origin` and fast-forward `main` when it is checked out and clean, so the
+prices, rolls and weights arrive without a `git pull`.
+`sim builder writer` says which machine it is; `--here` moves it to this one.
 
 The same timer rolls forward, at night, each scenario marked to roll
 (`sim scenario edit NAME --roll monthly`; what is built on it too, after it,
@@ -209,7 +292,7 @@ unless marked `off`) once its start month is over, so
 its run picks up the month's prices: as `sim scenario roll --yes` would, on
 the `builder/roll` branch, merged into `main` the same way. Night is 01:00 to
 05:00 local time unless `sim builder install --roll-window HH:MM-HH:MM` says
-otherwise; `--no-roll`, or `ANALYSIS_ROLL=off`, turns it off. A roll into a
+otherwise; `--no-roll`, or `ZABOB_ROLL=off`, turns it off. A roll into a
 new year tags the plan before it `plan-<year>` rather than keeping a copy.
 `sim builder status` shows each roll, and one skipped or failed with why.
 Since it builds from your local `main`, not `origin/main`, `sim run` and
@@ -222,8 +305,10 @@ companies from public sources. The answer defaults to no, and it isn't asked
 under CI or an agent. Each run of the plugin browses the web for several
 minutes and uses around 150k tokens. Its settings (tab languages, tax
 state) come from the data repo's `research.yaml`, and setup says which it
-used; once installed, a re-run of setup updates it. Install or remove it by
-hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
+used; once installed, a re-run of setup updates it. Sign in to Claude Code
+(run `claude` once) before the background builder researches each morning:
+it can't stop to ask, so its runs fail until you have. Install or remove it by
+hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
 [the finance research guide](guides/finance-research.md).
 
 ## What the script does, step by step (for reference or manual setup)
@@ -249,7 +334,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     git config pull.ff true
     ```
     Run the last two in the data repo as well.
-6. Run `uv sync --group dev` (installing the pinned Python from
+6. Run `uv sync --group dev --extra hub` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
    This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It
@@ -289,7 +374,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     ```
 11. Optionally, install the finance-research Claude plugin:
     ```sh
-    .venv/bin/analysis research-plugin install --data-dir data/private/sim
+    .venv/bin/sim symbol research-plugin install --data-dir data/private/sim
     ```
 
 ## Blocked keywords
@@ -308,7 +393,7 @@ same format: one keyword per line, `#` comment lines and blank lines ignored.
   - the `BLOCKED_KEYWORDS_PRIVATE` environment variable, which may also
     separate keywords with commas where a value can't span lines;
   - a `blocked-keywords.txt` file at the top of the data repo, found through
-    `$ANALYSIS_DATA_DIR`, or else through `data/private` in the main checkout
+    `$ZABOB_DATA_DIR`, or else through `data/private` in the main checkout
     (so worktrees and hooks run from an editor find it too).
 
 Set the private list once in each place it is needed:
@@ -346,6 +431,7 @@ flowchart work offline, and the chart never leaves your machine.
 - [Ghostty](https://ghostty.org) (macOS, Linux)
 - [WezTerm](https://wezterm.org) (macOS, Linux, Windows)
 - VS Code's integrated terminal, with `terminal.integrated.enableImages` on
+- Windows Terminal 1.22 or later (Windows; the Microsoft Store keeps it current)
 
 On an iPad, connecting over SSH to the machine that runs the code, use
 [gterm](https://apps.apple.com/us/app/gterm-ghostty-ssh/id6774837597) from the
@@ -355,12 +441,16 @@ other SSH apps, but everything this project needs works. Termius has just
 added the same library, but in testing (October 2026) it did not work yet: one
 try gave a blank screen, another hung.
 
-iTerm2 gets its own image protocol. Elsewhere `--graph` (or `--chart`) asks the terminal
+iTerm2 gets its own image protocol. Elsewhere `--graph` asks the terminal
 whether it takes the kitty graphics protocol, and falls back to iTerm2's
-protocol for older VS Code and WezTerm. In any other terminal, including macOS
-Terminal and inside tmux, it writes the chart to a PNG file and prints its
-path. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
-`kitty`, `iterm` or `none`.
+protocol for older VS Code and WezTerm, then to Sixel, the one Windows
+Terminal takes (and foot, xterm and others that say they do). Sixel images
+have at most 256 colors, which a chart barely notices. In any other terminal,
+including macOS Terminal and inside tmux, it writes the chart to a PNG file,
+prints its path, and opens it in your image viewer, unless you're connected
+over SSH. If it guesses your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to
+`kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
+open it even over SSH.
 
 ## Jupyter and filesystem MCP servers
 
@@ -381,12 +471,14 @@ overwriting an existing one), then launches `jupyter lab` with that same
 token, so the Jupyter MCP server always talks to the instance you started:
 
 ```sh
-analysis jupyter
+sim jupyter start
 ```
 
-Any extra arguments are passed through to `jupyter lab` verbatim, e.g.
-`analysis jupyter --no-browser`. If `.mcp.json` gets corrupted, delete it and
-rerun `analysis jupyter` to regenerate it.
+It runs in the background, with its output in `state/jupyter.log`; `sim
+jupyter stop` stops it. Arguments after `--` are passed through to `jupyter
+lab` verbatim, e.g. `sim jupyter start -- --ServerApp.port_retries=0`. If
+`.mcp.json` gets corrupted, delete it and rerun `sim jupyter start` to
+regenerate it.
 
 ## Optional MCP registration
 

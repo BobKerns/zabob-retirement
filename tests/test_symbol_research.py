@@ -10,6 +10,7 @@ import re
 
 import csv
 import shutil
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -452,8 +453,12 @@ def test_a_run_renders_the_plugin_runs_claude_and_imports(test_data_dir: Path, f
     # Resolved, as the rules are: on macOS the temporary folder is behind a symlink.
     skills = plugin.resolve() / "skills"
     scripts = [skills / skill / "scripts" for skill in ("fund-tear-sheet", "public-tear-sheet")]
-    assert bash and all(a.startswith(tuple(f"Bash(python3 {s}/" for s in scripts)) and a.endswith(".py *)")
+    # #795: this Python by absolute path, not whatever python3 is on Claude's PATH.
+    python = Path(sys.executable).as_posix()
+    assert bash and all(a.startswith(tuple(f"Bash({python} {s}/" for s in scripts)) and a.endswith(".py *)")
                         for a in bash)
+    # Each allowed command is spelled out in the prompt exactly as the rule has it.
+    assert all(f"`{a.removeprefix('Bash(').removesuffix(' *)')}`" in args[1] for a in bash)
     edits = [a for a in allowed if a.startswith(("Edit", "Write"))]
     assert len(edits) == 1 and edits[0].startswith("Edit(//") and edits[0].endswith("/work/**)")
     assert all(str(s) in args[1] for s in scripts)  # the prompt says where the scripts are
@@ -536,7 +541,7 @@ def test_claude_is_found_off_path_where_it_was_recorded_or_installed(
 ) -> None:
     def executable(where: Path) -> Path:
         where.parent.mkdir(parents=True, exist_ok=True)
-        where.write_text("#!/bin/sh\n")
+        where.write_text("#!/bin/sh\n", encoding="utf-8")
         where.chmod(0o755)
         return where
 
@@ -574,3 +579,33 @@ def test_add_symbol_replace_keeps_the_set_where_it_was(test_data_dir: Path) -> N
                        replace=True)
     rows = [(r["symbol"], r["asset_class"]) for r in _allocations(test_data_dir)]
     assert rows == [("ABCDX", "bond"), ("ABCDX", "cash"), ("OTHER", "bond")]
+
+
+def test_a_spaced_interpreter_is_quoted_alike_in_the_rule_and_the_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#795: a profile folder like C:/Users/First Last has a space. Unquoted,
+    bash splits the path; quoted only in the prompt, the command no longer
+    matches its rule, and dontAsk refuses it."""
+    monkeypatch.setattr(research, "WINDOWS", False)
+    monkeypatch.setattr(sys, "executable", "/home/First Last/venv/bin/python")
+    plugin = tmp_path / "plug in"
+    script = plugin / "skills" / research.SKILLS["company"] / "scripts" / "calc.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("", encoding="utf-8")
+    args = research.claude_command("ABC", "ABC", plugin, tmp_path / "work", kind="company")
+    command = f"'/home/First Last/venv/bin/python' '{script.resolve().as_posix()}'"
+    assert f"Bash({command} *)" in args
+    assert f"`{command}`" in args[2]
+
+
+# cspell:ignore FIRSTL
+def test_on_windows_a_spaced_path_uses_its_short_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#795: the 8.3 name has no space, so neither the rule nor the prompt
+    needs quoting; one with no short name is quoted instead."""
+    monkeypatch.setattr(research, "WINDOWS", True)
+    short = {"C:/Users/First Last/py.exe": "C:/Users/FIRSTL~1/py.exe"}
+    monkeypatch.setattr(research, "_short_path", lambda p: short.get(Path(p).as_posix(), p))
+    assert research.shell_word("C:/Users/First Last/py.exe") == "C:/Users/FIRSTL~1/py.exe"
+    assert research.shell_word("D:/No Short/py.exe") == "'D:/No Short/py.exe'"
+    assert research.shell_word("C:/plain/py.exe") == "C:/plain/py.exe"

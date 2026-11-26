@@ -308,7 +308,21 @@ RETIREMENT_LOT_SUBKINDS: dict[str, str] = {
     "roth_ira": "tax_free",
     "traditional_401k": "tax_deferred",
     "roth_401k": "tax_free",
+    # #257: a Roth IRA inherited from someone outside the household (a
+    # non-spouse), held apart from the beneficiary's own: the decedent's
+    # five-year clock, no age test, emptied within ten years.
+    "inherited_roth_ira": "tax_free",
 }
+INHERITED_ROTH_SUBKIND = "inherited_roth_ira"
+# #257: a non-spouse beneficiary must empty an inherited Roth IRA by Dec 31
+# of the tenth year after the death (SECURE Act, IRC §401(a)(9)(H)).
+INHERITED_ROTH_YEARS = 10
+# The rule covers deaths from this year on; a beneficiary of an earlier one
+# keeps the life-expectancy stretch, with no deadline.
+SECURE_ACT_YEAR = 2020
+# #257: the first tax year a Roth IRA could take money (Taxpayer Relief Act
+# of 1997); a roth_clock_start before it is a typo.
+FIRST_ROTH_YEAR = 1998
 
 # Lot subkinds an RMD may be drawn from: Roth IRAs never had RMDs, and Roth
 # 401ks have none from 2024 (SECURE 2.0 §325).
@@ -1240,11 +1254,11 @@ ENSEMBLE_DISTRIBUTIONS: set[str] = {"uniform", "truncated_normal", "triangular",
 # its new one, not aliased, so a file is converted once (a clean break).
 # #31: `vary_mean` became `vary_median`, the truncated distribution's median,
 # and its meaning changed for asymmetric bounds. #284: `vary_innovation_sd`
-# became `vary_shock_sd`, the name `analysis historical` gives it.
+# became `vary_shock_sd`, the name `sim historical` gives it.
 RENAMED_CALENDAR_COLUMNS: dict[str, tuple[str, str]] = {
     "vary_mean": ("vary_median", "now the median of the truncated distribution, so the "
                                  "base case is exactly the authored value"),
-    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `analysis historical` "
+    "vary_innovation_sd": ("vary_shock_sd", "the same yearly shock size; `sim historical` "
                                             "calls it Shock SD"),
 }
 
@@ -1323,15 +1337,20 @@ DISTRIBUTION_REQUIRED_PARAMS: dict[str, tuple[str, ...]] = {
 }
 
 
-# The IRS filing-status codes the aux tables are keyed by (templates/aux/
+# The IRS filing-status codes the aux tables are keyed by (templates/tables/
 # README.md): Head of Household isn't modeled. `sim init` offers these.
 FILING_STATUSES: tuple[str, ...] = ("MFJ", "Single", "MFS")
 
 
 # ADR-003 §4.1 and §4.9.
 PERSONS_CSV_HEADER: tuple[str, ...] = (
-    "id", "display", "birthdate", "sex", "role", "meta_json", "kind",
+    "id", "display", "birthdate", "sex", "role", "meta_json", "kind", "roth_clock_start",
 )
+# #257: persons.csv `roth_clock_start`, the tax year of a person's first Roth
+# IRA contribution or conversion, when it predates every Roth IRA lot the
+# scenario holds; account_lots.csv's, on an inherited_roth_ira lot, the
+# decedent's. A year, or a date whose year is used. Optional in both files.
+ROTH_CLOCK_COLUMN = "roth_clock_start"
 # #222: persons.csv `sex`, which picks a life table's column. Optional (an
 # older persons.csv has no such column), but required of a person with a
 # `life_table` lifespan.
@@ -1363,6 +1382,7 @@ ACCOUNT_LOTS_CSV_HEADER: tuple[str, ...] = (
     "opening_balance", "opening_cost_basis", "prior_year_end_balance",
     "minimum_balance", "maximum_balance", "refill_chain", "refill_lot",
     "refill_target", "refill_amount", "overflow_chain", "overflow_lot",
+    "roth_clock_start",
 )
 
 # The per-lot balance-management columns of account_lots.csv (ADR-003 §4.3).

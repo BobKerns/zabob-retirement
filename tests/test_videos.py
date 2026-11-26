@@ -63,6 +63,7 @@ def _write(folder: Path, text: str, name: str = "script.md") -> Path:
     return folder
 
 
+@pytest.mark.slow
 @pytest.mark.checkout
 def test_every_repo_video_checks(repo_root: Path) -> None:
     folders = sorted(p for p in (repo_root / "docs" / "videos").iterdir() if (p / "script.md").is_file())
@@ -113,7 +114,7 @@ def test_script_errors(videos_root: Path, body: str, message: str) -> None:
 def test_a_code_slide_reads_its_lines_from_a_file_beside_the_script(videos_root: Path) -> None:
     folder = _write(videos_root / "01-x", "## Scene `a`: A\n\n```slide\ntemplate = 'window'\nlook = 'code'\n"
                     "code_file = 'plugin.py'\ncode_lines = [2, 3]\n```\n\nWords.\n")
-    (folder / "plugin.py").write_text("one\ntwo\nthree\nfour\n")
+    (folder / "plugin.py").write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
     fields = scripts.load(folder).scenes[0].visual.fields
     assert (fields["code"], fields["first"]) == ("two\nthree", 2)
 
@@ -218,10 +219,11 @@ def test_slide_html_inlines_pictures_as_data_uris(videos_root: Path) -> None:
     theme = themes.load(videos_root)
     (theme.assets / "portrait.png").write_bytes(b"\x89PNG fake")
     page = theme.templates / "pic.html"
-    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}')
+    page.write_text('{% extends "base.html" %}{% block body %}<img src="{{ picture(\'portrait\') }}">{% endblock %}',
+                    encoding="utf-8")
     html = render.slide_html(theme, {}, {"template": "pic"}, "en")
     assert '<img src="data:image/png;base64,iVBORyBmYWtl">' in html
-    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}')
+    page.write_text('{% extends "base.html" %}{% block body %}{{ picture("nobody") }}{% endblock %}', encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match="no picture 'nobody'"):
         render.slide_html(theme, {}, {"template": "pic"}, "en")
 
@@ -302,15 +304,15 @@ def test_narration_edit_rebuilds_only_that_scene(videos_root: Path, repo_root: P
     except Error as error:
         pytest.skip(f"no browser: {error.message.splitlines()[0]}")
     assert [(s.narration, s.visual, s.clip) for s in first.scenes] == [("made", "made", "made")] * 2
-    assert first.video.is_file() and first.captions.read_text().count("-->") == 2
+    assert first.video.is_file() and first.captions.read_text(encoding="utf-8").count("-->") == 2
     assert render.duration(first.video) == pytest.approx(first.length, abs=0.2)
     assert first.thumbnail.is_file() and first.thumbnail.suffix == ".jpg"
 
-    (folder / "script.md").write_text(SLIDES_ONLY.replace("Goodbye for now.", "See you next time."))
+    (folder / "script.md").write_text(SLIDES_ONLY.replace("Goodbye for now.", "See you next time."), encoding="utf-8")
     second = build(folder, out_dir=out, engine="silent", repo=repo_root, log=lambda _: None)
     states = {s.id: (s.narration, s.visual, s.clip) for s in second.scenes}
     assert states == {"intro": ("cached", "cached", "cached"), "end": ("made", "cached", "made")}
-    assert "See you next time." in second.captions.read_text()
+    assert "See you next time." in second.captions.read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -321,16 +323,17 @@ def demo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, tmp_path: Path, demo_root: Path) -> None:
     theme = themes.load(videos_root)
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     setup = tmp_path / "setup.sh"
-    setup.write_text('echo "$ANALYSIS_DATA_DIR" > "$ANALYSIS_DATA_DIR/where.txt"\n')
+    setup.write_text('echo "$ZABOB_DATA_DIR" > "$ZABOB_DATA_DIR/where.txt"\n', encoding="utf-8")
     store = render.prepare_demo(data, setup, theme, tmp_path / "store")
-    assert (store / "data" / "where.txt").read_text().strip() == str(demo_root / "data")
+    assert (store / "data" / "where.txt").read_text(encoding="utf-8").strip() == str(demo_root / "data")
     status = render.run(["git", "status", "--porcelain"], cwd=store / "data").stdout
     assert status == ""
     log = render.run(["git", "log", "--format=%s %an"], cwd=store / "data").stdout.split("\n")
@@ -338,17 +341,18 @@ def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, t
     assert (store / ".videorc").is_file() and not demo_root.exists()
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_the_tapes_environment_drops_the_builders_activation(
     videos_root: Path, tmp_path: Path, demo_root: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A build from an activated shell mustn't hand its user or repo name to
-    the tapes (activate-analysis would ask who you are, on camera)."""
-    for name in ("ANALYSIS_USER", "ANALYSIS_DATA_REPO_NAME", "ANALYSIS_REPO_DIR", "VIRTUAL_ENV"):
+    the tapes (activate-retirement would ask who you are, on camera)."""
+    for name in ("ZABOB_USER", "ZABOB_DATA_REPO_NAME", "ZABOB_REPO_DIR", "VIRTUAL_ENV"):
         monkeypatch.setenv(name, "from-the-builder")
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     store = render.prepare_demo(data, None, themes.load(videos_root), tmp_path / "store")
     shown = render.run(["bash", "-c", f"source {store / '.videorc'} && env"], cwd=tmp_path).stdout
     assert "from-the-builder" not in shown
@@ -358,9 +362,9 @@ def test_the_tapes_environment_drops_the_builders_activation(
 def test_prepare_demo_reports_a_failing_setup(videos_root: Path, tmp_path: Path, demo_root: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
-    (data / "scenario.csv").write_text("name\nbase\n")
+    (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     setup = tmp_path / "setup.sh"
-    setup.write_text("echo before\nfalse\necho never\n")
+    setup.write_text("echo before\nfalse\necho never\n", encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match=r"setup\.sh failed \(1\)"):
         render.prepare_demo(data, setup, themes.load(videos_root), tmp_path / "store")
 
@@ -434,7 +438,7 @@ def _tape_builder(videos_root: Path, repo_root: Path, tmp_path: Path, front: str
     return _Builder(scripts.load(folder), theme, tmp_path, repo_root, engine="silent", rerecord=False)
 
 
-def test_tape_data_front_matter_wins_over_the_videos_own_repo(
+def test_tape_data_front_matter_wins_over_the_videos_repo(
     videos_root: Path, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(VIDEO_DATA_ENV, str(tmp_path))
@@ -442,7 +446,7 @@ def test_tape_data_front_matter_wins_over_the_videos_own_repo(
     assert builder.tape_data() == repo_root / "prototype_data"
 
 
-def test_tape_data_falls_back_to_the_videos_own_repo(
+def test_tape_data_falls_back_to_the_videos_repo(
     videos_root: Path, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     own = tmp_path / "own"
@@ -450,18 +454,18 @@ def test_tape_data_falls_back_to_the_videos_own_repo(
     builder = _tape_builder(videos_root, repo_root, tmp_path, "")
     monkeypatch.delenv(VIDEO_DATA_ENV, raising=False)
     # Never the planner's real data repo, even when it's set.
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(repo_root / "prototype_data"))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(repo_root / "prototype_data"))
     with pytest.raises(scripts.ScriptError, match="needs data"):
         builder.tape_data()
     monkeypatch.setenv(VIDEO_DATA_ENV, str(own))
-    with pytest.raises(scripts.ScriptError, match="doesn't exist yet.*docker.sh shell 01-own-data"):
+    with pytest.raises(scripts.ScriptError, match=r"doesn't exist yet.*docker.sh shell\)"):
         builder.tape_data()
-    (own / "persons.csv").write_text("id\n")
+    (own / "persons.csv").write_text("id\n", encoding="utf-8")
     assert builder.tape_data() == own
 
 
 def test_video_image_pins_the_builders_tool_versions(repo_root: Path) -> None:
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     args = dict(re.findall(r"^ARG (\w+)=(\S+)$", dockerfile, re.MULTILINE))
     assert args["VHS_VERSION"] == render.VHS_VERSION
     assert f"/BobKerns/vhs/releases/download/v$VHS_VERSION/vhs_${{VHS_VERSION}}_Linux_" in dockerfile
@@ -504,14 +508,15 @@ The chain as a flowchart.
 """
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 def test_a_slide_shows_a_picture_setup_made(videos_root: Path, tmp_path: Path, demo_root: Path,
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "repo"
     (repo / "demo").mkdir(parents=True)
-    (repo / "demo" / "scenario.csv").write_text("name\nbase\n")
+    (repo / "demo" / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     folder = _write(videos_root / "03-figure", FIGURE)
-    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG one" > ../home/graph.png\n')
+    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG one" > ../home/graph.png\n', encoding="utf-8")
     pages: list[str] = []
 
     def screenshot(html: str, theme: themes.Theme, out: Path) -> None:
@@ -536,10 +541,10 @@ def test_a_slide_shows_a_picture_setup_made(videos_root: Path, tmp_path: Path, d
     made, key = visual()
     assert made == "made" and "data:image/png;base64,UE5HIG9uZQ==" in pages[-1]
     assert visual() == ("cached", key)  # read from the cache without preparing the demo again
-    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG two" > ../home/graph.png\n')
+    (folder / "setup.sh").write_text('mkdir -p ../home && printf "PNG two" > ../home/graph.png\n', encoding="utf-8")
     state, new_key = visual()
     assert state == "made" and new_key != key and "UE5HIHR3bw==" in pages[-1]
-    (folder / "setup.sh").write_text("true\n")
+    (folder / "setup.sh").write_text("true\n", encoding="utf-8")
     with pytest.raises(scripts.ScriptError, match="setup.sh made no home/graph.png"):
         visual()
 
@@ -729,7 +734,7 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
     """The image is rebuilt only when docker/videos changes (#612), so it
     must copy nothing else: the checkout is mounted, and what the code needs
     from it at run time must be among the mounts."""
-    docker_sh = (repo_root / "scripts" / "videos" / "docker.sh").read_text()
+    docker_sh = (repo_root / "scripts" / "videos" / "docker.sh").read_text(encoding="utf-8")
     body = re.search(r"^MOUNTS=\((.*?)\)", docker_sh, re.MULTILINE | re.DOTALL)
     assert body is not None
     mounts = set(body.group(1).split())
@@ -739,11 +744,12 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
             "prototype_data", "notebooks", "scripts/videos", "docs/videos"} <= mounts
     # The tapes record the program installed from a wheel built from the
     # mounted checkout, so all the sdist takes must be mounted too.
-    sdist = tomllib.loads((repo_root / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["sdist"]
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    sdist = pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]
     assert set(sdist["only-include"]) <= mounts
     assert ".venv" not in mounts
     assert "context=docker/videos" in docker_sh
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     copied = [line.split()[1:-1] for line in re.findall(r"^COPY .+$", dockerfile, re.MULTILINE)]
     for sources in copied:
         for source in sources:
@@ -753,10 +759,10 @@ def test_video_image_is_built_from_its_own_folder(repo_root: Path) -> None:
 def test_video_image_playwright_matches_the_lock(repo_root: Path) -> None:
     """The image installs the system libraries of the Playwright the venv
     syncs; a Playwright bump must bump the Dockerfile too."""
-    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text()
+    dockerfile = (repo_root / "docker" / "videos" / "Dockerfile").read_text(encoding="utf-8")
     pinned = re.search(r"^ARG PLAYWRIGHT_VERSION=(\S+)$", dockerfile, re.MULTILINE)
     locked = re.search(r'^name = "playwright"\nversion = "([^"]+)"',
-                       (repo_root / "uv.lock").read_text(), re.MULTILINE)
+                       (repo_root / "uv.lock").read_text(encoding="utf-8"), re.MULTILINE)
     assert pinned is not None and locked is not None
     assert pinned.group(1) == locked.group(1)
 
@@ -892,7 +898,7 @@ def test_analysis_video_docker_needs_docker(monkeypatch: pytest.MonkeyPatch,
     from zabob.retirement.videos import cli as video_cli
 
     monkeypatch.setattr(video_cli, "docker_running", lambda: False)
-    for args in (["build", "01-intro", "--docker"], ["shell", "01-intro"], ["image"]):
+    for args in (["build", "01-intro", "--docker"], ["shell"], ["image"]):
         result = CliRunner().invoke(main, ["video", *args])
         assert result.exit_code == 1 and "Docker" in result.output
     assert video_runs == {"docker": [], "local": []}
@@ -962,3 +968,23 @@ def test_python_m_analysis_videos_runs_locally(monkeypatch: pytest.MonkeyPatch,
         videos_main.main(["build", "01-intro", "--docker"])
     assert done.value.code == 1
     assert video_runs["docker"] == [] and len(video_runs["local"]) == 1
+
+
+def test_the_demo_finds_each_build_of_the_wheel_in_a_folder_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uv caches a find-links wheel by its folder and file name, both the
+    same from build to build, so a fixed folder reinstalled the first wheel
+    it saw (#687: old code read aux/ after the rename)."""
+    built = tmp_path / "built"
+    (built / "wheels").mkdir(parents=True)
+    wheel = built / "wheels" / "zabob_retirement-1.0.0b1-py3-none-any.whl"
+    monkeypatch.setattr(render, "_program_wheel", lambda: (built, "uv"))
+    folders = []
+    for code in (b"old code", b"new code", b"old code"):
+        wheel.write_bytes(code)
+        render._wheel_digest.cache_clear()
+        folders.append(render._wheels_dir(tmp_path / "demo"))
+    render._wheel_digest.cache_clear()
+    assert folders[0] != folders[1] and folders[0] == folders[2]
+    assert all(folder.parent == tmp_path / "demo" for folder in folders)

@@ -73,7 +73,7 @@ def test_an_inflation_swap_keeps_the_history_before_it(
     2026-05, keeps what cpi gave it before the swap and stops growing after."""
     before = _salary(_run(load_test_copy, runs_dir, "before"))
     retire_alice_csv("series/inflation__flat.csv").write_text(
-        "effective_date,annual_rate\n2020-01-31,0%\n"
+        "effective_date,annual_rate\n2020-01-31,0%\n", encoding="utf-8"
     )
     _swap(append_calendar_row, "2027-01", "inflation", "cpi", "flat")
     after = _salary(_run(load_test_copy, runs_dir, "after"))
@@ -101,7 +101,7 @@ def test_a_swapped_table_is_the_source_table_from_then_on(
     """A rate series (looked up only for the month being run) takes the
     source's rows whole, each on its own date."""
     retire_alice_csv("series/rate__later.csv").write_text(
-        "effective_date,annual_rate\n2026-01-31,1%\n2029-01-31,2%\n"
+        "effective_date,annual_rate\n2026-01-31,1%\n2029-01-31,2%\n", encoding="utf-8"
     )
     _swap(append_calendar_row, "2028-03", "rate", "Asset_Checking", "later")
     rows = _aux_rows(_run(load_test_copy, runs_dir, "swap"), "rate", "Asset_Checking")
@@ -116,7 +116,7 @@ def test_a_source_with_nothing_yet_in_force_fails_the_run(
     load_test_copy: Callable[[], LoadResult], runs_dir: Path,
 ) -> None:
     retire_alice_csv("series/rate__later.csv").write_text(
-        "effective_date,annual_rate\n2030-01-31,2%\n"
+        "effective_date,annual_rate\n2030-01-31,2%\n", encoding="utf-8"
     )
     _swap(append_calendar_row, "2028-03", "rate", "Asset_Checking", "later")
     with pytest.raises(EngineError, match="nothing to swap in yet"):
@@ -141,7 +141,7 @@ def test_the_loader_rejects_a_malformed_swap(
     params: dict[str, str], extra: dict[str, str], message: str,
 ) -> None:
     retire_alice_csv("series/inflation__flat.csv").write_text(
-        "effective_date,annual_rate\n2020-01-31,0%\n"
+        "effective_date,annual_rate\n2020-01-31,0%\n", encoding="utf-8"
     )
     append_calendar_row(
         date="2027-01", kind="swap_aux_table", series="cpi",
@@ -164,7 +164,7 @@ def test_the_loader_rejects_a_swap_of_a_table_nothing_supplies(
     load_test_copy: Callable[[], LoadResult],
 ) -> None:
     retire_alice_csv("series/inflation__flat.csv").write_text(
-        "effective_date,annual_rate\n2020-01-31,0%\n"
+        "effective_date,annual_rate\n2020-01-31,0%\n", encoding="utf-8"
     )
     _swap(append_calendar_row, "2027-01", "inflation", "cpi_typo", "flat")
     with pytest.raises(LoadError, match=r"swap_aux_table series names inflation__cpi_typo\.csv"):

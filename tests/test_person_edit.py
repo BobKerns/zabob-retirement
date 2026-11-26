@@ -55,6 +55,7 @@ def test_person_add_with_options_writes_the_row(
     assert _persons(test_data_dir)["carol"] == {
         "id": "carol", "display": "Carol (fake)", "birthdate": "1995-02-03", "sex": "",
         "role": "secondary", "meta_json": "{}", "kind": "",
+        "roth_clock_start": "",
     }
 
 
@@ -73,7 +74,7 @@ def test_person_add_asks_for_what_is_missing(
     # Until the household has its two spouses, the usual answer is offered.
     edited = sim("person", "edit", "bill", "--role", "secondary")
     assert edited.exit_code == 0, edited.output
-    result = sim("person", "add", "dave", input="Dave (fake)\n1966-02-03\nm\n\n\n")
+    result = sim("person", "add", "dave", input="Dave (fake)\n1966-02-03\nm\n\n\n\n")
     assert result.exit_code == 0, result.output
     assert "role [primary]:" in result.output and _persons(test_data_dir)["dave"]["role"] == "primary"
     result = sim("person", "edit", "dave", input="\n\n\nnone\n\n\n")
@@ -102,13 +103,13 @@ def test_person_role_none_as_an_option_is_no_role_too(
 def test_person_add_refuses_a_bad_person(
     sim: Callable[..., Result], test_data_dir: Path, args: tuple[str, ...], message: str,
 ) -> None:
-    before = (test_data_dir / "persons.csv").read_text()
+    before = (test_data_dir / "persons.csv").read_text(encoding="utf-8")
 
     result = sim("person", "add", *args)
 
     assert result.exit_code != 0
     assert message in result.output
-    assert (test_data_dir / "persons.csv").read_text() == before
+    assert (test_data_dir / "persons.csv").read_text(encoding="utf-8") == before
 
 
 # ---------- person edit ----------
@@ -122,7 +123,7 @@ def test_person_edit_option_changes_only_that_field(
     result = sim("person", "edit", "bill", "--role", "secondary")
 
     assert result.exit_code == 0, result.output
-    assert _persons(test_data_dir)["bill"] == {**before, "kind": "", "role": "secondary"}
+    assert _persons(test_data_dir)["bill"] == {**before, "kind": "", "roth_clock_start": "", "role": "secondary"}
 
 
 def test_person_add_someone_outside_the_household(
@@ -142,7 +143,7 @@ def test_person_edit_option_keeps_a_blank_meta_json(
     sim: Callable[..., Result], test_data_dir: Path,
 ) -> None:
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,\n", encoding="utf-8")
 
     result = sim("person", "edit", "carol", "--role", "secondary")
 
@@ -155,12 +156,24 @@ def test_person_edit_asks_with_current_values_as_defaults(
 ) -> None:
     before = _persons(test_data_dir)["bill"]
 
-    # Keep display, sex and role; change the birthdate and meta_json.
-    result = sim("person", "edit", "bill", input='\n1967-09-01\n\n\n{"note": 1}\n')
+    # Keep display, sex and role; change the birthdate, the Roth clock and meta_json.
+    result = sim("person", "edit", "bill", input='\n1967-09-01\n\n\n2009-04-15\n{"note": 1}\n')
 
     assert result.exit_code == 0, result.output
     assert _persons(test_data_dir)["bill"] == {
-        **before, "kind": "", "birthdate": "1967-09-01", "meta_json": '{"note": 1}'}
+        **before, "kind": "", "birthdate": "1967-09-01", "meta_json": '{"note": 1}',
+        "roth_clock_start": "2009"}
+
+
+def test_person_roth_clock_start_is_a_year_roth_iras_had(
+    sim: Callable[..., Result], test_data_dir: Path,
+) -> None:
+    # #257: a date's year is kept; a year before Roth IRAs is a typo.
+    assert sim("person", "edit", "alice", "--roth-clock-start", "2011-03").exit_code == 0
+    assert _persons(test_data_dir)["alice"]["roth_clock_start"] == "2011"
+    result = sim("person", "edit", "alice", "--roth-clock-start", "1997")
+    assert result.exit_code != 0 and "before Roth IRAs began" in result.output
+    assert _persons(test_data_dir)["alice"]["roth_clock_start"] == "2011"
 
 
 def test_person_edit_refuses_when_persons_csv_changes_meanwhile(
@@ -171,8 +184,9 @@ def test_person_edit_refuses_when_persons_csv_changes_meanwhile(
     persons = test_data_dir / "persons.csv"
 
     def role_prompt(*_args: object, **_kwargs: object) -> str:
-        if "carol" not in persons.read_text():
-            persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,,{}\n")
+        if "carol" not in persons.read_text(encoding="utf-8"):
+            persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,,{}\n",
+                               encoding="utf-8")
         return ""
     monkeypatch.setattr("zabob.retirement.sim.cli._prompt_with_completion", role_prompt)
 
@@ -197,16 +211,16 @@ def test_a_persons_change_must_leave_every_scenario_loading(
     """persons.csv is shared, so a scenario outside the preflighted one's
     lineage is checked too."""
     persons = test_data_dir / "persons.csv"
-    persons.write_text(persons.read_text() + "carol,Carol (fake),1995-02-03,,{}\n")
+    persons.write_text(persons.read_text(encoding="utf-8") + "carol,Carol (fake),1995-02-03,,{}\n", encoding="utf-8")
     derive_scenario("other", "base", files={"lifespan.csv": "person,age_at_death\ncarol,65\n"})
     frame = pd.read_csv(persons, dtype=str, keep_default_na=False)
-    before = persons.read_text()
+    before = persons.read_text(encoding="utf-8")
 
     with pytest.raises(EditRejected, match="scenario other: .*carol"), \
             staged_edit(test_data_dir, "retire_alice") as edit:
         frame[frame["id"] != "carol"].to_csv(edit.path(persons), index=False)
 
-    assert persons.read_text() == before
+    assert persons.read_text(encoding="utf-8") == before
 
 
 # ---------- lifespan set|clear ----------

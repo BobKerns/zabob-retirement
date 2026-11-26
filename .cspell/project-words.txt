@@ -6,6 +6,7 @@ ACCTTYPE
 acquirability
 addback
 addl
+adduser
 adelay
 affordances
 aformat
@@ -76,6 +77,7 @@ CCSTMTRS
 CCSTMTTRNRS
 charmbracelet
 CHECKNUM
+chgrp
 chipmaker
 chunksize
 CLAUDECODE
@@ -89,6 +91,8 @@ columnless
 commentable
 companyconcept
 companyfacts
+compdef
+compinit
 configfile
 conftest
 corpdev
@@ -98,6 +102,7 @@ CORRECTFITID
 counterclock
 cpus
 CREAT
+creationflags
 CREDITCARD
 CREDITCARDMSGSRSV
 creds
@@ -121,6 +126,7 @@ dflt
 dietz
 DODGX
 doraise
+drilldown
 DTASOF
 DTEND
 DTPOSTED
@@ -158,6 +164,7 @@ flatnonzero
 fontsize
 footgun
 framealpha
+fromarray
 frombuffer
 FSKAX
 fstat
@@ -167,9 +174,14 @@ FXAIX
 GAAP
 getbasetemp
 geteuid
+getgid
 gethostname
+getpalette
 getpid
+getpwall
+getpwnam
 getuid
+getwch
 Ghostty
 globenewswire
 gmtoffset
@@ -217,6 +229,7 @@ iterm
 ITLX
 Jefferies
 jupyterhub
+kbhit
 keepends
 kendalltau
 Kensho
@@ -235,6 +248,7 @@ labelleft
 labelrotation
 labelsize
 LABSTAT
+LANCZOS
 lastrowid
 lavfi
 LEDGERBAL
@@ -248,10 +262,13 @@ linecap
 linespacing
 linestyle
 linthresh
+localoptions
+LOGNAME
 lognormal
 lookback
 lookthrough
 lotb
+lseek
 lstsq
 ltcg
 Macrotrends
@@ -259,6 +276,7 @@ MARGINBALANCE
 markerfacecolor
 markersize
 mcolors
+MEDIANCUT
 Menlo
 metas
 MFINFO
@@ -266,6 +284,7 @@ MHLW
 microcap
 midnightblue
 misaki
+mklink
 mktree
 MKTVAL
 MMKX
@@ -274,6 +293,7 @@ modifyitems
 mojimoji
 MONEYMRKT
 movflags
+MPLBACKEND
 msecs
 mtimes
 mult
@@ -293,6 +313,7 @@ nextstrain
 NOCASE
 noconfirm
 nohup
+NOMATCH
 nonbusiness
 nonflat
 noninteractive
@@ -301,7 +322,10 @@ nonqualified
 NOPASSWD
 NOSYSTEM
 noto
+ntdll
 ntos
+NTSTATUS
+nullglob
 nunique
 OBBBA
 OFXHEADER
@@ -311,6 +335,8 @@ OLDFILEUID
 oneline
 oneoff
 OpenStax
+oscompat
+osfhandle
 overfit
 packagetype
 pacman
@@ -349,6 +375,7 @@ pypi
 pytestmark
 PYTHONDONTWRITEBYTECODE
 PYTHONPYCACHEPREFIX
+pythonw
 QQQM
 QQQX
 QSBS
@@ -379,6 +406,7 @@ rescan
 respellings
 restic
 retarget
+retargeted
 reweighted
 rint
 ripwire
@@ -393,8 +421,10 @@ RRGGBB
 rsms
 rtol
 runfile
+safecrlf
 sandboxed
 scen
+schtasks
 sdir
 secho
 SECID
@@ -403,6 +433,7 @@ SECLIST
 SECLISTMSGSRSV
 SECNAME
 semideviation
+serverapp
 servname
 setopt
 setp
@@ -417,6 +448,7 @@ sidefx
 SIGNONMSGSRSV
 signum
 Simons
+singleuser
 Sixel
 Smirnov
 SNSXX
@@ -431,6 +463,7 @@ SQQQ
 SRRC
 SRRCᵢ
 startangle
+startfile
 STARTPTS
 stcg
 stdlib
@@ -440,6 +473,7 @@ STMTRS
 STMTTRN
 STMTTRNRS
 Stooq
+strerror
 SUBACCTFUND
 SUBACCTSEC
 subclassing
@@ -453,11 +487,13 @@ suptitle
 SWVXX
 symlog
 sysconf
+SYSTEMROOT
 tablink
 tailnet
 tailweight
 TARGETARCH
 targetdate
+taskkill
 taxchar
 tbill
 tbond
@@ -465,6 +501,7 @@ tcgetattr
 TCSADRAIN
 TCSANOW
 tcsetattr
+tcsh
 tctronics
 Termius
 Testland
@@ -510,6 +547,7 @@ unsourced
 unspsc
 upserts
 usefixtures
+usermod
 USSTK
 vaccts
 VBTLX
@@ -522,8 +560,10 @@ vmin
 vsplit
 VTSAX
 VTWNX
+waitpid
 Webull
 wezterm
+WNOHANG
 wordcount
 worktree
 worktrees
@@ -541,6 +581,7 @@ XOLD
 xlim
 xticklabels
 xticks
+XTWINOPS
 xytext
 XYZFD
 ydata
@@ -551,6 +592,7 @@ yscale
 yticklabels
 yticks
 zabob
+zdotdir
 Zeromatter
 zorder
 zpln

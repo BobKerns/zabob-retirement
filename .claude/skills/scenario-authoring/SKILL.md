@@ -44,12 +44,12 @@ source .claude/skills/scenario-authoring/env.sh
 ```
 
 That activates the real data through the main checkout, and sets
-`ANALYSIS_KEEP_SCENARIO`, so neither your lookups nor `scenario create`
+`ZABOB_KEEP_SCENARIO`, so neither your lookups nor `scenario create`
 move the user's current scenario. Name the scenario on every command
 (`--scenario NEW`, or as an argument). When the new scenario is done,
 `sim switch NEW` makes it current, since that's what the user asked for.
 
-Read `$ANALYSIS_DATA_DIR/AI-NOTES.md` if it exists. It holds the household's
+Read `$ZABOB_DATA_DIR/AI-NOTES.md` if it exists. It holds the household's
 own conventions: scenario naming, which scenario is the main model, and what
 its mix-ins mean.
 
@@ -148,7 +148,7 @@ printf 'vary-high\n2040-06-30\ndate\n2035-12-31\nwrite\n' |
 ```
 
 Use the field names the review shows (`vary-high`, not `vary_high`). Read
-the final review the command prints, and `git -C "$ANALYSIS_DATA_DIR/.." diff`,
+the final review the command prints, and `git -C "$ZABOB_DATA_DIR/.." diff`,
 before going on. Run out of input and the command stops with `Aborted!`,
 writing nothing.
 
@@ -156,9 +156,9 @@ writing nothing.
 
 ```sh
 sim check NEW </dev/null                     # or --all after changing a shared scenario
-git -C "$ANALYSIS_DATA_DIR/.." status --short
+git -C "$ZABOB_DATA_DIR/.." status --short
 sim run NEW --allow-dirty-data </dev/null    # a trial run before the user commits
-ANALYSIS_KEEP_SCENARIO=1 sim compare PARENT NEW --section net-worth </dev/null
+ZABOB_KEEP_SCENARIO=1 sim compare PARENT NEW --section net-worth </dev/null
 sim switch NEW </dev/null
 ```
 

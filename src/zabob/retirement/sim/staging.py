@@ -26,6 +26,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from zabob.retirement.oscompat import is_link, link_dir
 from zabob.retirement.sim.loader import (
     LoadError,
     _scenario_lineage_names,
@@ -114,7 +115,7 @@ class StagedEdit:
         staged = self.data_dir / rel
         # Anything outside the copied entries is a symlink back into the real
         # data dir, so a write there would bypass validation entirely.
-        if rel.parts[0] != SCENARIOS and (len(rel.parts) > 1 or (self.data_dir / rel.parts[0]).is_symlink()):
+        if rel.parts[0] != SCENARIOS and (len(rel.parts) > 1 or is_link(self.data_dir / rel.parts[0])):
             raise ValueError(f"not a stageable scenario path: {real}")
         return staged
 
@@ -147,8 +148,10 @@ def _stage(real: Path, stage: Path) -> None:
             shutil.copytree(entry, target, symlinks=False)
         elif entry.is_file():
             shutil.copy2(entry, target)
+        elif entry.is_dir():
+            link_dir(target, entry)
         else:
-            target.symlink_to(entry, target_is_directory=entry.is_dir())
+            target.symlink_to(entry)
 
 
 def _staged_files(root: Path) -> set[Path]:
@@ -156,7 +159,7 @@ def _staged_files(root: Path) -> set[Path]:
     top-level regular files (not the symlinked top-level folders)."""
     files = {p.relative_to(root) for p in (root / SCENARIOS).rglob("*") if p.is_file()} \
         if (root / SCENARIOS).is_dir() else set()
-    files.update(Path(p.name) for p in root.iterdir() if p.is_file() and not p.is_symlink())
+    files.update(Path(p.name) for p in root.iterdir() if p.is_file() and not is_link(p))
     return files
 
 
