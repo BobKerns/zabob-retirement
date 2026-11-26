@@ -5,12 +5,13 @@
 # the next publish finishes (#695).
 
 [en]
-video = "KCmrMe1LztY"
-uploaded = 2026-11-23T14:14:58Z
-snippet = "17871e63aa47650c"
+video = "JumkG40iA20"
+uploaded = 2026-11-26T23:34:41Z
+snippet = "7f9f2799ca9967c9"
+pending = ["thumbnail", "captions"]
 scenes = [
-  ["title", 14.35],
-  ["skip", 29.64],
+  ["title", 15.88],
+  ["skip", 43.62],
   ["why", 33.98],
   ["turn-on", 30.85],
   ["linux-user", 19.41],
@@ -20,7 +21,7 @@ scenes = [
   ["explorer", 24.61],
   ["vscode", 28.42],
   ["vscode-window", 30.45],
-  ["ready", 22.13],
+  ["ready", 22.90],
   ["end", 6.67],
 ]
 
