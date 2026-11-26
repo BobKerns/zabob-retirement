@@ -180,6 +180,33 @@ def test_under_sudo_the_hub_folder_is_the_admins(
     assert hub.hub_dir() == hub_logins["alice"] / ".config" / "zabob-retirement" / "hub"
 
 
+def test_a_bare_own_keeps_the_clone_url(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - the logins
+    assert _sim("user", "add", "bill", "--own", "https://example.com/data.git").exit_code == 0
+    result = _sim("user", "edit", "bill", "--own")
+    assert result.exit_code == 0, result.output
+    assert hub.read_users()["bill"].url == "https://example.com/data.git"
+
+
+def test_the_service_gets_a_hub_folder_its_admin_owns(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    """Made before root's first start, so the admin can still add users."""
+    monkeypatch.setenv("SUDO_UID", str(os.getuid()))
+    monkeypatch.setenv("SUDO_GID", str(os.getgid()))
+    hub.prepare_for_service()
+    assert hub.run_dir().is_dir()
+    assert hub.hub_dir().stat().st_uid == os.getuid()
+
+
+def test_with_no_git_jupyterlab_still_starts(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PATH", "")
+    own = hub_logins["bill"] / "zabob-retirement"
+    singleuser.prepare({"ZABOB_HUB_LOGIN": "bill", "ZABOB_HUB_REPO": str(own), "ZABOB_HUB_CLONE_URL": "file:///x"})
+    assert not own.exists()
+
+
 def test_an_ipv6_address_goes_in_brackets() -> None:
     assert hub.Settings("::1", 8000).url == "http://[::1]:8000/"
     assert hub.Settings("::1", 8000).bind_url == "http://[::1]:8000/"

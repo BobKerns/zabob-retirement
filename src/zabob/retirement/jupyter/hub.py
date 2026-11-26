@@ -121,6 +121,21 @@ def run_dir(folder: Path | None = None) -> Path:
     return (folder or hub_dir()) / "run"
 
 
+def prepare_for_service(folder: Path | None = None) -> None:
+    """Make the hub folder and its ``run/`` before the service (root) first
+    starts, owned by whoever ran sudo: root would make them its own, and
+    then their `sim jupyter user add` couldn't write there."""
+    folder = folder or hub_dir()
+    run = run_dir(folder)
+    run.mkdir(parents=True, exist_ok=True)
+    uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+    if WINDOWS or os.geteuid() != 0 or not uid or not gid:
+        return
+    for path in (folder, run):
+        with contextlib.suppress(OSError, ValueError):
+            os.chown(path, int(uid), int(gid))
+
+
 def config_file(folder: Path | None = None) -> Path:
     return (folder or hub_dir()) / "jupyterhub_config.py"
 

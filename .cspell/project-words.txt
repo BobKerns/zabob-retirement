@@ -171,6 +171,7 @@ FXAIX
 GAAP
 getbasetemp
 geteuid
+getgid
 gethostname
 getpid
 getpwall
@@ -458,6 +459,7 @@ STMTRS
 STMTTRN
 STMTTRNRS
 Stooq
+strerror
 SUBACCTFUND
 SUBACCTSEC
 subclassing

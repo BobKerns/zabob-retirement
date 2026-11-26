@@ -192,6 +192,10 @@ def jupyter_status_command(show_all: bool, notebook_dir: Path | None) -> None:
 # ---------- the hub (#766) ----------
 
 def _hub_error(exc: Exception) -> click.ClickException:
+    if isinstance(exc, PermissionError) and exc.filename:
+        # Most often a file the service (root) made in the hub folder.
+        return click.ClickException(f"can't write {exc.filename}: {exc.strerror}. If root made it, "
+                                    f"`sudo chown -R \"$USER\" {hub.hub_dir()}` gives the hub folder back to you")
     return click.ClickException(str(exc))
 
 
@@ -307,7 +311,12 @@ def hub_service_command(install: bool) -> None:
         path.write_text(text, encoding="utf-8")
     except PermissionError as exc:
         raise click.ClickException(f"can't write {path}; run it with sudo") from exc
+    hub.prepare_for_service()
     click.echo(f"Wrote {path}. Enable and start it with:\n  {hub.service_enable_command()}")
+    if not hub.read_users():
+        click.echo(f"WARN: {hub.hub_dir()} has no users yet. `sim jupyter user add` adds them there, unless "
+                   "your settings are elsewhere (a custom XDG_CONFIG_HOME): then set ZABOB_HUB_DIR in "
+                   f"{path} to your hub folder.", err=True)
 
 
 # ---------- the hub's users (#766) ----------
@@ -336,7 +345,8 @@ def _resolve_setting(login: str, shared: str | None, own: str | None, current: h
 
     if shared is not None and own is not None:
         raise click.UsageError("give --shared or --own, not both")
-    if shared is None and own is None:
+    asked = shared is None and own is None
+    if asked:
         if not sys.stdin.isatty():
             raise click.UsageError("give --shared [REPO] or --own [URL]")
         default = current.data if current is not None else hub.SHARED
@@ -359,6 +369,8 @@ def _resolve_setting(login: str, shared: str | None, own: str | None, current: h
         if not is_data_repo(repo):
             raise click.ClickException(f"{repo} isn't a data repo (it has no sim/persons.csv)")
         return hub.HubUser(login, hub.SHARED, repo)
+    if own == "" and not asked and current is not None and current.data == hub.OWN:
+        own = current.url or ""  # a bare --own keeps the clone URL; the guided edit can clear it
     return hub.HubUser(login, hub.OWN, hub.own_repo(login), own or None)
 
 
@@ -389,7 +401,7 @@ def user_add_command(login: str | None, shared: str | None, own: str | None) -> 
             raise hub.HubError(f"{login} is already a hub user; `sim jupyter user edit {login}` changes it")
         user = _resolve_setting(login, shared, own, None)
         hub.write_user(user)
-    except hub.HubError as exc:
+    except (hub.HubError, OSError) as exc:
         raise _hub_error(exc) from exc
     _report(user, "Added")
 
@@ -410,7 +422,7 @@ def user_edit_command(login: str | None, shared: str | None, own: str | None) ->
             click.echo(current.describe())
         user = _resolve_setting(login, shared, own, current)
         hub.write_user(user)
-    except hub.HubError as exc:
+    except (hub.HubError, OSError) as exc:
         raise _hub_error(exc) from exc
     _report(user, "Unchanged:" if user == current else "Now")
 
@@ -427,7 +439,7 @@ def user_delete_command(login: str | None, yes: bool) -> None:
         if not yes and not click.confirm(f"remove {login} from the hub?", default=False):
             raise hub.HubError("nothing was changed")
         hub.delete_user(login)
-    except hub.HubError as exc:
+    except (hub.HubError, OSError) as exc:
         raise _hub_error(exc) from exc
     click.echo(f"Removed {login} from the hub; a JupyterLab of theirs already running keeps running "
                "until the hub stops it.")

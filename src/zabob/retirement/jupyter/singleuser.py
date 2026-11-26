@@ -15,10 +15,13 @@ from pathlib import Path
 def _trust(repo: Path) -> None:
     # git refuses a repository another login owns ("dubious ownership")
     # unless the user's own config says it is safe; only global config counts.
-    found = subprocess.run(["git", "config", "--global", "--get-all", "safe.directory"],
-                           capture_output=True, text=True, check=False).stdout.splitlines()
-    if str(repo) not in found and "*" not in found:
-        subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(repo)], check=False)
+    try:
+        found = subprocess.run(["git", "config", "--global", "--get-all", "safe.directory"],
+                               capture_output=True, text=True, check=False).stdout.splitlines()
+        if str(repo) not in found and "*" not in found:
+            subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(repo)], check=False)
+    except OSError as exc:  # no git: JupyterLab starts anyway
+        print(f"zabob: couldn't run git to trust {repo}: {exc}", file=sys.stderr)
 
 
 def _record(login: str | None, data_dir: Path | None) -> None:
@@ -44,9 +47,13 @@ def prepare(env: dict[str, str]) -> None:
         return
     repo = Path(value)
     if not repo.exists() and (url := env.get("ZABOB_HUB_CLONE_URL")):
-        done = subprocess.run(["git", "clone", url, str(repo)], check=False)  # noqa: S603, S607 - the user's URL
-        if done.returncode:
-            print(f"zabob: couldn't clone {url} to {repo}", file=sys.stderr)
+        try:
+            done = subprocess.run(["git", "clone", url, str(repo)], check=False)  # noqa: S603, S607 - the user's URL
+        except OSError as exc:
+            print(f"zabob: couldn't run git to clone {url}: {exc}", file=sys.stderr)
+        else:
+            if done.returncode:
+                print(f"zabob: couldn't clone {url} to {repo}", file=sys.stderr)
     if not (repo / "sim" / "persons.csv").is_file():
         _record(login, None)  # their own, not made yet: `sim init` records it
         return
