@@ -90,9 +90,23 @@ def test_untitled_translation_scene_keeps_the_english_title(videos_root: Path) -
 
 
 def test_skipped_videos_are_not_neighbors(videos_root: Path) -> None:
-    _video(videos_root, "00-pilot", youtube_toml="[youtube]\nskip = true")
+    _video(videos_root, "00-trial", youtube_toml="[youtube]\nskip = true")
     folder = _video(videos_root, "01-x", youtube_toml=YT)
     assert youtube.neighbors(scripts.load(folder)) == (None, None)
+
+
+def test_an_unnumbered_video_is_an_extra_outside_the_course(videos_root: Path) -> None:
+    first = _video(videos_root, "01-first", youtube_toml=YT, title="First")
+    extra = _video(videos_root, "wsl", youtube_toml=YT + '\nnext = "01-first"', episode="For Windows",
+                   title="Extra")
+    # Sorted after every numbered folder, but nobody's neighbor by default.
+    assert youtube.neighbors(scripts.load(first)) == (None, None)
+    assert youtube.neighbors(scripts.load(extra)) == (None, first)
+    assert youtube.number(extra) == "" and youtube.number(first) == "01"
+    meta = youtube.metadata(scripts.load(extra), _lengths(scripts.load(extra)))
+    assert meta.title == "Zabob Retirement: Extra"
+    assert meta.playlist is None
+    assert meta.description.endswith("Next: Video 1, First")
 
 
 @pytest.mark.parametrize(("extra", "message"), [

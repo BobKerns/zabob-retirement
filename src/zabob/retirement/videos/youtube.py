@@ -224,9 +224,22 @@ def skipped(s: Script) -> bool:
     return bool(fields(s).get("skip", False))
 
 
+_NUMBERED = re.compile(r"^(\d+[a-z]?)-")
+
+
 def number(folder: Path) -> str:
-    """The video's number: its folder's prefix (``03``, ``02a``)."""
-    return folder.name.split("-", 1)[0]
+    """The video's number: its folder's prefix (``03``, ``11a``), or ``""`` for an extra."""
+    m = _NUMBERED.match(folder.name)
+    return m[1] if m else ""
+
+
+def in_course(folder: Path) -> bool:
+    """Whether the video is part of the course: its folder starts with a number.
+
+    One without (``wsl``) is an extra: no number in its title, no playlist,
+    and never a numbered video's previous or next.
+    """
+    return bool(number(folder))
 
 
 def one_line(text: str) -> str:
@@ -291,7 +304,7 @@ def neighbors(s: Script) -> tuple[Path | None, Path | None]:
     """The previous and next published videos: named in ``[youtube]``, else the folders around this one."""
     root = s.folder.parent
     yt = fields(s)
-    order = [f for f in video_folders(root) if not skipped(scripts.load(f))]
+    order = [f for f in video_folders(root) if in_course(f) and not skipped(scripts.load(f))]
     picked: list[Path | None] = []
     for key, step in (("previous", -1), ("next", 1)):
         if key in yt:
@@ -339,8 +352,9 @@ def metadata(s: Script, lengths: Sequence[tuple[str, float]], *, channel: dict[s
     if not yt.get("summary"):
         raise ScriptError(f"{where}: [youtube] needs a summary, the description's opening paragraph")
 
-    title = words["title"].format(number=number(s.folder),
-                                  title=one_line(yt.get("title") or s.meta.get("title", s.name)))
+    course = in_course(s.folder)
+    title = words["title" if course else "extra_title"].format(
+        number=number(s.folder), title=one_line(yt.get("title") or s.meta.get("title", s.name)))
     parts = [yt["summary"].strip()]
     if yt.get("contents"):
         parts.append("\n".join([words["in_this_video"], *(f"• {item}" for item in yt["contents"])]))
@@ -380,7 +394,7 @@ def metadata(s: Script, lengths: Sequence[tuple[str, float]], *, channel: dict[s
         embeddable=bool(channel.get("embeddable", True)),
         contains_synthetic_media=bool(channel.get("contains_synthetic_media", False)),
         notify_subscribers=bool(channel.get("notify_subscribers", True)),
-        playlist=words.get("playlist") or None,
+        playlist=(words.get("playlist") or None) if course else None,
     )
     _check_limits(meta, where, int(channel.get("title_width", MAX_TITLE)))
     return meta

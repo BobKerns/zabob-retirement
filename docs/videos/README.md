@@ -18,14 +18,14 @@ Publishing on YouTube needs only `uv`, on the machine whose browser can
 sign in to the channel.
 
 ```sh
-analysis video build 00-pilot      # or a path: docs/videos/00-pilot
+analysis video build 01-intro      # or a path: docs/videos/01-intro
 analysis video check               # every script parses, every slide renders
 ```
 
 `analysis video` builds and checks in the container when Docker is running
 here, and on this machine when it isn't (saying so); `--docker` or `--local`
-chooses. The result is `out/videos/00-pilot.en.mp4`, with its captions
-(`00-pilot.en.srt`) and thumbnail (`00-pilot.en.jpg`) beside it. A native
+chooses. The result is `out/videos/01-intro.en.mp4`, with its captions
+(`01-intro.en.srt`) and thumbnail (`01-intro.en.jpg`) beside it. A native
 build needs `analysis video setup` once first (voice model, VHS, ttyd).
 `python -m zabob.retirement.videos` is the same command run only on this machine
 (the container runs it), and `scripts/videos/docker.sh` starts the
@@ -47,8 +47,11 @@ container; both work on their own too.
 | `src/zabob/retirement/videos/` | The builder |
 | `scripts/videos/tts_kokoro.py` | The narration worker (runs in its own environment) |
 
-`00-pilot` exists to prove the pipeline. Real videos are numbered in the
-order of #366's outline (`01-intro`, `02-setup`, ...).
+Videos in the course are numbered in the order of #366's outline
+(`01-intro`, `02-setup`, ...); a letter marks a side trip (`11a-import`).
+A folder with no number (`wsl`) is an extra outside the course: its
+YouTube title has no number, it goes in no playlist, and it is never a
+course video's previous or next (see [Publishing on YouTube](#publishing-on-youtube)).
 
 ## Writing a script
 
@@ -258,7 +261,7 @@ images `--graph` sends). `setup` and the container fetch that build; a
 build refuses another VHS, such as Homebrew's.
 
 A `window` draws a screen another system shows, which VHS can't record:
-PowerShell, File Explorer, VS Code (video 2a, on WSL). Each of its `lines`
+PowerShell, File Explorer, VS Code (the WSL video). Each of its `lines`
 is text, or a table: `prompt` and `typed` show a command line with the typed
 part in the accent color, and `secret = true` puts a cursor after the
 prompt. It draws what the screen says, not a copy of it, so it rebuilds and
@@ -349,7 +352,7 @@ reads kanji and kana as "Chinese letter" and "Japanese letter". Its
 dictionary (about 23 MB) downloads on first use.
 
 `build` makes every language the video has, or one with `--lang`: each its
-own MP4 and SRT (`00-pilot.ja.mp4`, `00-pilot.ja.srt`). Captions are a
+own MP4 and SRT (`01-intro.ja.mp4`, `01-intro.ja.srt`). Captions are a
 separate file, not burned into the picture, which is what YouTube and most
 players want. A caption is one sentence, split into parts of at most two
 lines.
@@ -371,10 +374,10 @@ So editing one sentence re-synthesizes and re-assembles that scene only. The
 build prints what it made and what it reused:
 
 ```text
-00-pilot [en]
-  title               7.5s  narration cached  visual cached  clip cached
-  networth           16.1s  narration made    visual cached  clip made
-  end                 4.9s  narration cached  visual cached  clip cached
+01-intro [en]
+  host                7.5s  narration cached  visual cached  clip cached
+  title              16.1s  narration made    visual cached  clip made
+  questions          24.9s  narration cached  visual cached  clip cached
 ```
 
 The work runs in parallel. Each scene's narration and visual are separate
@@ -411,7 +414,7 @@ all.
 builds for amd64 and arm64 (Docker Desktop on Apple silicon).
 
 ```sh
-analysis video build 00-pilot [--lang ja] [--silent] [--rerecord] [--jobs N] [--publish]
+analysis video build 01-intro [--lang ja] [--silent] [--rerecord] [--jobs N] [--publish]
 analysis video check                 # every video, or name some
 analysis video shell                 # bash, in the videos' data repo
 analysis video image                 # rebuild the image from scratch
@@ -578,8 +581,8 @@ before it, and a video with fewer than three chapters lists none.
 
 A translation's `[youtube]` has its own title, summary, list, tags and
 chapter names; it takes `skip`, `previous` and `next` from `script.md`.
-Previous and next default to the folders before and after, leaving out
-any with `skip = true` (the pilot); `previous = "01-intro"` names one, and
+Previous and next default to the numbered folders before and after,
+leaving out any with `skip = true` and the unnumbered extras; `previous = "01-intro"` names one, and
 `""` means none. A translation's scene headings name its chapters, so give
 each scene its title (``## Scene `id`: タイトル``).
 
@@ -634,7 +637,7 @@ in the tool cache).
 ## Length, hosting and links
 
 - **Length.** Aim for 5 to 10 minutes in English; a video that runs
-  longer is usually two. A short side trip (such as `02a-wsl`) may be
+  longer is usually two. A short side trip or extra (such as `wsl`) may be
   shorter. Japanese narration runs about a fifth longer, so a Japanese
   video may pass 10 minutes. A built video's scene lengths are in its
   `.scenes.json`, and a published one's in `published.toml`.
