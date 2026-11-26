@@ -25,8 +25,8 @@ the prototype scenario, `retire_alice`, where Alice retires at the end of
 Guyton-Klinger's guardrails, reads them on one run and across an
 ensemble, and adds a `cut_on_breach` strategy that responds to the upper
 guardrail:
-[English](https://www.youtube.com/watch?v=sCqdL0pSIA0),
-[Japanese (日本語)](https://www.youtube.com/watch?v=dcyW3Mzd-yE).
+[English](https://www.youtube.com/watch?v=vgSKeECyiUI),
+[Japanese (日本語)](https://www.youtube.com/watch?v=KVrM_u2yoUs).
 
 ## Two questions
 

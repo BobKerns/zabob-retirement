@@ -17,8 +17,8 @@ The one-line installer ([SETUP.md](SETUP.md)) does that for you.
 with Alice and Bill, starting from what the simulator does and how to install
 it, on YouTube in [English](https://www.youtube.com/playlist?list=PLMCxY-aRDiI4) and in [Japanese (日本語)](https://www.youtube.com/playlist?list=PLQhWLzBzvwNM).
 Video 1, *What it does, and how it works*, is the place to start:
-[English](https://www.youtube.com/watch?v=VvoRgRvgIiY),
-[Japanese (日本語)](https://www.youtube.com/watch?v=kH_Uzpp4ghU).
+[English](https://www.youtube.com/watch?v=pGUzRSat4j8),
+[Japanese (日本語)](https://www.youtube.com/watch?v=5a8_upV7ojA).
 You don't need every later video before you begin. A simple model over one
 future already answers useful questions, and each video adds one kind of
 detail for when a question needs it.
@@ -402,8 +402,8 @@ met a word gets an answer about how it's used here.
 **Video.** *Taxes* walks through this section and §4.9, §4.12 and §4.14
 with Alice and Bill: what the plan pays in tax, a Roth conversion,
 Medicare's surcharge and a big medical year:
-[English](https://www.youtube.com/watch?v=nw0-pCtZ9yc),
-[Japanese (日本語)](https://www.youtube.com/watch?v=S1_TNzzaOR0).
+[English](https://www.youtube.com/watch?v=drfDDXvaaa4),
+[Japanese (日本語)](https://www.youtube.com/watch?v=NIOiiQMCHu8).
 
 Tax is not calculated as each rule fires. Instead, it is calculated once per
 tax year, by looking back over everything that happened that year (the
@@ -571,8 +571,8 @@ files pays no income tax.
   change, and `sim report tax --return state` shows every line of a return.
   [The tax calculators guide](guides/tax-calculators.md) works an example
   through, and the video *Tax plugins* walks through it with Alice and
-  Bill: [English](https://www.youtube.com/watch?v=rWfsNvoNnVI),
-  [Japanese (日本語)](https://www.youtube.com/watch?v=tckwO18axvw).
+  Bill: [English](https://www.youtube.com/watch?v=0Sdb4wnNczE),
+  [Japanese (日本語)](https://www.youtube.com/watch?v=YjeeQYazdT8).
 
 **One important thing to know before you model a sale (Part 4.5):** the
 simulator can automatically split a withdrawal into "return of capital" and
@@ -876,8 +876,8 @@ together, with worked examples and recipes.
 with Alice and Bill: lifespans drawn from the life table, what a death
 changes, guard rails on their withdrawals, and a strategy that cuts
 spending when a rail is crossed:
-[English](https://www.youtube.com/watch?v=sCqdL0pSIA0),
-[Japanese (日本語)](https://www.youtube.com/watch?v=dcyW3Mzd-yE).
+[English](https://www.youtube.com/watch?v=vgSKeECyiUI),
+[Japanese (日本語)](https://www.youtube.com/watch?v=KVrM_u2yoUs).
 
 `lifespan.csv` has one optional row for each person: `person` and
 `age_at_death`, a decimal age in years such as `84.5`. The person's final
@@ -1526,8 +1526,8 @@ finds a symbol's name fills in a missing one in `securities.csv`.
 **Video.** *Investments* walks through this section and §4.2 and §4.11
 with Alice and Bill: the lots in each account, buying a fund, how each lot
 grows, where the tax falls, and a Roth conversion into a stock fund:
-[English](https://www.youtube.com/watch?v=pZ7fnO18Wug),
-[Japanese (日本語)](https://www.youtube.com/watch?v=y5amRH5w594).
+[English](https://www.youtube.com/watch?v=0A80Lzhg7fU),
+[Japanese (日本語)](https://www.youtube.com/watch?v=6B4Yz5DwhSE).
 
 `sim invest` sets up a purchase the scenario makes later in one command. It
 writes a new lot, holding the symbol you name and acquired on the date, and a
@@ -1701,8 +1701,8 @@ floors usually rise, so this errs safe.
 
 **Video.** *Advanced* adds guard rails to Alice and Bill's plan and
 reads them on one run and across an ensemble:
-[English](https://www.youtube.com/watch?v=sCqdL0pSIA0),
-[Japanese (日本語)](https://www.youtube.com/watch?v=dcyW3Mzd-yE).
+[English](https://www.youtube.com/watch?v=vgSKeECyiUI),
+[Japanese (日本語)](https://www.youtube.com/watch?v=KVrM_u2yoUs).
 
 A guard rail is a line spending, or the withdrawals from your savings,
 should stay on one side of: "take no more than 4% a year", "cut back if the
@@ -1734,8 +1734,8 @@ usual rails, how to write them and how to read the results.
 **Video.** *Rebalancing* walks through this section with Alice and Bill:
 classing every lot, a target, a strategy that draws and one that invests,
 what it did, and what it buys across an ensemble:
-[English](https://www.youtube.com/watch?v=Id-wps0PVrw),
-[Japanese (日本語)](https://www.youtube.com/watch?v=sd8p2AofnSA).
+[English](https://www.youtube.com/watch?v=IhaLt50RRjo),
+[Japanese (日本語)](https://www.youtube.com/watch?v=BgpUJpEFW2o).
 
 A chain draws its steps in the order you wrote them, whatever your
 portfolio looks like. A **strategy** decides instead, from the month's
@@ -1818,8 +1818,8 @@ sweeps it like the rest. See
 repo's `sim/strategies/` folder: a strategy plugin. The video *Strategy
 plugins* walks through the example below with Alice and Bill: writing it,
 checking it, and what it does across eighty futures:
-[English](https://www.youtube.com/watch?v=WeRm1pjYMT4),
-[Japanese (日本語)](https://www.youtube.com/watch?v=rs4Ya5Dq6-Q).
+[English](https://www.youtube.com/watch?v=kqZTiWXbPQI),
+[Japanese (日本語)](https://www.youtube.com/watch?v=dKvEbKSG9RE).
 A plugin can build on a built-in by subclassing it or by delegating to
 it. For example, Alice and Bill want guardrail to decide how much travel
 a year can afford, while their own code decides which trips fit, taken whole:
@@ -1906,8 +1906,8 @@ written against, and the built-in classes you can build on are in
 and Bill: travel tagged as optional spending, the plan as written across
 eighty futures, and the threshold, guardrail, ceiling and floor, and VPW
 strategies side by side:
-[English](https://www.youtube.com/watch?v=Hv4B9sdu4PY),
-[Japanese (日本語)](https://www.youtube.com/watch?v=FgyPqniorvk).
+[English](https://www.youtube.com/watch?v=4EPNYQCx7AQ),
+[Japanese (日本語)](https://www.youtube.com/watch?v=AjozWD9Avj4).
 
 Your scheduled rules spend the same inflation-indexed amount every year,
 whatever the markets do. A **spending strategy** changes that: it owns the
@@ -2136,8 +2136,8 @@ growth when markets rise. The design is in
 **Video.** *Keeping the plan current* walks through this section with Alice
 and Bill: rolling the plan forward to January, last year's income for April's
 tax, this year's spending, and comparing the new plan with last year's:
-[English](https://www.youtube.com/watch?v=ZsPk3FI4cd4),
-[Japanese (日本語)](https://www.youtube.com/watch?v=5SmA9xplhgw).
+[English](https://www.youtube.com/watch?v=51e5NJPoSMs),
+[Japanese (日本語)](https://www.youtube.com/watch?v=y1C8tGfzdDw).
 
 A plan only knows what you told it when you wrote it. Once a year, or after
 a big change, start it again from what the accounts hold now:
@@ -2163,8 +2163,8 @@ offering the run's Dec 31.
 With more than a few accounts, the balances can come from a file another
 program exported instead, and the year's spending too:
 [Importing your data](guides/importing-data.md), with its own video
-([English](https://www.youtube.com/watch?v=KHS9dpUaHFc),
-[Japanese (日本語)](https://www.youtube.com/watch?v=Dby3vYmfFPA)).
+([English](https://www.youtube.com/watch?v=26xt4l_Q6wA),
+[Japanese (日本語)](https://www.youtube.com/watch?v=WGHCHMUGBxg)).
 
 A new year changes what some rows mean, so `roll` deals with those too:
 
@@ -2245,8 +2245,8 @@ and `--no-roll` turns rolling off.
 ## 5. Looking at your results
 
 **Video.** *Looking at the results* walks through this section with Alice
-and Bill's base scenario: [English](https://www.youtube.com/watch?v=8byMoioSYH8),
-[Japanese (日本語)](https://www.youtube.com/watch?v=SDzC49sCXqM).
+and Bill's base scenario: [English](https://www.youtube.com/watch?v=APa-VONBR7M),
+[Japanese (日本語)](https://www.youtube.com/watch?v=aapDW850dTU).
 
 A **run** is what happens when the simulator plays a scenario forward, month
 by month, from its start date to its end date. The result is a single, dated
@@ -2342,8 +2342,8 @@ that differ by such a credit, use tax paid and pre-tax net worth.
 
 **Video.** *Comparing what-ifs* builds two what-ifs on Alice and Bill's
 base scenario, runs them, and compares them with `sim compare` and
-`scenario_compare.ipynb`: [English](https://www.youtube.com/watch?v=gq3mAFwscMI),
-[Japanese (日本語)](https://www.youtube.com/watch?v=5RbOMWhtU8c).
+`scenario_compare.ipynb`: [English](https://www.youtube.com/watch?v=1CMyN97Yw_I),
+[Japanese (日本語)](https://www.youtube.com/watch?v=2bSA1QEFIVs).
 
 `sim compare BASELINE VARIANT` puts two or more scenarios' latest runs side
 by side, as `scenario_compare.ipynb` does: whether the runs came from the same

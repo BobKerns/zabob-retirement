@@ -32,8 +32,8 @@ no tax is due. A row can be refundable, but the share and the limits
 that depend on age are what a row can't say. The design and its rules are in
 [ADR-011](../architecture/ADR-011-tax-calculators.md), and
 video 13, *Tax plugins*, walks through it:
-[English](https://www.youtube.com/watch?v=rWfsNvoNnVI),
-[Japanese (日本語)](https://www.youtube.com/watch?v=tckwO18axvw).
+[English](https://www.youtube.com/watch?v=0Sdb4wnNczE),
+[Japanese (日本語)](https://www.youtube.com/watch?v=YjeeQYazdT8).
 
 ## 1. Say what counts: a tag
 

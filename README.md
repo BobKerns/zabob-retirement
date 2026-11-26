@@ -34,8 +34,8 @@ Watch the *Retirement Simulator Guide* on
 [English](https://www.youtube.com/playlist?list=PLMCxY-aRDiI4) and
 [Japanese (日本語)](https://www.youtube.com/playlist?list=PLQhWLzBzvwNM).
 Start with *Video 1: What it does, and how it works*
-([English](https://www.youtube.com/watch?v=VvoRgRvgIiY),
-[Japanese (日本語)](https://www.youtube.com/watch?v=kH_Uzpp4ghU)). It shows that a
+([English](https://www.youtube.com/watch?v=pGUzRSat4j8),
+[Japanese (日本語)](https://www.youtube.com/watch?v=5a8_upV7ojA)). It shows that a
 simple model already answers useful questions. You add detail only when a
 question needs it.
 
