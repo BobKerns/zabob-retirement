@@ -36,6 +36,7 @@ from zabob.retirement.oscompat import WINDOWS, is_link, link_dir, login_name, ut
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
 from zabob.retirement.research_plugin import research_plugin_command
+from zabob.retirement.jupyter.cli import jupyter_group
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -5753,7 +5754,7 @@ def _init_installed(
     root = (directory if directory is not None else DEFAULT_DATA_REPO).expanduser().resolve()
     sim, failed = _create_data_repo(root, person_id, display, birthdate, sex, filing_status,
                                     no_commit=no_commit, example=example, notebooks=True)
-    click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: analysis jupyter")
+    click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: sim jupyter start")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
     _next_steps(sim, _shown(sim / "activate-analysis"), no_builder=no_builder)
@@ -5917,6 +5918,9 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
     click.echo(f"copied {len(written)} file(s) to {_shown(folder.expanduser())}")
     if kept:
         click.echo(f"kept {len(kept)} already there (--replace to replace them)")
+
+
+sim_group_command.add_command(jupyter_group)
 
 
 # Set for the `sim init` that one run from another checkout's venv starts,

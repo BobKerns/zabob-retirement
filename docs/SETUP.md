@@ -34,7 +34,7 @@ install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
-notebooks, in its `notebooks/`; `analysis jupyter` opens them.
+notebooks, in its `notebooks/`; `sim jupyter start` opens them.
 
 To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
@@ -137,7 +137,7 @@ Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
 Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
 the chart as a PNG and prints its path (see
 [Drawing chain flowcharts](#drawing-chain-flowcharts-in-the-terminal)).
-`analysis jupyter` works too: if no browser opens, Ctrl+click the link it
+`sim jupyter start` works too: if no browser opens, Ctrl+click the link it
 prints.
 
 If `wsl --install` fails with a message about virtualization, it is turned
@@ -417,12 +417,14 @@ overwriting an existing one), then launches `jupyter lab` with that same
 token, so the Jupyter MCP server always talks to the instance you started:
 
 ```sh
-analysis jupyter
+sim jupyter start
 ```
 
-Any extra arguments are passed through to `jupyter lab` verbatim, e.g.
-`analysis jupyter --no-browser`. If `.mcp.json` gets corrupted, delete it and
-rerun `analysis jupyter` to regenerate it.
+It runs in the background, with its output in `state/jupyter.log`; `sim
+jupyter stop` stops it. Arguments after `--` are passed through to `jupyter
+lab` verbatim, e.g. `sim jupyter start -- --ServerApp.port_retries=0`. If
+`.mcp.json` gets corrupted, delete it and rerun `sim jupyter start` to
+regenerate it.
 
 ## Optional MCP registration
 
