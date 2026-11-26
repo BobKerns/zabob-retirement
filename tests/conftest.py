@@ -105,6 +105,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 _AMBIENT_ENV_VARS = (
     "ZABOB_DATA_DIR",
     "ZABOB_SCENARIO",
+    "ZABOB_HUB_DIR",  # the hub's folder (#766): under the test's user config instead
 )
 
 
@@ -1162,6 +1163,30 @@ def data_repo_sim(tmp_path: Path, test_data_dir: Path) -> Path:
     repo.index.commit("init", author=actor, committer=actor)
     repo.close()
     return data_dir
+
+
+@pytest.fixture(scope="function")
+def free_port() -> int:
+    """A TCP port on 127.0.0.1 nothing was listening on a moment ago."""
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.fixture(scope="function")
+def hub_logins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """The machine's logins as the hub commands (#766) see them: ``alice``
+    and ``bill``, with homes under ``tmp_path/home``. Returns their homes."""
+    from zabob.retirement.jupyter import hub
+
+    homes = {name: tmp_path / "home" / name for name in ("alice", "bill")}
+    for home in homes.values():
+        home.mkdir(parents=True)
+    monkeypatch.setattr(hub, "home_of", homes.get)
+    monkeypatch.setattr(hub, "logins", lambda: sorted(homes))
+    return homes
 
 
 @pytest.fixture(scope="function")
