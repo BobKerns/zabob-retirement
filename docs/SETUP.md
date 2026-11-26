@@ -111,9 +111,9 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
   runs only while you are logged in; nothing asks for a password or an
   administrator.
-- Run `sim builder stop` before `uv tool upgrade zabob-retirement`:
-  Windows won't replace a program file while the builder, or a build it
-  started, is running it.
+- The builder doesn't research symbols each morning unless you ask for it
+  with `sim builder install --research`, since it hasn't been tried on
+  Windows yet ([#795](https://github.com/BobKerns/zabob-retirement/issues/795)).
 - There is no TAB completion of names, since `activate-retirement` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.

@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any
 
 import git
 import pytest
@@ -271,6 +272,68 @@ def test_on_windows_a_daemon_whose_code_changed_starts_the_next_one(
     monkeypatch.setattr(daemon, "scan", lambda: setattr(daemon, "restart", True))
     assert daemon.run() == 0
     assert started == [daemon.data_dir]
+
+
+def test_on_windows_a_restarting_daemon_honours_a_stop_made_meanwhile(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The old daemon reads no more requests once out of its loop, and the
+    next would take the stop for an earlier daemon's."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("started the next one"))
+
+    def scan() -> None:
+        daemon.restart = True
+        builder._request(daemon.paths, "stop")
+    monkeypatch.setattr(daemon, "scan", scan)
+    assert daemon.run() == 0
+
+
+def test_on_windows_a_stop_needs_no_pid_from_a_daemon_that_has_written_none(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first daemon writes its status only after its first scan."""
+    _code, data_dir = pair
+    paths = BuilderPaths.for_data(data_dir)
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    assert builder.stop_daemon(paths) == 0
+    assert [r["kind"] for r in builder._drain_requests(paths)] == ["stop"]
+
+
+def test_on_windows_a_status_file_held_open_is_replaced_once_let_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: Windows refuses to replace a file a reader has open."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    real, tries = os.replace, []
+
+    def replace(src: Any, dst: Any) -> None:
+        tries.append(dst)
+        if len(tries) < 3:
+            raise PermissionError(5, "Access is denied")
+        real(src, dst)
+    monkeypatch.setattr(builder.os, "replace", replace)
+    builder._write_json(tmp_path / "status.json", {"state": "idle"})
+    assert len(tries) == 3 and json.loads((tmp_path / "status.json").read_text())["state"] == "idle"
+
+
+def test_the_builders_children_take_no_optional_git_locks() -> None:
+    """#748: a build ended on Windows mid `git status` leaves no index.lock."""
+    assert builder._child_env()["GIT_OPTIONAL_LOCKS"] == "0"
+
+
+def test_on_windows_research_is_off_unless_asked_for(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#795: its scripts run as python3, often only the Store's alias there."""
+    _code, data_dir = pair
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: None)
+    builder.install(data_dir)
+    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is False
+    builder.install(data_dir, research=True)
+    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is True
 
 
 @pytest.fixture

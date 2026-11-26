@@ -297,7 +297,16 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Windows refuses to replace a file another process has open (a
+            # reader of status.json, antivirus); it is open only briefly (#748).
+            if not WINDOWS or attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def daemon_alive(paths: BuilderPaths) -> bool:
@@ -514,6 +523,29 @@ def _request(paths: BuilderPaths, kind: str, scenario: str | None = None,
     return made
 
 
+def _stop_requested(paths: BuilderPaths) -> bool:
+    """Whether a ``stop`` request waits, read without draining the rest."""
+    try:
+        names = sorted(paths.requests.glob("*.json"))
+    except OSError:
+        return False
+    for name in names:
+        try:
+            if json.loads(name.read_text(encoding="utf-8")).get("kind") == "stop":
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def _child_env() -> dict[str, str]:
+    """The environment of a build, fetch, roll or research the daemon starts."""
+    # GIT_OPTIONAL_LOCKS=0: a cancelled build on Windows is ended outright,
+    # and a `git status` it was in would leave .git/index.lock behind for the
+    # person's next git command (#748). Its commits' locks aren't optional.
+    return {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1", "GIT_OPTIONAL_LOCKS": "0"}
+
+
 def _drain_requests(paths: BuilderPaths) -> list[dict[str, Any]]:
     out = []
     if not paths.requests.is_dir():
@@ -554,6 +586,9 @@ def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
         _detach(start_detached(
             [*command, "builder", "run", "--data-dir", str(data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr, env=env, close_fds=True,
+            # Not the starter's folder: Windows won't remove or rename a folder
+            # that is a running process's (a code worktree whose hook started it).
+            cwd=paths.dir,
         ))
 
 
@@ -895,6 +930,9 @@ class _Daemon:
         """A reader asked for one of ``scenario``'s jobs: its others follow."""
         self.follow = [scenario, *[n for n in self.follow if n != scenario]]
 
+    def children_running(self) -> bool:
+        return any(p is not None and p.poll() is None for p in (self.fetcher, self.roller, self.researcher))
+
     def await_children(self) -> None:
         """Wait for a running price fetch, roll or research to finish (#748).
         On Windows each is a Job Object this process holds the only handle
@@ -926,7 +964,7 @@ class _Daemon:
         if wanted:
             self._follow(name)
         key = self.key(name, trees)
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+        env = _child_env()
         self.log(f"building {job}")
         self.paths.dir.mkdir(parents=True, exist_ok=True)
         process = start_tree(
@@ -981,7 +1019,7 @@ class _Daemon:
         if not price_schedule.due(price_schedule.read_state(self.data_dir), datetime.now(UTC)):
             return
         self.log("fetching prices")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+        env = _child_env()
         self.fetcher = start_tree(
             [*_sim_executable(), "builder", "prices", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1030,7 +1068,7 @@ class _Daemon:
                 or not roll_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("rolling scenarios forward")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+        env = _child_env()
         self.roller = start_tree(
             [*_sim_executable(), "builder", "roll", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1079,7 +1117,7 @@ class _Daemon:
                 or not research_schedule.due(self.data_dir, config, datetime.now(UTC)):
             return
         self.log("researching a symbol")
-        env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
+        env = _child_env()
         self.researcher = start_tree(
             [*_sim_executable(), "builder", "research", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1131,6 +1169,8 @@ class _Daemon:
         except BlockingIOError:
             os.close(lock)
             return 0  # one is already running; it has the request
+        # Any request made from here on is this daemon's: it holds the lock.
+        started = time.time()
         self.prune_logs()
         configured = (read_config(self.paths) or {}).get("code_dir")
         if configured and not same_home(this_home(), configured):
@@ -1147,7 +1187,6 @@ class _Daemon:
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         self.log(f"started (pid {os.getpid()}) for {self.data_dir}")
-        started = time.time()
         idle_since: float | None = None
         rescan = True
         try:
@@ -1192,7 +1231,10 @@ class _Daemon:
                 time.sleep(TICK_SECONDS)
         finally:
             self.cancel("builder stopping" if not self.restart else "code changed")
-            if WINDOWS:
+            if WINDOWS and self.children_running():
+                # Say so while it waits: readers stop waiting on a cancelled build.
+                self.state, self.queue = "stopping", []
+                self.write_status()
                 self.await_children()
             self.state = "stopped"
             self.queue = []
@@ -1202,8 +1244,11 @@ class _Daemon:
         if self.restart:
             if WINDOWS:
                 # Windows's execv starts a new process and ends this one
-                # anyway, so start the next daemon as any other is (#748).
-                spawn_daemon(self.paths, self.data_dir)
+                # anyway, so start the next daemon as any other is (#748),
+                # unless a stop came while this one finished (it reads no
+                # more requests, and the next would take it as an earlier one's).
+                if not _stop_requested(self.paths):
+                    spawn_daemon(self.paths, self.data_dir)
                 return 0
             os.execv(sys.executable, [
                 sys.executable, "-m", "zabob.retirement", "sim", "builder", "run",
@@ -1560,7 +1605,9 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     prices = bool(before.get("prices", True)) if prices is None else prices
     roll = bool(before.get("roll", True)) if roll is None else roll
     roll_window = roll_window or str(before.get("roll_window") or roll_schedule.DEFAULT_WINDOW)
-    research = bool(before.get("research", True)) if research is None else research
+    # Off by default on Windows until a research run is tried there (#795):
+    # its scripts run as `python3`, often only the Store's alias there.
+    research = bool(before.get("research", not WINDOWS)) if research is None else research
     from zabob.retirement.sim.research import find_claude
 
     # Found on this shell's PATH now, for the hourly timer, whose PATH lacks
@@ -1615,11 +1662,14 @@ def stop_daemon(paths: BuilderPaths) -> int | None:
     within a tick, since a signal there would end it before it could cancel
     its build or say it stopped (#748)."""
     pid = read_status(paths).get("pid")
-    if not daemon_alive(paths) or not isinstance(pid, int):
+    if not daemon_alive(paths):
         return None
     if WINDOWS:
+        # A new daemon may not have written its status yet; the request needs no pid.
         _request(paths, "stop")
-        return pid
+        return pid if isinstance(pid, int) else 0
+    if not isinstance(pid, int):
+        return None
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:

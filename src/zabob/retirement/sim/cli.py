@@ -22911,7 +22911,8 @@ def builder_stop(data_dir: Path | None) -> None:
     from zabob.retirement.sim import builder
 
     pid = builder.stop_daemon(builder.BuilderPaths.for_data(_builder_data_dir(data_dir)))
-    click.echo("the builder isn't running" if pid is None else f"stopping the builder (pid {pid})")
+    click.echo("the builder isn't running" if pid is None else
+               f"stopping the builder{f' (pid {pid})' if pid else ''}")
 
 
 @builder_group.command(name="run", hidden=True)
