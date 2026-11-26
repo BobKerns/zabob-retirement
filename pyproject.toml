@@ -1,7 +1,7 @@
 [project]
 name = "zabob-retirement"
 # publish.yml checks a release tag against it.
-version = "1.0.0b1"
+version = "1.0.0rc1"
 description = "Zabob Retirement: a retirement simulator for your future, with scenario comparison and Monte Carlo ensembles"
 # PyPI shows this; README.md's relative links and images only work on GitHub.
 readme = "PYPI.md"

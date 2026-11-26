@@ -74,7 +74,7 @@ import git
 import pandas as pd
 import pytest
 
-from zabob.retirement import env_names, user_config
+from zabob.retirement import user_config
 from zabob.retirement.oscompat import login_name
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
@@ -115,10 +115,6 @@ def _no_ambient_env(
 ) -> None:
     for name in _AMBIENT_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    # Nor the old names (#782), which would stop every command, from a shell
-    # activated before the rename.
-    for name in [name for name in os.environ if name.startswith(env_names.OLD_PREFIX)]:
-        monkeypatch.delenv(name)
     # Nor the developer's default data repo (#687): `sim init` in a test
     # records its own there.
     config = tmp_path_factory.mktemp("user-config")

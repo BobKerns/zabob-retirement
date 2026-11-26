@@ -3123,7 +3123,7 @@ wheels = [
 
 [[package]]
 name = "zabob-retirement"
-version = "1.0.0b1"
+version = "1.0.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "anywidget" },

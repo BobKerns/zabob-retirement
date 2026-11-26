@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import click
 
-from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import utf8_stdio
 from zabob.retirement.amazon.cli import amazon_group_command
 from zabob.retirement.historical.cli import historical_charts_command
@@ -15,7 +14,6 @@ def main() -> None:
     """Zabob Retirement's internal and not-yet-general tools; `sim` is the
     simulator's own command."""
     utf8_stdio()
-    check_old_env_names()
 
 
 main.add_command(amazon_group_command)
