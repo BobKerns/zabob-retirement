@@ -35,7 +35,8 @@ weekday's US market close, without touching the user's checkout (Bob):
 - A fetch is due when the last good one came before the latest weekday
   17:30 in New York, after the close is final. Nothing keeps the builder
   running, so ``sim builder install`` adds an hourly OS timer (a launchd agent
-  on macOS, a crontab line elsewhere) that runs ``sim builder tick``: a look
+  on macOS, a Task Scheduler task on Windows, a crontab line elsewhere) that
+  runs ``sim builder tick``: a look
   at the state, and a fetch when one is due (and a roll, #564), which pokes
   the builder when it commits. The daemon also checks on starting, and on
   each rescan.
@@ -68,6 +69,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal
+from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
 from zabob.retirement.sim import flock, shared_writer
@@ -110,6 +112,10 @@ STATE_LOCK_FILE = "analysis-prices-state.lock"
 IDENTITY = {"GIT_AUTHOR_NAME": "sim builder", "GIT_AUTHOR_EMAIL": "builder@analysis.local",
             "GIT_COMMITTER_NAME": "sim builder", "GIT_COMMITTER_EMAIL": "builder@analysis.local"}
 TIMER_MARKER = "# analysis sim builder prices (#560)"
+# Task Scheduler's folder for the hourly tasks on Windows (#748).
+TASK_FOLDER = "Zabob Retirement"
+TASK_DESCRIPTION = ("The Zabob Retirement background builder: fetches prices, rolls scenarios forward "
+                    "and researches symbols when they are due")
 # Minutes past the hour the crontab line runs, away from the crowded :00.
 CRON_MINUTE = 7
 
@@ -706,7 +712,9 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def _run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, capture_output=True, text=True, check=False, **kwargs)
+    # errors="replace": schtasks writes a pipe in the OEM code page, which on
+    # some non-English Windows has bytes the ANSI one (text=True's) lacks.
+    return subprocess.run(args, capture_output=True, text=True, errors="replace", check=False, **kwargs)
 
 
 def timer_label(data_dir: Path) -> str:
@@ -718,11 +726,77 @@ def _plist_path(data_dir: Path) -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{timer_label(data_dir)}.plist"
 
 
-def _timer_command(sim: Path, data_dir: Path) -> list[str]:
+def _timer_command(sim: Path, data_dir: Path, platform: str = sys.platform) -> list[str]:
     """What the timer runs: only a look at the state unless a fetch or a
     roll (#564) is due, so the hourly wake costs no scan; one that commits
-    pokes the builder, which merges between builds."""
-    return [str(sim), "builder", "tick", "--data-dir", str(data_dir.resolve())]
+    pokes the builder, which merges between builds. On Windows, the
+    ``pythonw`` beside ``sim`` (#748): ``sim.exe`` would open a console
+    window each hour (``__main__`` then runs it under a windowless one)."""
+    tick = ["builder", "tick", "--data-dir", str(data_dir.resolve())]
+    if platform == "win32" and (pythonw := sim.with_name("pythonw.exe")).exists():
+        return [str(pythonw), "-m", "zabob.retirement", "sim", *tick]
+    return [str(sim), *tick]
+
+
+def _task_name(data_dir: Path) -> str:
+    """The Task Scheduler task's name, in a folder of its own (#748)."""
+    return f"\\{TASK_FOLDER}\\{timer_label(data_dir)}"
+
+
+def _task_xml(command: list[str]) -> str:
+    """A task that runs ``command`` hourly at :07 (:data:`CRON_MINUTE`)
+    while the user is logged in, with no password kept and nothing to
+    approve (#748). One that is still running when the next hour comes is
+    left alone, an hour missed asleep runs on waking, and the battery doesn't
+    stop it (no more than launchd or cron would)."""
+    program, arguments = (escape(part) for part in (command[0], subprocess.list2cmdline(command[1:])))
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{TASK_DESCRIPTION}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>2026-01-01T00:{CRON_MINUTE:02d}:00</StartBoundary>
+      <Repetition><Interval>PT1H</Interval></Repetition>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT4H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{program}</Command>
+      <Arguments>{arguments}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def _install_task(data_dir: Path, command: list[str], run: Runner) -> str:
+    """Task Scheduler's hourly task (#748): from an XML file, since the
+    command line ``schtasks /TR`` takes is limited to 261 characters."""
+    with tempfile.TemporaryDirectory() as folder:
+        xml = Path(folder) / "task.xml"
+        xml.write_text(_task_xml(command), encoding="utf-16")
+        done = run(["schtasks", "/Create", "/F", "/TN", _task_name(data_dir), "/XML", str(xml)])
+    if done.returncode:
+        return f"couldn't add the scheduled task: {(done.stderr or done.stdout).strip()}"
+    return (f"added the scheduled task {_task_name(data_dir)}: the builder wakes hourly to fetch prices "
+            "and roll scenarios when due")
 
 
 def _cron_marker(data_dir: Path) -> str:
@@ -744,7 +818,9 @@ def install_timer(data_dir: Path, sim: Path, *, run: Runner = _run,
     this data dir if there is one. Returns a line saying what it did."""
     if switched_off():
         return f"price fetches are off here ({SWITCH_ENV}=off): the timer is left as it is"
-    command = _timer_command(sim, data_dir)
+    command = _timer_command(sim, data_dir, platform)
+    if platform == "win32":
+        return _install_task(data_dir, command, run)
     if platform == "darwin":
         plist = _plist_path(data_dir)
         plist.parent.mkdir(parents=True, exist_ok=True)
@@ -773,6 +849,13 @@ def install_timer(data_dir: Path, sim: Path, *, run: Runner = _run,
 
 def uninstall_timer(data_dir: Path, *, run: Runner = _run, platform: str = sys.platform) -> str | None:
     """Remove this data dir's timer; a line saying so, or None if it had none."""
+    if platform == "win32":
+        if run(["schtasks", "/Query", "/TN", _task_name(data_dir)]).returncode:
+            return None
+        done = run(["schtasks", "/Delete", "/F", "/TN", _task_name(data_dir)])
+        if done.returncode:
+            return f"couldn't remove the scheduled task {_task_name(data_dir)}: {(done.stderr or done.stdout).strip()}"
+        return f"removed the scheduled task {_task_name(data_dir)}"
     if platform == "darwin":
         plist = _plist_path(data_dir)
         if not plist.exists():

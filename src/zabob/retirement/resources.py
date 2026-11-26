@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from zabob.retirement.checkout import is_checkout
+from zabob.retirement.oscompat import BIN_DIR, program
 
 __all__ = [
     "CHECKOUT_DIR", "DEFAULT_DATA_REPO", "INSTALLED", "NOTEBOOKS_DIR", "PACKAGE_DIR", "PROTOTYPE_DIR",
@@ -98,9 +99,8 @@ def home_checkout(home: str) -> Path | None:
 def program_sim(home: str) -> Path:
     """The ``sim`` of the program a recorded home names."""
     checkout = home_checkout(home)
-    if checkout is not None:
-        return checkout / ".venv" / "bin" / "sim"
-    return Path(home.removeprefix(INSTALLED)) / "sim"
+    folder = checkout / ".venv" / BIN_DIR if checkout is not None else Path(home.removeprefix(INSTALLED))
+    return program(folder, "sim")
 
 
 def same_home(a: str, b: str) -> bool:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -144,3 +146,48 @@ def test_output_to_a_pipe_is_utf8_on_windows(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(oscompat, "WINDOWS", True)
     oscompat.utf8_stdio()
     assert (out.encoding, err.encoding) == ("utf-8", "UTF-8")
+
+
+def test_a_program_is_named_as_its_platform_names_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oscompat, "WINDOWS", True)
+    assert oscompat.program(Path("Scripts"), "sim") == Path("Scripts") / "sim.exe"
+    monkeypatch.setattr(oscompat, "WINDOWS", False)
+    assert oscompat.program(Path("bin"), "sim") == Path("bin") / "sim"
+
+
+def test_a_detached_process_outlives_the_tree_that_started_it(tmp_path: Path) -> None:
+    """#748: the builder's daemon, started by a reader (or Windows's
+    scheduled task) that is itself a tree, mustn't end with it: on Windows
+    it leaves the starter's Job Object."""
+    marker = tmp_path / "child.pid"
+    script = ("import sys, time\n"
+              "from zabob.retirement import oscompat\n"
+              "child = oscompat.start_detached([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+              f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid))\n"
+              "time.sleep(60)\n")
+    proc = oscompat.start_tree([sys.executable, "-c", script])
+    child = _child_pid(marker)
+    oscompat.kill_tree(proc)
+    proc.wait(timeout=10)
+    try:
+        time.sleep(0.5)
+        assert oscompat.pid_alive(child)
+    finally:
+        with contextlib.suppress(OSError):  # gone already, when it failed
+            os.kill(child, signal.SIGTERM)  # TerminateProcess, on Windows
+    _assert_ends(child)
+
+
+@pytest.mark.skipif(not oscompat.WINDOWS, reason="a Job Object is Windows's")
+def test_releasing_a_finished_tree_ends_what_it_left_running(tmp_path: Path) -> None:
+    """#748: the daemon closes each finished build's Job Object rather than
+    keep a handle per build it ever ran; a straggler ends with it."""
+    marker = tmp_path / "child.pid"
+    script = ("import subprocess, sys\n"
+              "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+              f"open({str(marker)!r}, 'w', encoding='utf-8').write(str(child.pid))\n")
+    proc = oscompat.start_tree([sys.executable, "-c", script])
+    child = _child_pid(marker)
+    proc.wait(timeout=20)
+    oscompat.release_tree(proc)
+    _assert_ends(child)

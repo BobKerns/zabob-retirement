@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner, Result
 
-from zabob.retirement import checkout
+from zabob.retirement import checkout, research_plugin
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
 from zabob.retirement.sim.loader import read_current_scenario
@@ -119,6 +119,7 @@ def test_init_copies_what_the_household_edits_and_reads_the_rest_from_templates(
     assert [p.name for p in (sim / "tables").iterdir()] == ["filing_status.csv"]
     assert (sim / "activate-retirement").is_file()
     assert (sim / ".retention.yaml").is_file()
+    assert (sim / "research.yaml").read_text(encoding="utf-8") == research_plugin.DEFAULT_CONFIG
     assert not (sim / "README.md").exists()  # describes the code repo's templates/
     assert _rows(sim / "scenarios" / "base" / "scenario.csv")[0]["created_by"] == "alice"
     # activate-retirement needn't ask for the code repo or the user.
@@ -140,7 +141,7 @@ def test_init_commits_everything_but_the_per_machine_files(tmp_path: Path) -> No
     assert git("status", "--porcelain") == ""
     tracked = set(git("ls-files").split())
     assert {"sim/persons.csv", "sim/tables/filing_status.csv", "sim/scenarios/base/scenario.csv",
-            ".gitignore", ".gitattributes", ".cspell/data-words.txt"} <= tracked
+            ".gitignore", ".gitattributes", ".cspell/data-words.txt", "sim/research.yaml"} <= tracked
     assert not tracked & {"sim/.analysis", "sim/.analysis_user", "sim/.current_scenario",
                           "sim/.retention.yaml"}
 

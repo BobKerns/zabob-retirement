@@ -16,6 +16,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from zabob.retirement.research_plugin import write_default_config
 from zabob.retirement.resources import CHECKOUT_DIR, NOTEBOOKS_DIR, PROTOTYPE_DIR, program_home
 from zabob.retirement.sim import registries
 from zabob.retirement.sim.data_commit import CommitError, ensure_identity
@@ -129,6 +130,7 @@ def create_data_repo(
     _write_csv(sim / "tables" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
                [{"effective_date": start, "filing_status": filing_status}])
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return _finish(root, person, commit=commit, notebooks=notebooks)
 
@@ -149,6 +151,7 @@ def create_example_repo(root: Path, *, commit: bool = True, notebooks: bool = Fa
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         person = next(row for row in csv.DictReader(fh) if row["role"] == "primary")
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return person["id"], _finish(root, person, commit=commit, notebooks=notebooks)
 
@@ -170,8 +173,8 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # the person the repo was made for: git's committer for its commits while
     # nobody has said who they are with `sim login` (#773).
     home = str(CODE_REPO_DIR) if CODE_REPO_DIR is not None else program_home()
-    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8")
-    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8")
+    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8", newline="\n")
+    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8", newline="\n")
     # state/ (beside sim/) holds runs, rebuilt from the data; the code repo's
     # cspell.json reads .cspell/data-words.txt for the household's words.
     _ignore(root / ".gitignore", "/state/")
