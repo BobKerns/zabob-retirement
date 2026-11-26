@@ -21,7 +21,7 @@ contents = [
   "The program, and your data",
   "Starting a data folder (sim init)",
   "What's inside it",
-  "Your data, from any terminal, and the current scenario (sim switch)",
+  "Who you are, your data, and the current scenario (sim login, sim switch)",
   "A plan of your own (sim scenario create)",
   "The notebooks (sim jupyter start)",
   "Saving your work, so every run can be repeated (sim run, sim commit)",
@@ -93,10 +93,10 @@ commands where your terminal finds them. The first time, it may take a
 minute or two. You don't need to know git, or anything about how the code
 is kept.
 
-> Production note: until 1.0.0b1 is on PyPI, the install comes from the
-> wheel the builder made from this checkout (`UV_FIND_LINKS`, set while
-> hidden), with the lock's versions; the line typed is the one SETUP.md
-> gives.
+> Production note: the install comes from the wheel the builder made from
+> this checkout (`UV_FIND_LINKS`, set while hidden), with the lock's
+> versions, so the video shows the code being released, not the last
+> release on PyPI; the line typed is the one SETUP.md gives.
 
 ## Scene `terminals`: A terminal that shows pictures
 
@@ -142,7 +142,7 @@ it.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && rm -rf ~/zabob-retirement && cd && clear"
+Type "export HOME=$PWD/home && rm -rf ~/zabob-retirement $XDG_CONFIG_HOME/zabob-retirement/user && cd && clear"
 Enter
 Sleep 300ms
 Show
@@ -180,12 +180,15 @@ which picks a life table if you want the simulator to vary how long you
 live; you can leave it blank. And the household's tax filing status: married
 filing jointly is the default. Then it builds the folder, checks that the
 starting scenario, base, loads, copies in the notebooks, saves a first
-version of everything with git, and makes it your data folder from now on. On a Mac, if a window offers to install the
-command line tools, which include git, let it finish, and run sim init
-again.
+version of everything with git, and makes it your data folder from now on.
+On a Mac, if a window offers to install the command line tools, which
+include git, let it finish, and run sim init again.
 
 > Production note: the tapes' environment sets `ZABOB_NO_BUILDER`, so
 > this `sim init` doesn't turn on background builds, which a real one does.
+> The recordings start logged in as alice (`render._sandbox`); the hidden
+> line removes that, so init asks for `sim login` as it does for a new
+> user, and the next scene does it.
 
 ## Scene `inside`: What's inside
 
@@ -218,7 +221,7 @@ money between them. For now it's nearly empty; the next video fills it in.
 The tax tables and other standard assumptions aren't copied here. They're
 {read|red} from the program, so they stay current when you upgrade it.
 
-## Scene `current`: Your data, and the current scenario
+## Scene `current`: Who you are, your data, and the current scenario
 
 ```tape
 Hide
@@ -227,19 +230,23 @@ Enter
 Sleep 300ms
 Show
 Sleep 500ms
-Type "sim switch"
+Type "sim login alice"
 Sleep 400ms
 Enter
 Wait
-Sleep 8s
+Sleep 10s
 ```
 
 There's nothing to set up before you start. Sim init made this your data
 folder, so every sim command finds it, in any terminal window you open.
-Most commands work on the current scenario unless you name another one.
-Sim switch says which one is current: base. In bash or zsh, an optional
-line in the setup guide also shows your data and the current scenario in
-the prompt, and lets the tab key finish names for you.
+One thing it asked for: sim login, which says who you are. That's you, the
+person at the keyboard, and it's how your saved changes and runs say who
+made them. It's the same in every data folder you use. Then it shows where
+you are: you, your data folder, and the current scenario, base. Most
+commands work on the current scenario unless you name another one, and sim
+switch shows all three again whenever you want. In bash or zsh, an optional
+line in the setup guide also shows them in the prompt, and lets the tab
+key finish names for you.
 
 > Production note: the recordings set `ZABOB_DATA_DIR` to the prototype
 > copy, so each tape unsets it while hidden; a new user has none, and the

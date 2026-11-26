@@ -52,7 +52,7 @@ def test_sim_init_leaves_the_user_to_log_in(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.chdir(tmp_path)
     made = _sim("init", "household", *_ALICE, "--no-builder")
     assert made.exit_code == 0, made.output
-    assert "Then `sim login` says who you are." in made.output
+    assert "Next: `sim login` says who you are. Then add" in made.output
     assert user_config.user_name() is None
     assert user_config.read_scenario(tmp_path / "household" / "sim") == (True, "base")
 
