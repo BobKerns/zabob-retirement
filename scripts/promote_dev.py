@@ -1,6 +1,6 @@
 """Open or refresh the pull request that promotes dev to main.
 
-    .venv/bin/python scripts/promote_dev.py [--dry-run]
+    .venv/bin/python scripts/promote_dev.py [--dry-run] [--labels]
 
 It lists the pull requests merged into dev since the last promotion and the
 issues they close. "Fixes #N" in a pull request into dev closes nothing,
@@ -19,8 +19,14 @@ stay on main's history, where scripts/bisect_dev.py and
 `git log --first-parent` find them. Needs `gh`, signed in; it uses only
 GitHub's REST API.
 
-The Promotion workflow (.github/workflows/promotion.yml) runs this on every
-push to dev, so a promotion is open whenever dev has something main lacks;
+With --labels it writes no pull request, and instead gives the issues the
+open promotion closes (its "Fixes" lines) the label "on dev", and takes it
+off every other issue, so the issues fixed on dev but not yet on main are a
+label filter away (#783). With no promotion open, as right after one merges,
+that takes the label off them all.
+
+The Promotion workflow (.github/workflows/promotion.yml) runs this, then
+--labels, on every push to dev, so a promotion is open whenever dev has something main lacks;
 running it by hand (or `/promote`) is the fallback when that run fails.
 """
 
@@ -39,6 +45,9 @@ import tempfile
 
 REPO = Path(__file__).resolve().parent.parent
 TITLE = "Promote dev to main"
+LABEL = "on dev"
+LABEL_COLOR = "0e8a16"
+LABEL_DESCRIPTION = "Fixed on dev; closes when dev is promoted to main"
 
 # GitHub's merge commit. Squash merges are off in this repo, and a plain
 # commit's "(#N)" names an issue, not a pull request.
@@ -235,12 +244,75 @@ def _keywords_clear(text: str) -> bool:
         os.unlink(f.name)
 
 
+def label_changes(wanted: set[int], labeled: set[int], closed: set[int]) -> tuple[list[int], list[int]]:
+    """The issues to give the label and to take it off: every open issue the
+    promotion closes gets it, and an issue it no longer closes (its pull
+    request reverted, or the promotion merged) loses it. An issue closed by
+    hand before the promotion gets no new label."""
+    return sorted(wanted - labeled - closed), sorted(labeled - wanted)
+
+
+def _open_promotion() -> dict | None:
+    open_pulls = _api("repos/{owner}/{repo}/pulls?base=main&state=open&per_page=100")
+    assert isinstance(open_pulls, list)
+    # dev of this repository: a fork's pull request from its own dev isn't it.
+    return next((p for p in open_pulls if p["head"]["ref"] == "dev" and p["head"]["repo"]
+                 and p["head"]["repo"]["full_name"] == p["base"]["repo"]["full_name"]), None)
+
+
+def _labeled() -> set[int]:
+    """The issues (pull requests too) that have the label, open or closed."""
+    found: set[int] = set()
+    page = 1
+    while True:
+        batch = _api(f"repos/{{owner}}/{{repo}}/issues?labels={LABEL.replace(' ', '%20')}"
+                     f"&state=all&per_page=100&page={page}")
+        assert isinstance(batch, list)
+        found |= {i["number"] for i in batch}
+        if len(batch) < 100:
+            return found
+        page += 1
+
+
+def _sync_labels(dry_run: bool) -> int:
+    promotion = _open_promotion()
+    wanted = set(closed_issues(promotion["body"] or "")) if promotion else set()
+    closed: set[int] = set()
+    for n in wanted - (labeled := _labeled()):
+        issue = _api(f"repos/{{owner}}/{{repo}}/issues/{n}")
+        assert isinstance(issue, dict)
+        # "Fixes #N" naming a pull request closes nothing; label it no more
+        # than a closed issue.
+        if issue["state"] != "open" or "pull_request" in issue:
+            closed.add(n)
+    add, remove = label_changes(wanted, labeled, closed)
+    for verb, numbers in (("add", add), ("remove", remove)):
+        if numbers:
+            print(f"{'Would ' + verb if dry_run else verb.capitalize()} {LABEL!r}: "
+                  + ", ".join(f"#{n}" for n in numbers))
+    if dry_run or not (add or remove):
+        return 0
+    if add:
+        try:
+            _api("repos/{owner}/{repo}/labels", "POST",
+                 {"name": LABEL, "color": LABEL_COLOR, "description": LABEL_DESCRIPTION})
+        except subprocess.CalledProcessError:
+            pass  # it exists already (422)
+    for n in add:
+        _api(f"repos/{{owner}}/{{repo}}/issues/{n}/labels", "POST", {"labels": [LABEL]})
+    for n in remove:
+        _api(f"repos/{{owner}}/{{repo}}/issues/{n}/labels/{LABEL.replace(' ', '%20')}", "DELETE")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dry-run", action="store_true", help="print the body instead of opening the pull request")
+    parser.add_argument("--labels", action="store_true",
+                        help=f"label the issues the open promotion closes {LABEL!r}, and no others")
     args = parser.parse_args(argv)
     try:
-        return _promote(args.dry_run)
+        return _sync_labels(args.dry_run) if args.labels else _promote(args.dry_run)
     except subprocess.CalledProcessError as e:
         print(f"{' '.join(e.cmd)} failed:\n{e.stderr}", file=sys.stderr)
         return 1
@@ -269,11 +341,7 @@ def _promote(dry_run: bool) -> int:
         print("main has changes dev lacks; merge main into dev first:\n  " + "\n  ".join(unsynced),
               file=sys.stderr)
     body = promotion_body(pulls, reverted, unsynced)
-    open_pulls = _api("repos/{owner}/{repo}/pulls?base=main&state=open&per_page=100")
-    assert isinstance(open_pulls, list)
-    # dev of this repository: a fork's pull request from its own dev isn't it.
-    existing = next((p for p in open_pulls if p["head"]["ref"] == "dev" and p["head"]["repo"]
-                     and p["head"]["repo"]["full_name"] == p["base"]["repo"]["full_name"]), None)
+    existing = _open_promotion()
     if existing:
         body = keep_added_fixes(existing["body"] or "", body)
     if dry_run:
