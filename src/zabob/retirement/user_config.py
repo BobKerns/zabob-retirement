@@ -27,13 +27,16 @@ have the same one. Versions before #773 kept the data repo in
 """
 from __future__ import annotations
 
+import contextlib
 import os
+import tempfile
 import tomllib
 from pathlib import Path
 
 from zabob.retirement.oscompat import WINDOWS
 
-__all__ = ["config_dir", "config_path", "current_user", "data_dir_setting", "default_data_dir", "local_data_dir",
+__all__ = ["config_dir", "config_path", "current_user", "data_dir_setting", "default_data_dir", "in_checkout",
+           "local_data_dir",
            "read_scenario", "repo_folder", "set_default_data_dir", "set_user", "user_name", "write_scenario"]
 
 
@@ -74,9 +77,17 @@ def _read_value(path: Path) -> str | None:
 
 def _write_value(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(f"{value}\n" if value else "", encoding="utf-8")
-    temporary.replace(path)  # whole, so a prompt never reads half of it
+    # A temporary file of its own, so two commands writing at once each
+    # replace the file whole; a prompt never reads half of it.
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as out:
+            out.write(f"{value}\n" if value else "")
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise
 
 
 def _repos() -> Path:
@@ -103,10 +114,15 @@ def repo_folder(data_dir: Path | str, *, create: bool = False) -> Path | None:
         return None
     resolved = data_dir.resolve()
     base = (resolved.parent if resolved.name == "sim" else resolved).name or "data"
-    folder, n = repos / base, 1
-    while folder.exists():
-        n += 1
-        folder = repos / f"{base}-{n}"
+    repos.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while True:
+        folder = repos / (base if n == 1 else f"{base}-{n}")
+        try:
+            folder.mkdir()  # claimed: a command recording another data repo at once takes the next name
+            break
+        except FileExistsError:
+            n += 1
     _write_value(folder / "location", str(resolved))
     return folder
 
@@ -157,6 +173,12 @@ def user_name() -> str | None:
 
 def set_user(name: str) -> None:
     _write_value(config_dir() / "user", name)
+
+
+def in_checkout(data_dir: Path) -> bool:
+    """Whether ``data_dir`` is a code checkout's ``data/private/sim``, not a
+    data repo's own ``sim/``: often template data a worktree links."""
+    return Path(data_dir).parts[-3:] == ("data", "private", "sim")
 
 
 def local_data_dir(start: Path | None = None) -> Path | None:

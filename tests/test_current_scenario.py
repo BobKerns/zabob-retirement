@@ -6,7 +6,6 @@ scenario is used without becoming current (#350)."""
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
@@ -254,14 +253,31 @@ def test_a_user_with_no_record_reads_the_shared_file_and_none_hides_it(test_data
     assert read_current_scenario(test_data_dir) is None
 
 
-def test_each_data_repo_keeps_its_own_current_scenario(test_data_dir: Path, tmp_path: Path) -> None:
-    other = tmp_path / "other" / "sim"
-    shutil.copytree(test_data_dir, other)
+def test_each_data_repo_keeps_its_own_current_scenario(test_data_dir: Path, other_data_repo: Path) -> None:
     write_current_scenario(test_data_dir, "base")
-    write_current_scenario(other, "retire_alice")
-    assert (read_current_scenario(test_data_dir), read_current_scenario(other)) == ("base", "retire_alice")
-    folders = sorted(p.name for p in (user_config.config_dir() / "repos").iterdir())
-    assert folders == ["other", test_data_dir.name] or len(folders) == 2
+    write_current_scenario(other_data_repo, "retire_alice")
+    assert (read_current_scenario(test_data_dir), read_current_scenario(other_data_repo)) == ("base", "retire_alice")
+    # Named after the data repo's folder (test_data_dir is a data dir named data/, other's is other/sim).
+    assert sorted(p.name for p in (user_config.config_dir() / "repos").iterdir()) == ["data", "other"]
+
+
+def test_two_data_repos_of_one_name_get_folders_of_their_own(test_data_dir: Path, other_data_repo: Path) -> None:
+    twin = other_data_repo.parent.parent / "elsewhere" / "data"  # only its name matters here
+    twin.mkdir(parents=True)
+    first, second = user_config.repo_folder(test_data_dir, create=True), user_config.repo_folder(twin, create=True)
+    assert first is not None and second is not None
+    assert (first.name, second.name) == ("data", "data-2")
+    assert user_config.repo_folder(test_data_dir) == user_config.config_dir() / "repos" / "data"
+
+
+def test_settings_are_written_whole_by_each_writer(test_data_dir: Path) -> None:
+    """Each write has a temporary file of its own (two commands at once
+    can't take each other's), and none is left behind."""
+    for name in ("base", "retire_alice", ""):
+        write_current_scenario(test_data_dir, name)
+    folder = user_config.repo_folder(test_data_dir)
+    assert folder is not None
+    assert sorted(p.name for p in folder.iterdir()) == ["location", "scenario"]
 
 
 def test_a_rename_or_delete_follows_the_record_and_the_shared_file(test_data_dir: Path) -> None:

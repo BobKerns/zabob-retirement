@@ -232,7 +232,9 @@ analysis_prompt_info() {
     fi
     _analysis_scenario=""
     _analysis_found=""
-    for _analysis_loc in "$_analysis_cfg"/repos/*/location; do
+    # zsh's NOMATCH makes an unmatched glob an error: no repos/ yet, no loop.
+    [ -n "${ZSH_VERSION-}" ] && setopt localoptions nullglob
+    [ -d "$_analysis_cfg/repos" ] && for _analysis_loc in "$_analysis_cfg"/repos/*/location; do
         [ -r "$_analysis_loc" ] || continue
         IFS= read -r _analysis_where < "$_analysis_loc"
         if [ "$_analysis_where" = "$ANALYSIS_DATA_DIR" ] || \

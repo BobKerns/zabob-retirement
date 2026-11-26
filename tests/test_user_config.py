@@ -204,25 +204,81 @@ def test_the_data_repo_the_working_folder_is_in_comes_before_the_default(
 
 
 def test_a_sim_command_in_a_data_repo_makes_it_yours_and_says_so(
-    made: Path, test_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    made: Path, other_data_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """#773: `cd` into a data repo and run a command there, and it is the one
     every command uses after, wherever they're run."""
-    checkout = tmp_path / "checkout"
-    (checkout / "data" / "private").mkdir(parents=True)
-    (checkout / "data" / "private" / "sim").symlink_to(test_data_dir, target_is_directory=True)
-    (checkout / "src").mkdir()
-    monkeypatch.chdir(checkout / "src")
+    (other_data_repo.parent / "notes").mkdir()
+    monkeypatch.chdir(other_data_repo.parent / "notes")
 
     result = _sim("account", "list", "--scenario", "retire_alice")
     assert result.exit_code == 0, result.output
-    assert f"Data repo is now {checkout / 'data' / 'private'} (was {made.parent}): the one this folder is in" \
+    assert f"Data repo is now {other_data_repo.parent} (was {made.parent}): the one this folder is in" \
         in result.stderr
-    assert user_config.default_data_dir() == test_data_dir.resolve()
+    assert user_config.default_data_dir() == other_data_repo.resolve()
     assert "Data repo is now" not in _sim("switch").stderr  # already it
 
     monkeypatch.chdir(tmp_path / "elsewhere")
-    assert user_config.data_dir_setting() == str(test_data_dir.resolve())
+    assert user_config.data_dir_setting() == str(other_data_repo.resolve())
+
+
+def test_a_checkouts_data_private_is_used_there_but_not_recorded(
+    made: Path, test_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worktree's data/private is often template data, gone with the
+    worktree: the user's data repo stays theirs."""
+    checkout = tmp_path / "checkout"
+    (checkout / "data" / "private").mkdir(parents=True)
+    (checkout / "data" / "private" / "sim").symlink_to(test_data_dir, target_is_directory=True)
+    monkeypatch.chdir(checkout)
+    result = _sim("switch")
+    assert result.exit_code == 0, result.output
+    assert "Data repo is now" not in result.stderr
+    assert user_config.data_dir_setting() == str(checkout / "data" / "private" / "sim")
+    assert user_config.default_data_dir() == made.resolve()
+
+
+def test_a_lookup_never_moves_the_data_repo(
+    made: Path, other_data_repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANALYSIS_KEEP_SCENARIO", "1")
+    monkeypatch.chdir(other_data_repo)
+    result = _sim("switch")
+    assert result.exit_code == 0, result.output
+    assert "Data repo is now" not in result.stderr
+    assert user_config.default_data_dir() == made.resolve()
+
+
+def test_settings_that_cant_be_written_only_warn(
+    made: Path, other_data_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - a repo to leave
+) -> None:
+    blocked = tmp_path / "not-a-folder"
+    blocked.write_text("", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked))
+    monkeypatch.setenv("APPDATA", str(blocked))
+    monkeypatch.setenv("ANALYSIS_USER", "alice")
+    monkeypatch.chdir(other_data_repo)
+    result = _sim("account", "list", "--scenario", "retire_alice")
+    assert result.exit_code == 0, result.output
+    assert "warning: couldn't record" in result.stderr
+
+
+def test_sim_login_follows_the_working_folder_too(
+    made: Path, other_data_repo: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - the one it replaces
+) -> None:
+    monkeypatch.chdir(other_data_repo)
+    result = _sim("login", "bill")
+    assert result.exit_code == 0, result.output
+    assert "Data repo is now" in result.stderr
+    assert user_config.default_data_dir() == other_data_repo.resolve()
+
+
+def test_switch_login_before_logging_in_has_no_note(made: Path) -> None:  # noqa: ARG001 - a data repo to show
+    (user_config.config_dir() / "user").unlink()
+    result = _sim("switch", "--login", "bill")
+    assert result.exit_code == 0, result.output
+    assert "Not logged in" not in result.stderr
+    assert user_config.user_name() == "bill"
 
 
 @pytest.mark.parametrize("given", ["--data-dir", "env"])

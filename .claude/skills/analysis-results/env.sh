@@ -19,7 +19,7 @@ if [ -z "${ANALYSIS_DATA_DIR-}" ]; then
 fi
 if [ -n "${ANALYSIS_DATA_DIR-}" ]; then
     export ANALYSIS_KEEP_SCENARIO=1
-    echo "analysis: data $ANALYSIS_DATA_DIR, user ${ANALYSIS_USER-?}, code ${ANALYSIS_REPO_DIR-?}"
+    echo "analysis: data $ANALYSIS_DATA_DIR, user $(sim switch 2>/dev/null | sed -n 's/^User: //p'), code ${ANALYSIS_REPO_DIR-?}"
 else
     echo "analysis: no data repo found (expected $_ar_main/data/private/sim/activate-analysis)" >&2
 fi

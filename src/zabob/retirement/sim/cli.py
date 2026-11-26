@@ -343,10 +343,14 @@ def sim_group_command(ctx: click.Context) -> None:
     utf8_stdio()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
-    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "login"):
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init"):
         return
-    _follow_working_folder(ctx.meta.get(_SUBCOMMAND_ARGS, []))
-    _note_not_logged_in()
+    args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
+    _follow_working_folder(args)
+    # Not for a command that says who you are.
+    if ctx.invoked_subcommand != "login" and not (ctx.invoked_subcommand == "switch" and any(
+            arg == "--login" or arg.startswith("--login=") for arg in args)):
+        _note_not_logged_in()
 
 
 def _follow_working_folder(args: list[str]) -> None:
@@ -354,20 +358,29 @@ def _follow_working_folder(args: list[str]) -> None:
     saying so, when it isn't already (#773): a command run there uses it, and
     so do the ones after it, wherever they're run. --data-dir and
     $ANALYSIS_DATA_DIR are for scripts and one shell, so neither is recorded,
-    and with either the working folder doesn't count. Notebooks use it
-    without recording it (``user_config.data_dir_setting``)."""
+    and with either the working folder doesn't count; nor is anything
+    recorded for a lookup ($ANALYSIS_KEEP_SCENARIO). A code checkout's
+    data/private is used there but not recorded: in a worktree it is often
+    template data, gone with the worktree. Notebooks use it without recording
+    it (``user_config.data_dir_setting``)."""
     from zabob.retirement import user_config
 
     # `sim switch --data` records the one it names instead.
-    if os.environ.get("ANALYSIS_DATA_DIR") or any(
+    if os.environ.get("ANALYSIS_DATA_DIR") or os.environ.get(KEEP_SCENARIO_ENV) or any(
             arg in ("--data-dir", "--data") or arg.startswith(("--data-dir=", "--data=")) for arg in args):
         return
     if os.environ.get(BUILDER_CHILD_ENV) or (here := user_config.local_data_dir()) is None:
         return
+    if user_config.in_checkout(here):
+        return
     was = user_config.default_data_dir()
     if was is not None and was.resolve() == here.resolve():
         return
-    user_config.set_default_data_dir(here)
+    try:
+        user_config.set_default_data_dir(here)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {_shown_repo(here)} as your data repo: {exc}", err=True)
+        return
     previous = f" (was {_shown_repo(was)})" if was is not None else ""
     click.echo(f"Data repo is now {_shown_repo(here)}{previous}: the one this folder is in", err=True)
 
@@ -685,7 +698,11 @@ def _make_current(data_dir: Path, name: str) -> None:
     previous = read_current_scenario(data_dir)
     if previous == name:
         return
-    write_current_scenario(data_dir, name)
+    try:
+        write_current_scenario(data_dir, name)
+    except OSError as exc:  # a settings folder that can't be written stops nothing
+        click.echo(f"warning: couldn't record {name} as your current scenario: {exc}", err=True)
+        return
     _announce_current(name, previous)
 
 
