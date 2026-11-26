@@ -74,7 +74,7 @@ from zabob.retirement.sim.locks import BUILDER_SWITCH_ENV
 
 __all__ = [
     "DEFAULT_WINDOW", "ROLL_BRANCH", "SWITCH_ENV", "RollOutcome", "RollScheduleError",
-    "describe", "due", "due_scenarios", "enabled", "marked", "merge_pending", "parse_window",
+    "configured", "describe", "due", "due_scenarios", "enabled", "marked", "merge_pending", "parse_window",
     "read_state", "roll", "switched_off", "window_of",
 ]
 
@@ -103,11 +103,19 @@ def switched_off() -> bool:
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
+def configured(config: dict[str, Any] | None) -> bool:
+    """Whether a workspace with builder ``config`` was installed to roll scenarios,
+    and isn't switched off: as :func:`enabled`, whichever clone writes. What
+    it committed before another clone became the writer is merged while
+    this holds (#785)."""
+    return config is not None and bool(config.get("roll", True)) and not switched_off()
+
+
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` rolls scenarios."""
     # Another machine may be the one that writes for this data repo (#785).
-    return config is not None and bool(config.get("roll", True)) and not switched_off() \
-        and shared_writer.writes_here(config.get("data_dir"))
+    return config is not None and configured(config) \
+        and shared_writer.writes_here(config.get("data_dir"), config)
 
 
 # -- the window -------------------------------------------------------------------

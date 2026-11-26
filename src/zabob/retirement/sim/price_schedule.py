@@ -74,7 +74,8 @@ from zabob.retirement.sim import flock, shared_writer
 
 __all__ = [
     "CATCH_UP_ENV", "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
-    "catch_up", "catch_up_off", "describe", "due", "enabled", "fetch", "has_upstream", "install_timer",
+    "catch_up", "catch_up_if_due", "catch_up_off", "configured", "describe", "due", "enabled", "fetch",
+    "has_upstream", "install_timer",
     "last_close", "merge_pending", "read_state", "stale_held", "switched_off", "uninstall_timer",
 ]
 
@@ -118,11 +119,19 @@ def switched_off() -> bool:
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
+def configured(config: dict[str, Any] | None) -> bool:
+    """Whether a workspace with builder ``config`` was installed to fetch prices,
+    and isn't switched off: as :func:`enabled`, whichever clone writes. What
+    it committed before another clone became the writer is merged while
+    this holds (#785)."""
+    return config is not None and bool(config.get("prices", True)) and not switched_off()
+
+
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` fetches prices."""
     # Another machine may be the one that writes for this data repo (#785).
-    return config is not None and bool(config.get("prices", True)) and not switched_off() \
-        and shared_writer.writes_here(config.get("data_dir"))
+    return config is not None and configured(config) \
+        and shared_writer.writes_here(config.get("data_dir"), config)
 
 
 def last_close(now: datetime) -> datetime:
@@ -675,6 +684,21 @@ def catch_up(data_dir: Path) -> list[str]:
         return [f"couldn't catch up with {name}: {said[0] if said else 'git merge failed'}"]
     return [f"caught up with {name} ({count} commit{'' if count == '1' else 's'})"]
 
+
+
+def catch_up_if_due(data_dir: Path) -> list[str]:
+    """:func:`catch_up`, when no daemon or timer of this data repo has in the
+    last :data:`CATCH_UP_SECONDS`: the time is kept in the shared state
+    (``caught_up``), so a daemon started by every commit and the hourly
+    tick fetch once an hour between them, not once each."""
+    if catch_up_off() or not has_upstream(data_dir):
+        return []
+    last = read_state(data_dir).get("caught_up")
+    if isinstance(last, (int, float)) and 0 <= clock.time() - last < CATCH_UP_SECONDS:
+        return []
+    # Recorded first, so another one starting meanwhile doesn't fetch too.
+    _update_state(_top(data_dir), caught_up=clock.time())
+    return catch_up(data_dir)
 
 # -- the timer -----------------------------------------------------------------------------
 

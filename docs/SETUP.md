@@ -262,8 +262,9 @@ When the data repo has more than one clone (another computer, another login,
 a container), only one builder fetches prices, rolls scenarios and researches
 symbols ([#785](https://github.com/BobKerns/zabob-retirement/issues/785)):
 the one `sim/.builder.toml` names, committed, so every clone agrees.
-`sim builder install` names its machine when the data repo has a remote and
-nothing is named yet. The others only build runs, and once an hour fetch
+`sim builder install` names its machine, and pushes that, when the data repo
+has a remote, nothing is named yet, and this install fetches, rolls or
+researches. The others only build runs, and once an hour fetch
 `origin` and fast-forward `main` when it is checked out and clean, so the
 prices, rolls and weights arrive without a `git pull`.
 `sim builder writer` says which machine it is; `--here` moves it to this one.
