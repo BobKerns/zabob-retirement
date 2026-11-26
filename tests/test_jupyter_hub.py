@@ -65,7 +65,7 @@ def test_shared_needs_a_data_repo_and_defaults_to_the_one_in_use(
     result = _sim("user", "add", "alice", "--shared", str(tmp_path))
     assert result.exit_code == 1
     assert "isn't a data repo" in result.output
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(data_repo_sim))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(data_repo_sim))
     result = _sim("user", "add", "alice", "--shared")
     assert result.exit_code == 0, result.output
     assert hub.read_users()["alice"].repo == data_repo_sim.parent.resolve()
@@ -119,7 +119,7 @@ def test_a_users_jupyterlab_works_on_their_data_repo(hub_logins: dict[str, Path]
     env, root, url = hub_config.spawn_environment(hub.HubUser("alice", hub.SHARED, repo))
     # Who they are and their data repo go in their own settings (#773), not
     # the environment, which would come before anything they choose later.
-    assert "ANALYSIS_DATA_DIR" not in env and "ANALYSIS_USER" not in env
+    assert "ZABOB_DATA_DIR" not in env and "ZABOB_USER" not in env
     assert env["ZABOB_HUB_LOGIN"] == "alice" and env["ZABOB_HUB_REPO"] == str(repo)
     assert (root, url) == (str(repo), "/lab/tree/notebooks")
 

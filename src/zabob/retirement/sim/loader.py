@@ -89,7 +89,7 @@ __all__ = [
 CURRENT_SCENARIO_FILE = ".current_scenario"
 # Set (non-empty), a command naming a scenario uses it without making it
 # current (#350): for an agent or script looking things up for the user.
-KEEP_SCENARIO_ENV = "ANALYSIS_KEEP_SCENARIO"
+KEEP_SCENARIO_ENV = "ZABOB_KEEP_SCENARIO"
 # In a scenario's folder: the scenario isn't built unless named (#300), as
 # for a mix-in or a base that only exists to be built on. Not inherited, and
 # left out of every data tree (provenance), so it changes no scenario's data.
@@ -255,7 +255,7 @@ def find_state_dir(data_dir: Path | str | None, default: Path | str) -> Path:
     """Resolve a data repo's ``state/intent`` or ``state/runs`` dir (ADR-004 §4).
 
     State lives beside the data dir, not inside it. Falls back to
-    ``user_config.data_dir_setting()`` (``$ANALYSIS_DATA_DIR``, the data repo the
+    ``user_config.data_dir_setting()`` (``$ZABOB_DATA_DIR``, the data repo the
     cwd is in, the user's default) and then to ``default`` relative to the cwd.
     """
     if data_dir is None:

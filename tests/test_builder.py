@@ -23,7 +23,7 @@ from zabob.retirement.sim.loader import write_current_scenario
 
 @pytest.fixture
 def builder_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANALYSIS_BUILDER", raising=False)
+    monkeypatch.delenv("ZABOB_BUILDER", raising=False)
 
 
 def test_builds_only_from_committed_code_matching_main(
@@ -143,7 +143,7 @@ def test_notify_starts_the_builder_only_where_installed(
     builder.install(data_dir)
     assert builder.notify(data_dir) == "started the background builder"
     assert started == [data_dir]
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     assert "off" in builder.notify(data_dir)
     assert started == [data_dir]
 
@@ -198,7 +198,7 @@ def test_on_windows_a_reader_builds_a_stale_run_itself(
         if argv[:len(sim)] != sim:
             return real_run(argv, **kwargs)  # git, finding the trees
         ran.append(argv)
-        assert kwargs["env"]["ANALYSIS_BUILDER"] == "off"
+        assert kwargs["env"]["ZABOB_BUILDER"] == "off"
         assert kwargs["env"][builder.BUILDER_CHILD_ENV] == "1"
         assert kwargs["stdout"] is not None  # not the reader's stdout
         return subprocess.CompletedProcess(argv, 1)
@@ -388,7 +388,7 @@ def test_readers_dont_wait_where_the_builder_is_off_or_not_installed(
     # of the scenario waits for, so it never waits on the builder.
     with locks.building():
         builder.await_fresh(paths.runs_dir, "base")
-    monkeypatch.setenv("ANALYSIS_BUILDER", "off")
+    monkeypatch.setenv("ZABOB_BUILDER", "off")
     builder.await_fresh(paths.runs_dir, "base")
 
 

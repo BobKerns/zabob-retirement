@@ -31,7 +31,7 @@ def session(new_user_env: dict[str, str]) -> dict[str, str]:
     the program's. On Windows the builder stays on, so its foreground
     builds (#748) are what is checked; elsewhere its daemon would outlive
     the test."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("ANALYSIS_") and k != "VIRTUAL_ENV"}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("ZABOB_", "ANALYSIS_")) and k != "VIRTUAL_ENV"}
     env.update(new_user_env)
     env["USERPROFILE"] = env["HOME"]  # Path.home() on Windows
     # Where `sim init` records the data repo (#687) and `sim login` the user (#773): the new user's.
@@ -39,7 +39,7 @@ def session(new_user_env: dict[str, str]) -> dict[str, str]:
     env["XDG_CONFIG_HOME"] = str(Path(env["HOME"]) / ".config")
     env["PATH"] = os.pathsep.join([str(BIN), env.get("PATH", "")])
     if not WINDOWS:
-        env["ANALYSIS_NO_BUILDER"] = "1"
+        env["ZABOB_NO_BUILDER"] = "1"
     return env
 
 

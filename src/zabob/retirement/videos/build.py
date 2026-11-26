@@ -44,7 +44,7 @@ from zabob.retirement.videos.script import Scene, Script, ScriptError
 from zabob.retirement.videos.theme import Theme
 
 # Where the videos' data repo is, for a tape whose script names no demo data.
-VIDEO_DATA_ENV = "ANALYSIS_VIDEO_DATA"
+VIDEO_DATA_ENV = "ZABOB_VIDEO_DATA"
 
 # A slide with no narration still stays up this long.
 MIN_SLIDE_SECONDS = 2.5
@@ -352,9 +352,9 @@ class _Builder:
     def tape_data(self) -> Path:
         """The data a tape starts from: front matter ``data``, else the videos' data repo.
 
-        That repo is ``$ANALYSIS_VIDEO_DATA`` (the video container mounts the
+        That repo is ``$ZABOB_VIDEO_DATA`` (the video container mounts the
         videos' data volume there). It is deliberately not
-        ``$ANALYSIS_DATA_DIR``, which in a planner's shell names the real data.
+        ``$ZABOB_DATA_DIR``, which in a planner's shell names the real data.
         """
         data_name = self.script.meta.get("data")
         if data_name:

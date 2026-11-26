@@ -31,7 +31,7 @@ template whole.
 
 ```text
 <data_repo>/
-    activate-analysis             # sourced shell script ([ADR-004](../docs/architecture/ADR-004-reproducibility-and-activation.md) §4)
+    activate-retirement             # sourced shell script ([ADR-004](../docs/architecture/ADR-004-reproducibility-and-activation.md) §4)
     .retention.yaml               # which old runs `sim load`/`sim run` prune ([ADR-004](../docs/architecture/ADR-004-reproducibility-and-activation.md) §10)
     persons.csv                   # household owners and those it leaves money to
     accounts.csv                  # chart of accounts
@@ -101,16 +101,16 @@ For annual items, set `month_of_year` (`1`-`12`) so payments land in the intende
 ## After editing
 
 ```sh
-source ./activate-analysis
+source ./activate-retirement
 sim check <scenario>              # lints; no run
 sim check --all                   # lints every scenario
 sim load <scenario>               # builds the intent cache
 sim run <scenario>                # produces a run file under state/runs/
 ```
 
-When sourced, `activate-analysis` will:
+When sourced, `activate-retirement` will:
 
-- Discover the analysis program repo from `$ANALYSIS_DATA_DIR/.analysis`.
+- Discover the analysis program repo from `$ZABOB_DATA_DIR/.analysis`.
 - Prompt for the repo path if missing/invalid, validate it, and persist it.
 - Ensure `.analysis`, `.current_scenario`, `.analysis_user` and `.retention.yaml` are ignored in the data repo's `.gitignore`,
   unless a line there comments one out (`# .retention.yaml`) or negates it (`!.retention.yaml`), to commit it.

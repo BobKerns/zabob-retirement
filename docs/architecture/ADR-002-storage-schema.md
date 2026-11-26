@@ -55,7 +55,7 @@ data_repo/
             ...             # a derived scenario names `parent_scenario` (plus any
                             # colon-separated mix-ins) in scenario.csv and ships
                             # only the files it overrides
-    activate-analysis
+    activate-retirement
 
 state/
     intent/

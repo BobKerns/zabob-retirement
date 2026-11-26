@@ -34,7 +34,7 @@ it, from any folder and in any new terminal, and `sim login` records your name
 on what you make and change. `sim switch` shows both, and your current
 scenario; `sim switch --data DIR` switches to another data repo, as does
 running a `sim` command inside one. In bash or zsh, `source
-~/zabob-retirement/sim/activate-analysis` adds the data repo and you to the
+~/zabob-retirement/sim/activate-retirement` adds the data repo and you to the
 prompt and turns on TAB completion of names; it's optional.
 
 `sim init` saves a first version with git: on macOS, if a window offers to
@@ -50,6 +50,13 @@ To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
+
+Upgrading past 1.0.0b1, the environment variables are `ZABOB_*` instead of
+`ANALYSIS_*`, and the data repo's `activate-analysis` is
+`activate-retirement` ([#782](https://github.com/BobKerns/zabob-retirement/issues/782)).
+A command run with an old name set stops and says what to do: in a shell
+that sourced the old script, it gives the two commands that replace it.
+Rename any of these variables you set yourself.
 
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
@@ -103,7 +110,7 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)): a command
   that shows a run whose data or code changed builds it first, so it may
   take a moment the first time.
-- There is no TAB completion of names, since `activate-analysis` is for bash
+- There is no TAB completion of names, since `activate-retirement` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
 - `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
@@ -111,7 +118,7 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   updates it). In an older one, or the plain console window, it saves the
   chart as a PNG, prints its path and opens it in your image viewer. If a
   current Windows Terminal saves a PNG anyway, set
-  `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
+  `ZABOB_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
 ### Windows: WSL
 
@@ -210,13 +217,13 @@ blank and it fills `data/private` with the template data instead, used as a
 Either way, this then gives you a working environment:
 
 ```sh
-source data/private/sim/activate-analysis
+source data/private/sim/activate-retirement
 ```
 
 A checkout's data repo is always found at its `data/private`. In a checkout
 that has none yet, `sim init` with no arguments makes one right there, and
 `sim init DIR` makes it at `DIR` and links `data/private` to it. Sourced
-through `data/private`, `activate-analysis` activates the code of the checkout
+through `data/private`, `activate-retirement` activates the code of the checkout
 you are in, so several worktrees can share one data repo and each run its
 own code. If you run `sim init` while another checkout's venv is active, it
 runs the `sim init` of the checkout you are in instead (making its `.venv`
@@ -230,7 +237,7 @@ scenario's run waits for a pending build of it. It builds only while the code
 is committed and matches your local `main` (or the branch
 `sim builder install BRANCH` names). Setup skips this under CI or an
 agent (`CI`, `CLAUDECODE`, `CLAUDE_CODE_REMOTE` or `AI_AGENT` set) or with
-`ANALYSIS_NO_BUILDER=1`; `sim builder install` turns it on later, and
+`ZABOB_NO_BUILDER=1`; `sim builder install` turns it on later, and
 `sim builder uninstall` off. `sim builder status` says what it's doing,
 and `sim builder log` what it did in the last hour (`-v` adds build output).
 
@@ -249,7 +256,7 @@ log` says why it didn't (run `git pull` on `main` when it lacks commits).
 that `origin` should live; never make the data repo public. `sim builder status` shows the last
 fetch, prices waiting to merge and why, and any symbol that keeps failing;
 `sim builder prices` fetches now. `sim builder install --no-prices`, or
-`ANALYSIS_PRICE_FETCH=off`, turns the fetches off.
+`ZABOB_PRICE_FETCH=off`, turns the fetches off.
 
 The same timer rolls forward, at night, each scenario marked to roll
 (`sim scenario edit NAME --roll monthly`; what is built on it too, after it,
@@ -257,7 +264,7 @@ unless marked `off`) once its start month is over, so
 its run picks up the month's prices: as `sim scenario roll --yes` would, on
 the `builder/roll` branch, merged into `main` the same way. Night is 01:00 to
 05:00 local time unless `sim builder install --roll-window HH:MM-HH:MM` says
-otherwise; `--no-roll`, or `ANALYSIS_ROLL=off`, turns it off. A roll into a
+otherwise; `--no-roll`, or `ZABOB_ROLL=off`, turns it off. A roll into a
 new year tags the plan before it `plan-<year>` rather than keeping a copy.
 `sim builder status` shows each roll, and one skipped or failed with why.
 Since it builds from your local `main`, not `origin/main`, `sim run` and
@@ -356,7 +363,7 @@ same format: one keyword per line, `#` comment lines and blank lines ignored.
   - the `BLOCKED_KEYWORDS_PRIVATE` environment variable, which may also
     separate keywords with commas where a value can't span lines;
   - a `blocked-keywords.txt` file at the top of the data repo, found through
-    `$ANALYSIS_DATA_DIR`, or else through `data/private` in the main checkout
+    `$ZABOB_DATA_DIR`, or else through `data/private` in the main checkout
     (so worktrees and hooks run from an editor find it too).
 
 Set the private list once in each place it is needed:
@@ -411,7 +418,7 @@ Terminal takes (and foot, xterm and others that say they do). Sixel images
 have at most 256 colors, which a chart barely notices. In any other terminal,
 including macOS Terminal and inside tmux, it writes the chart to a PNG file,
 prints its path, and opens it in your image viewer, unless you're connected
-over SSH. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
+over SSH. If it guesses your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to
 `kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
 open it even over SSH.
 

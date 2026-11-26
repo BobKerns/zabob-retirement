@@ -8,8 +8,8 @@ Python 3.14+, `uv`, `src/` layout, single top-level project (no nested repos).
 
 Code lives here. **Data lives in a separate git repository**, with the
 simulator's inputs under its `sim/` subtree. Commands find it via an explicit
-`--data-dir`, `$ANALYSIS_DATA_DIR` (set by sourcing the data repo's
-`activate-analysis`), the data repo the working folder is in, or the user's
+`--data-dir`, `$ZABOB_DATA_DIR` (set by sourcing the data repo's
+`activate-retirement`), the data repo the working folder is in, or the user's
 own (`sim init` records it, `sim switch --data` or a command run in another
 changes it; `user_config.py`). `sim login` records who the user is. Nothing in `data/`, `out/`, or `state/` here is tracked.
 

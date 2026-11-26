@@ -3,12 +3,12 @@
 repo's current scenario.
 
 A command takes its data repo from, in order: its ``--data-dir``,
-``$ANALYSIS_DATA_DIR``, the data repo the working folder is in
+``$ZABOB_DATA_DIR``, the data repo the working folder is in
 (``local_data_dir``), and the one recorded here (``default_data_dir``). The
 ``sim`` commands record a data repo the working folder is in as they find it,
 saying so (``sim.cli``), so the last two agree after any command run there;
 notebooks use it without recording it. Who the user is comes from
-``$ANALYSIS_USER``, else ``sim login`` (``current_user``): a free name, for
+``$ZABOB_USER``, else ``sim login`` (``current_user``): a free name, for
 attribution only, defaulting to the login name.
 
 The files are plain text, one value each, so a shell prompt can read them,
@@ -197,18 +197,18 @@ def local_data_dir(start: Path | None = None) -> Path | None:
 
 
 def data_dir_setting() -> str | None:
-    """The data dir a command uses when not given one: ``$ANALYSIS_DATA_DIR``,
+    """The data dir a command uses when not given one: ``$ZABOB_DATA_DIR``,
     else the data repo the working folder is in, else the recorded one."""
-    if env := os.environ.get("ANALYSIS_DATA_DIR"):
+    if env := os.environ.get("ZABOB_DATA_DIR"):
         return env
     found = local_data_dir() or default_data_dir()
     return str(found) if found is not None else None
 
 
 def current_user(data_dir: Path | str | None = None) -> str | None:  # noqa: ARG001 - callers pass theirs
-    """``$ANALYSIS_USER``, else who `sim login` recorded; None before either.
+    """``$ZABOB_USER``, else who `sim login` recorded; None before either.
     The same in every data repo (#773): it names who did something, not a
     person of the household's model."""
-    if user := os.environ.get("ANALYSIS_USER", "").strip():
+    if user := os.environ.get("ZABOB_USER", "").strip():
         return user
     return user_name()

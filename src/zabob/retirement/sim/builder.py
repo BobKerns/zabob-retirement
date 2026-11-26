@@ -23,7 +23,7 @@ Rules (Bob, #300):
   needs it starts it.
 - It is opt-in per workspace (``sim builder install``, which
   ``scripts/setup.sh`` runs except under CI or an agent), and
-  ``ANALYSIS_BUILDER=off`` turns it off entirely.
+  ``ZABOB_BUILDER=off`` turns it off entirely.
 
 Its work is jobs, a scenario and a step (#454): ``run`` (``sim load``: the
 scenario's run, or its Monte Carlo batch), then for an ensemble ``series``
@@ -200,7 +200,7 @@ NO_DAEMON = ("background builds aren't available on Windows yet (#748): "
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_BUILDER=off`` (or 0/no/false): no daemon, no waiting."""
+    """``ZABOB_BUILDER=off`` (or 0/no/false): no daemon, no waiting."""
     return os.environ.get(BUILDER_SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 

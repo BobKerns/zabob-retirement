@@ -94,7 +94,7 @@ def _use_docker(where: str | None) -> bool:
 def _docker(args: list[str], out: Path | None = None) -> int:
     env = dict(os.environ)
     if out is not None:
-        env["ANALYSIS_VIDEO_OUT"] = str(out.resolve())
+        env["ZABOB_VIDEO_OUT"] = str(out.resolve())
     script = _videos_root().parent.parent / "scripts" / "videos" / "docker.sh"
     return subprocess.run(["bash", str(script), *args], env=env, check=False).returncode
 

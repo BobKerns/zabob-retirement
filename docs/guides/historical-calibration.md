@@ -204,7 +204,7 @@ the series file with the rest of the history:
 ```sh
 sim ensemble create inflation_now retire_alice
 printf 'effective_date,annual_rate\n2025-01-31,2.5%%\n2026-09-30,3.6%%\n' \
-  > "$ANALYSIS_DATA_DIR/scenarios/inflation_now/series/inflation__cpi.csv"
+  > "$ZABOB_DATA_DIR/scenarios/inflation_now/series/inflation__cpi.csv"
 sim calendar add set-rate 2026-10-31 cpi 3.2 --aux-kind inflation \
   --scenario inflation_now --name cpi_now \
   --vary-target amount --vary-distribution truncated_normal \

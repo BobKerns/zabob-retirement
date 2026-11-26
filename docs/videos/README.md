@@ -116,7 +116,7 @@ file, the theme's terminal settings, and a hidden setup that:
 - copies the front matter's `data` folder (the prototype personas' data),
   or the videos' data repo, to a fresh, committed scratch folder, after
   the video's `setup.sh` (if any) has run in it, and points
-  `ANALYSIS_DATA_DIR` at it, so every recording starts from the same state;
+  `ZABOB_DATA_DIR` at it, so every recording starts from the same state;
 - installs the program as a user would (`uv tool install zabob-retirement`,
   as SETUP.md says), from a wheel built from this checkout, into `~/.local`
   of the demo's home folder, and puts that on `PATH`, not the checkout's
@@ -125,7 +125,7 @@ file, the theme's terminal settings, and a hidden setup that:
   zabob-retirement` typed in a tape (video 2) installs that wheel again,
   with `uv.lock`'s versions and this machine's uv cache, so it takes a
   moment and records the same each time;
-- sets `ANALYSIS_NO_BUILDER=1`, so a recorded `sim init` (video 2) doesn't
+- sets `ZABOB_NO_BUILDER=1`, so a recorded `sim init` (video 2) doesn't
   turn on background builds;
 - sets the prompt (`alice@home $`, from the theme).
 
@@ -162,7 +162,7 @@ A video that shows more than the prototype data's starting point (a
 scenario already run, an ensemble, an edit) keeps the commands that build it
 in `setup.sh`, beside its script. The builder runs it once, before the first
 tape records, with `bash -euo pipefail`, inside the fresh copy of the demo
-data, with the tapes' environment (`sim` on `PATH`, `ANALYSIS_DATA_DIR`
+data, with the tapes' environment (`sim` on `PATH`, `ZABOB_DATA_DIR`
 set). Whatever it leaves uncommitted is committed after it, under a fixed
 author and date. Every tape then starts from a copy of the result, its
 `state/runs` included, so `sim explain` in one scene doesn't need `sim run`
@@ -215,7 +215,7 @@ headless browser has none.
 
 Each recording runs JupyterLab on its own fresh copy of the prepared demo
 (its `setup.sh` included), with the notebooks copied in and
-`ANALYSIS_DATA_DIR` set, so a notebook sees the demo's runs and nothing
+`ZABOB_DATA_DIR` set, so a notebook sees the demo's runs and nothing
 else. JupyterLab shows the notebook alone, every cell drawn (so scrolling
 never shows a blank), with no news prompt. Chromium's screencast sends a
 frame whenever the page changes, at the video's full size; ffmpeg holds each
@@ -300,7 +300,7 @@ scene's narration is synthesized one sentence at a time, which also times
 the captions.
 
 `setup` downloads the model (about 330 MB) to `~/.cache/analysis-videos`
-(or `$ANALYSIS_VIDEO_CACHE`). The worker runs with `uv run --script` in its
+(or `$ZABOB_VIDEO_CACHE`). The worker runs with `uv run --script` in its
 own environment, so the project doesn't depend on it.
 
 `build --silent` replaces the voice with silence of about the right length:
@@ -437,7 +437,7 @@ scratch, pulling the newest base image and system packages;
 `docker volume rm analysis-videos-env` discards the Python environment, which
 the next run makes again.
 
-Videos and the build cache land in `out/videos` (or `$ANALYSIS_VIDEO_OUT`),
+Videos and the build cache land in `out/videos` (or `$ZABOB_VIDEO_OUT`),
 as in a native build.
 
 ### The videos' data repo
@@ -451,11 +451,11 @@ during one tape don't leak into the next.
 
 Create the repo from `shell` with `sim init /data --no-builder` (#289;
 the container has no background builds), which makes the
-simulator's tree at `/data/sim`; `ANALYSIS_DATA_DIR` is already `/data/sim`
+simulator's tree at `/data/sim`; `ZABOB_DATA_DIR` is already `/data/sim`
 there and `sim` is on `PATH`, so the CLI changes it as it would any data
 repo.
 `docker volume rm analysis-videos-data` discards it. Outside the container
-the same fallback reads `$ANALYSIS_VIDEO_DATA`, never `$ANALYSIS_DATA_DIR`,
+the same fallback reads `$ZABOB_VIDEO_DATA`, never `$ZABOB_DATA_DIR`,
 so a native build can't record the household's real data.
 
 ## Resolution
@@ -599,7 +599,7 @@ YouTube's limits (title length, no `<` or `>`, description size).
    only be used within its organization"). Then, under Clients, make an
    OAuth client of type **Desktop app**. Download its JSON as
    `~/.config/analysis-videos/client_secret.json` (or into
-   `$ANALYSIS_VIDEO_SECRETS`).
+   `$ZABOB_VIDEO_SECRETS`).
 3. The first `publish` opens a browser to sign in to the channel's account,
    and keeps the token in `token.json` beside the client file. Neither file
    goes in git. While the consent screen is in testing, Google ends a
