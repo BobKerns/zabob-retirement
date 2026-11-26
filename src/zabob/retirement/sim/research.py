@@ -774,6 +774,12 @@ def run_skill(
         raise ResearchError("'claude' isn't on PATH or in Claude Code's usual places; install Claude "
                             "Code (docs/guides/finance-research.md). For the background builder, run "
                             "`sim builder install` again from a shell where `claude` works.")
+    # One spelling of each folder, the long one, for everything the run is
+    # given (#800). %TEMP% is the 8.3 form (C:/Users/FIRST~1/...) when the
+    # profile folder has a space; a run started there reads and writes under
+    # it, and Claude Code's --restricted confinement, which goes by the long
+    # name, refuses each of those as outside the run's folders.
+    work_dir, plugin_dir = work_dir.resolve(), plugin_dir.resolve()
     command = claude_command(subject, key, plugin_dir, work_dir, executable, kind)
     start = time.monotonic()
     # stderr goes to a file: a pipe nobody reads until the end could fill and

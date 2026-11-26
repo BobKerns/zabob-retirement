@@ -561,6 +561,26 @@ def test_the_work_folder_is_writable_under_its_short_name_too(
     assert len(rules) == len(set(rules))
 
 
+def test_a_run_is_given_each_folder_by_its_long_name(
+    tmp_path: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: given %TEMP%'s 8.3 spelling, the run read and wrote under it,
+    and Claude Code's confinement, by the long name, refused it all. A
+    symlink stands in for the second spelling here."""
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "work").mkdir()
+    (tmp_path / "real" / "plugin").mkdir()
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    outcome = research.run_skill("ABCDX", "ABCDX", tmp_path / "alias" / "work", tmp_path / "alias" / "plugin",
+                                 progress=lambda _: None)
+    assert outcome.ok, outcome.message
+    args = fake_claude.read_text(encoding="utf-8").splitlines()
+    real = (tmp_path / "real").resolve()
+    assert args[args.index("--plugin-dir") + 1] == str(real / "plugin")
+    assert all("alias" not in a for a in args)
+    assert any((real / "work").iterdir())  # it ran in the folder itself
+
+
 def test_run_skill_stops_at_the_timeout(
     tmp_path: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
