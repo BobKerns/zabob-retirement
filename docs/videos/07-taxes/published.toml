@@ -5,9 +5,9 @@
 # the next publish finishes (#695).
 
 [en]
-video = "7723m6woAzI"
-uploaded = 2026-11-24T17:58:19Z
-snippet = "8b735c097ba24ee0"
+video = "drfDDXvaaa4"
+uploaded = 2026-11-26T18:06:26Z
+snippet = "71f0409c2db6e1b5"
 scenes = [
   ["title", 21.76],
   ["contents", 22.57],
@@ -19,18 +19,18 @@ scenes = [
   ["convert", 62.24],
   ["convert-results", 51.66],
   ["irmaa", 29.29],
-  ["irmaa-demo", 83.16],
-  ["medical", 59.92],
-  ["nb-tax", 36.23],
+  ["irmaa-demo", 83.64],
+  ["medical", 60.00],
+  ["nb-tax", 36.27],
   ["more", 24.15],
   ["ai", 16.47],
   ["end", 7.40],
 ]
 
 [ja]
-video = "y21AHed-NZ8"
-uploaded = 2026-11-24T17:58:39Z
-snippet = "260dc2e144cb8648"
+video = "NIOiiQMCHu8"
+uploaded = 2026-11-26T18:06:45Z
+snippet = "7ae67d3f52194392"
 scenes = [
   ["title", 26.13],
   ["contents", 22.70],
@@ -39,12 +39,12 @@ scenes = [
   ["report", 57.80],
   ["after-tax", 43.02],
   ["gap", 32.95],
-  ["convert", 62.24],
+  ["convert", 61.88],
   ["convert-results", 51.52],
   ["irmaa", 33.89],
-  ["irmaa-demo", 83.38],
-  ["medical", 59.92],
-  ["nb-tax", 36.23],
+  ["irmaa-demo", 83.96],
+  ["medical", 59.36],
+  ["nb-tax", 35.83],
   ["more", 28.61],
   ["ai", 18.32],
   ["end", 7.87],

@@ -1,9 +1,13 @@
 # What's on YouTube, written by `python -m zabob.retirement.videos publish` (#395).
 # scenes: each scene's length in seconds in the build that was uploaded.
+# snippet: a hash of the title, description and tags last sent, so an
+# unchanged one isn't sent again; pending: steps after the upload that
+# the next publish finishes (#695).
 
 [en]
 video = "KCmrMe1LztY"
 uploaded = 2026-11-23T14:14:58Z
+snippet = "17871e63aa47650c"
 scenes = [
   ["title", 14.35],
   ["skip", 29.64],
@@ -23,6 +27,7 @@ scenes = [
 [ja]
 video = "mF9CMkimH80"
 uploaded = 2026-11-23T14:15:14Z
+snippet = "71a383e1a27197d0"
 scenes = [
   ["title", 17.14],
   ["skip", 33.38],

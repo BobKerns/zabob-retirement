@@ -5,23 +5,23 @@
 # the next publish finishes (#695).
 
 [en]
-video = "-o72MmAH4fk"
-uploaded = 2026-11-24T18:00:13Z
-snippet = "ac53bbfb97746632"
+video = "0A80Lzhg7fU"
+uploaded = 2026-11-26T18:34:04Z
+snippet = "617311b4c3e3412c"
 scenes = [
   ["title", 16.23],
   ["contents", 20.97],
   ["lots", 33.17],
-  ["holdings", 30.96],
+  ["holdings", 31.56],
   ["symbol", 29.76],
-  ["invest", 28.96],
+  ["invest", 29.76],
   ["prices", 46.77],
   ["growth", 37.04],
-  ["allocation", 41.60],
+  ["allocation", 41.68],
   ["taxes", 55.12],
   ["gains", 37.36],
   ["location", 29.25],
-  ["roth-lots", 38.24],
+  ["roth-lots", 38.48],
   ["invest-roth", 40.84],
   ["location-table", 28.18],
   ["nb-accounts", 21.67],
@@ -30,26 +30,26 @@ scenes = [
 ]
 
 [ja]
-video = "OsUfKbGlXB4"
-uploaded = 2026-11-24T18:00:32Z
-snippet = "8342471da34d5198"
+video = "6B4Yz5DwhSE"
+uploaded = 2026-11-26T18:34:23Z
+snippet = "da3ce8a4fb3ae8cd"
 scenes = [
   ["title", 18.56],
   ["contents", 22.05],
   ["lots", 38.42],
-  ["holdings", 30.96],
+  ["holdings", 31.04],
   ["symbol", 36.97],
-  ["invest", 28.96],
+  ["invest", 29.36],
   ["prices", 48.92],
   ["growth", 41.46],
-  ["allocation", 41.60],
+  ["allocation", 41.56],
   ["taxes", 62.20],
   ["gains", 43.88],
   ["location", 33.80],
-  ["roth-lots", 38.24],
+  ["roth-lots", 38.40],
   ["invest-roth", 47.55],
   ["location-table", 30.33],
-  ["nb-accounts", 21.67],
+  ["nb-accounts", 21.77],
   ["ai", 25.41],
   ["end", 8.56],
 ]

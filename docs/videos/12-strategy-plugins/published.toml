@@ -5,22 +5,23 @@
 # the next publish finishes (#695).
 
 [en]
-video = "OhfOeNORB68"
-uploaded = 2026-11-23T20:21:52Z
-snippet = "b1b6a47e9365cfde"
+video = "kqZTiWXbPQI"
+uploaded = 2026-11-26T21:34:45Z
+snippet = "5e1158f1589e4444"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 13.73],
   ["contents", 14.74],
   ["recap", 26.39],
-  ["trips", 72.40],
+  ["trips", 71.56],
   ["where", 28.35],
   ["class", 31.44],
   ["year-start", 32.84],
   ["scale", 29.67],
   ["rules", 28.30],
-  ["check", 65.52],
+  ["check", 65.16],
   ["use", 27.99],
-  ["futures", 44.00],
+  ["futures", 43.76],
   ["compare", 38.61],
   ["lumpy", 26.07],
   ["tradeoff", 25.11],
@@ -30,26 +31,26 @@ scenes = [
 ]
 
 [ja]
-video = "rs4Ya5Dq6-Q"
-uploaded = 2026-11-11T19:04:19Z
-snippet = "dbfb354e45f1ccc9"
+video = "dKvEbKSG9RE"
+uploaded = 2026-11-25T11:35:33Z
+snippet = "3d4755b7679f0205"
 scenes = [
-  ["title", 15.82],
-  ["contents", 15.79],
-  ["recap", 27.82],
-  ["trips", 71.92],
-  ["where", 33.86],
-  ["class", 35.78],
-  ["year-start", 37.62],
-  ["scale", 33.40],
-  ["rules", 33.38],
-  ["check", 65.48],
-  ["use", 30.42],
-  ["futures", 43.96],
-  ["compare", 42.64],
-  ["lumpy", 30.34],
-  ["tradeoff", 31.36],
-  ["nb", 19.59],
-  ["ai", 16.58],
-  ["end", 10.83],
+  ["title", 16.39],
+  ["contents", 16.20],
+  ["recap", 28.76],
+  ["trips", 72.00],
+  ["where", 35.04],
+  ["class", 36.55],
+  ["year-start", 39.13],
+  ["scale", 34.38],
+  ["rules", 34.45],
+  ["check", 65.80],
+  ["use", 32.62],
+  ["futures", 44.72],
+  ["compare", 43.30],
+  ["lumpy", 30.71],
+  ["tradeoff", 31.38],
+  ["nb", 20.25],
+  ["ai", 17.82],
+  ["end", 10.72],
 ]
