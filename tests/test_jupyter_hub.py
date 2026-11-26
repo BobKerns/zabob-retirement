@@ -11,6 +11,7 @@ import pytest
 from click.testing import CliRunner, Result
 from traitlets.config import Config
 
+from zabob.retirement import user_config
 from zabob.retirement.cli import main
 from zabob.retirement.jupyter import hub, hub_config, singleuser
 
@@ -115,17 +116,39 @@ def test_the_config_follows_the_hub_folder(hub_logins: dict[str, Path], data_rep
 def test_a_users_jupyterlab_works_on_their_data_repo(hub_logins: dict[str, Path], data_repo_sim: Path) -> None:
     repo = data_repo_sim.parent
     env, root, url = hub_config.spawn_environment(hub.HubUser("alice", hub.SHARED, repo))
-    assert env["ANALYSIS_DATA_DIR"] == str(data_repo_sim)
-    assert env["ANALYSIS_USER"] == "alice"
+    # Who they are and their data repo go in their own settings (#773), not
+    # the environment, which would come before anything they choose later.
+    assert "ANALYSIS_DATA_DIR" not in env and "ANALYSIS_USER" not in env
+    assert env["ZABOB_HUB_LOGIN"] == "alice" and env["ZABOB_HUB_REPO"] == str(repo)
     assert (root, url) == (str(repo), "/lab/tree/notebooks")
 
     own = hub_logins["bill"] / "zabob-retirement"
     env, root, url = hub_config.spawn_environment(hub.HubUser("bill", hub.OWN, own))
-    assert "ANALYSIS_DATA_DIR" not in env  # nothing there yet: `sim init` in a terminal makes it
     assert (root, url) == (str(hub_logins["bill"]), "/lab/tree/zabob-retirement/notebooks")
     env, _root, _url = hub_config.spawn_environment(hub.HubUser("bill", hub.OWN, own, "file:///x"))
-    assert env["ANALYSIS_DATA_DIR"] == str(own / "sim")
     assert env["ZABOB_HUB_CLONE_URL"] == "file:///x"
+
+
+def test_the_first_spawn_records_who_they_are_and_their_data_repo(
+    hub_logins: dict[str, Path], data_repo_sim: Path,  # noqa: ARG001 - their homes
+) -> None:
+    (user_config.config_dir() / "user").unlink()
+    repo = data_repo_sim.parent
+    singleuser.prepare({"ZABOB_HUB_LOGIN": "alice", "ZABOB_HUB_REPO": str(repo)})
+    assert user_config.user_name() == "alice"
+    assert user_config.default_data_dir() == data_repo_sim.resolve()
+    # What they choose after is theirs: a later spawn leaves it.
+    user_config.set_user("Alice E.")
+    singleuser.prepare({"ZABOB_HUB_LOGIN": "alice", "ZABOB_HUB_REPO": str(repo)})
+    assert user_config.user_name() == "Alice E."
+
+
+def test_an_own_repo_not_made_yet_records_only_the_name(hub_logins: dict[str, Path]) -> None:
+    (user_config.config_dir() / "user").unlink()
+    own = hub_logins["bill"] / "zabob-retirement"
+    singleuser.prepare({"ZABOB_HUB_LOGIN": "bill", "ZABOB_HUB_REPO": str(own)})
+    assert user_config.user_name() == "bill"
+    assert user_config.default_data_dir() is None  # `sim init` in a terminal records it
 
 
 def test_an_own_repo_is_cloned_and_given_the_notebooks(
@@ -135,6 +158,7 @@ def test_an_own_repo_is_cloned_and_given_the_notebooks(
     singleuser.prepare({"ZABOB_HUB_REPO": str(own), "ZABOB_HUB_CLONE_URL": str(data_repo_origin)})
     assert (own / "sim" / "persons.csv").is_file()
     assert any((own / "notebooks").glob("*.ipynb"))
+    assert user_config.default_data_dir() == (own / "sim").resolve()
 
 
 def test_the_service_runs_the_hub_from_its_folder(hub_logins: dict[str, Path]) -> None:

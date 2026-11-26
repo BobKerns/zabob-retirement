@@ -88,7 +88,11 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    that enables and starts it.
 
 Each person then opens the hub's address, logs in with their own account on
-the machine, and lands in their data repo's notebooks.
+the machine, and lands in their data repo's notebooks. The first time, the
+hub records their login name and data repo in their own settings, as
+`sim login` and `sim switch --data` would, so a JupyterLab terminal's `sim`
+commands use the same data repo. Whatever they change there after, with
+`sim login NAME` or `sim switch --data DIR`, the hub leaves alone.
 
 ## A shared data repo needs shared permissions
 

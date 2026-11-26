@@ -31,17 +31,16 @@ class HouseholdAuthenticator(PAMAuthenticator):
 
 def spawn_environment(user: hub.HubUser) -> tuple[dict[str, str], str, str]:
     """For ``user``'s JupyterLab: its environment, the folder it serves, and
-    the page it opens on."""
-    env = {"ANALYSIS_USER": user.name, "ZABOB_HUB_REPO": str(user.repo)}
+    the page it opens on. Nothing here says who they are or which data repo
+    they use: ``singleuser.prepare`` records those in their own settings, as
+    `sim login` would (#773), so a terminal there and `sim switch` agree."""
+    env = {"ZABOB_HUB_LOGIN": user.name, "ZABOB_HUB_REPO": str(user.repo)}
     if user.url:
         env["ZABOB_HUB_CLONE_URL"] = user.url
     if user.data == hub.SHARED:
-        env["ANALYSIS_DATA_DIR"] = str(user.repo / "sim")
         return env, str(user.repo), "/lab/tree/notebooks"
     # Their own repo sits in their home, which is what they see: it may not
     # be cloned yet, or they make it with `sim init` in a terminal.
-    if (user.repo / "sim").is_dir() or user.url:
-        env["ANALYSIS_DATA_DIR"] = str(user.repo / "sim")
     return env, str(user.repo.parent), f"/lab/tree/{user.repo.name}/notebooks"
 
 
