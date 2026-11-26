@@ -9,8 +9,9 @@ Python 3.14+, `uv`, `src/` layout, single top-level project (no nested repos).
 Code lives here. **Data lives in a separate git repository**, with the
 simulator's inputs under its `sim/` subtree. Commands find it via an explicit
 `--data-dir`, `$ANALYSIS_DATA_DIR` (set by sourcing the data repo's
-`activate-analysis`), or the user's default data repo (`sim init` records it,
-`sim use` changes it; `user_config.py`). Nothing in `data/`, `out/`, or `state/` here is tracked.
+`activate-analysis`), the data repo the working folder is in, or the user's
+own (`sim init` records it, `sim switch --data` or a command run in another
+changes it; `user_config.py`). `sim login` records who the user is. Nothing in `data/`, `out/`, or `state/` here is tracked.
 
 Never edit the data repo to make code or tests pass. If scenario data looks
 wrong or stale, say so and let the user decide.

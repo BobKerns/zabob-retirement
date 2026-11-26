@@ -206,7 +206,7 @@ def test_current_scenario_file_drives_default_resolution(tmp_path: Path) -> None
     write_current_scenario(repo, "gone")
     with pytest.raises(LoadError) as ei:
         resolve_scenario_name(repo, None)
-    assert any("missing scenario" in issue for issue in ei.value.issues)
+    assert any("is missing" in issue for issue in ei.value.issues)
 
 
 def test_sole_scenario_wins_over_current_default(tmp_path: Path) -> None:

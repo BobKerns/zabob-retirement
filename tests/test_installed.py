@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 from zabob.retirement import resources
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
+from zabob.retirement.sim.loader import read_current_scenario
 
 _ALICE = ("--id", "alice", "--display", "Alice Example", "--birthdate", "1960-05-01",
           "--sex", "f", "--filing-status", "MFJ")
@@ -24,6 +25,7 @@ def _sim(*args: str) -> Result:
 
 
 def _activate(script: Path, program: Path, path: str, *, then: str = "") -> subprocess.CompletedProcess[str]:
+    # $ANALYSIS_USER stays empty: activate no longer sets it, `sim login` says who you are (#773).
     return subprocess.run(
         ["bash", "-c", f'source {script} && echo "$ANALYSIS_REPO_DIR|$ANALYSIS_USER|$PATH"{then}'],
         cwd=program.parent.parent, env={"PATH": path, "HOME": os.environ["HOME"]},
@@ -65,7 +67,7 @@ def test_init_example_makes_alice_and_bill_s_household(installed_program: Path, 
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         assert [row["id"] for row in csv.DictReader(fh)][:2] == ["alice", "bill"]
     assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
-    assert (sim / ".current_scenario").read_text(encoding="utf-8").strip() == "base"
+    assert read_current_scenario(sim) == "base"
     assert (sim / "scenarios" / "retire_alice").is_dir()
     assert "checking base: ok" in result.output
     assert (tmp_path / "try" / "notebooks" / "README.md").is_file()
@@ -90,7 +92,7 @@ def test_activate_puts_the_installed_program_first_and_deactivate_restores_path(
     done = _activate(script, installed_program, "/usr/bin:/bin",
                      then=' && deactivate-analysis && echo "$PATH"')
     assert done.stdout.splitlines() == [
-        f"installed:{installed_program}|alice|{installed_program}:/usr/bin:/bin", "/usr/bin:/bin"], done.stderr
+        f"installed:{installed_program}||{installed_program}:/usr/bin:/bin", "/usr/bin:/bin"], done.stderr
     assert "differs" not in done.stderr and "Enter ANALYSIS_REPO_DIR" not in done.stderr
 
 
@@ -116,7 +118,7 @@ def test_activate_finds_an_installed_program_through_the_sim_on_path(installed_p
     local.mkdir(parents=True)
     (local / "sim").symlink_to(installed_program / "sim")
     done = _activate(sim / "activate-analysis", installed_program, f"{local}:/usr/bin:/bin")
-    assert done.stdout.startswith(f"installed:{installed_program}|alice|"), done.stderr
+    assert done.stdout.startswith(f"installed:{installed_program}||"), done.stderr
     assert (sim / ".analysis").read_text(encoding="utf-8") == f"installed:{installed_program}\n"
 
 

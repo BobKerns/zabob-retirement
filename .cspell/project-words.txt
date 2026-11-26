@@ -255,6 +255,7 @@ linecap
 linespacing
 linestyle
 linthresh
+localoptions
 LOGNAME
 lognormal
 lookback
@@ -305,6 +306,7 @@ nextstrain
 NOCASE
 noconfirm
 nohup
+NOMATCH
 nonbusiness
 nonflat
 noninteractive
@@ -316,6 +318,7 @@ noto
 ntdll
 ntos
 NTSTATUS
+nullglob
 nunique
 OBBBA
 OFXHEADER

@@ -75,6 +75,7 @@ import pandas as pd
 import pytest
 
 from zabob.retirement import user_config
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
 from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
@@ -118,6 +119,11 @@ def _no_ambient_analysis_env(
     config = tmp_path_factory.mktemp("user-config")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
     monkeypatch.setenv("APPDATA", str(config))
+    # Logged in (#773), as the login name a command uses meanwhile, so no
+    # "Not logged in" note joins every command's output; a test of logging
+    # in removes it.
+    (config / "zabob-retirement").mkdir()
+    (config / "zabob-retirement" / "user").write_text(f"{login_name()}\n", encoding="utf-8")
     # Nor the data repo a test happens to run in: a checkout's own
     # data/private/sim. A test of that step passes `start` (see
     # tests/test_user_config.py) or changes into a data repo of its own.
@@ -287,6 +293,16 @@ def test_data_dir(tmp_path, prototype_data: Path) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(prototype_data, data_dir, dirs_exist_ok=True)
     return data_dir
+
+@pytest.fixture(scope="function")
+def other_data_repo(tmp_path: Path, prototype_data: Path) -> Path:
+    """A second private copy of the prototype data, as a data repo of its own
+    (``other/sim``, beside ``test_data_dir``): for what differs between data
+    repos, such as each one's current scenario (#773). Returns its data dir."""
+    data_dir = tmp_path / "other" / "sim"
+    shutil.copytree(prototype_data, data_dir)
+    return data_dir
+
 
 @pytest.fixture(scope="function")
 def old_aux_layout(test_data_dir: Path) -> list[Path]:

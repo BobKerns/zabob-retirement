@@ -549,6 +549,11 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
     _install_program(root)
     (root / "bin").mkdir()
     (root / "bin" / "python").symlink_to(sys.executable)
+    # Logged in as the demo's person (#773), so no "Not logged in" note joins
+    # every recorded command; a tape showing `sim login` changes it.
+    settings = root / "home" / ".config" / "zabob-retirement"
+    settings.mkdir(parents=True, exist_ok=True)
+    (settings / "user").write_text("alice\n", encoding="utf-8")
     term = theme.data["terminal"]
     accent = _rgb(theme.data["palette"]["accent"])
     rc = root / ".videorc"
@@ -567,8 +572,8 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
                 # A recorded `sim init` mustn't link this checkout's data/private
                 # or start background builds.
                 "export ANALYSIS_NO_BUILDER=1",
-                # A recorded `sim init` or `sim use` records its default data
-                # repo (#687) in the demo's home, not the recording user's.
+                # A recorded `sim init` or `sim switch --data` records its data
+                # repo (#687, #773) in the demo's home, not the recording user's.
                 f"export XDG_CONFIG_HOME={root / 'home' / '.config'}",
                 f"export APPDATA={root / 'home' / '.config'}",
                 # `sim chain show --graph` draws with the slides' Chromium, and
@@ -576,10 +581,10 @@ def _sandbox(data: Path, theme: Theme, root: Path) -> Path:
                 *([f"export ANALYSIS_CHROMIUM={chromium}"] if (chromium := chromium_path()) else []),
                 "export ANALYSIS_IMAGE_PROTOCOL=iterm",
                 "unset PROMPT_COMMAND HISTFILE",
-                # A build run from an activated shell (activate-analysis) passes
-                # its user, repo and venv down; in a tape they'd name a person the
-                # demo's persons.csv lacks (so activate-analysis asks who you
-                # are) and show the household's repo name in the prompt.
+                # A build run from an activated shell (activate-analysis) or a
+                # script passes its user, repo and venv down; in a tape they'd
+                # name someone other than the demo's person and show the
+                # household's repo name in the prompt.
                 "unset ANALYSIS_USER ANALYSIS_DATA_REPO_NAME ANALYSIS_REPO_DIR "
                 "VIRTUAL_ENV VIRTUAL_ENV_PROMPT",
                 # So uv puts a tool where it would for the user: in ~/.local.

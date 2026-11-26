@@ -20,12 +20,20 @@ Then make your data repo, the git repository of CSV files that holds your
 household:
 
 ```sh
-sim init        # in ~/zabob-retirement, asking who you are
+sim init        # in ~/zabob-retirement, asking about your household
 ```
 
-That's all: `sim init` makes it your default data repo, so every `sim`
-command finds it, from any folder and in any new terminal. `sim use DIR`
-switches to another. In bash or zsh, `source
+Then say who you are, by default your login name:
+
+```sh
+sim login       # or: sim login Alice
+```
+
+That's all: `sim init` makes it your data repo, so every `sim` command finds
+it, from any folder and in any new terminal, and `sim login` records your name
+on what you make and change. `sim switch` shows both, and your current
+scenario; `sim switch --data DIR` switches to another data repo, as does
+running a `sim` command inside one. In bash or zsh, `source
 ~/zabob-retirement/sim/activate-analysis` adds the data repo and you to the
 prompt and turns on TAB completion of names; it's optional.
 
@@ -192,7 +200,7 @@ verification gates do.
 Last, it links the data and code repositories together. It asks for the path to
 your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
-to create one there with `sim init`, which asks who you are. Leave the path
+to create one there with `sim init`, which asks about your household. Leave the path
 blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,

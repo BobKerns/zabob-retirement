@@ -71,9 +71,13 @@ def _refuse_unless_committable(root: Path) -> None:
 
 
 def operator(data_dir: Path) -> tuple[str, str]:
-    """``(id, display)`` of the person using this data repo: $ANALYSIS_USER,
-    else ``.analysis_user``, else $USER; display from persons.csv."""
-    person = os.environ.get("ANALYSIS_USER", "").strip()
+    """``(id, display)`` of whoever is using this data repo, for git's
+    committer: $ANALYSIS_USER or `sim login`'s name (#773), else the person
+    ``sim init`` made in ``.analysis_user``, else $USER; display from
+    persons.csv when it names one of them."""
+    from zabob.retirement.user_config import current_user
+
+    person = current_user() or ""
     if not person:
         try:
             person = (data_dir / ".analysis_user").read_text(encoding="utf-8").strip()
