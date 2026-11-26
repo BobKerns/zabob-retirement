@@ -138,7 +138,7 @@ from zabob.retirement.sim.loader import (
     KEEP_SCENARIO_ENV,
     calendar_row_key,
     roth_clock_year,
-    current_scenario_path,
+    clear_current_scenario,
     list_scenario_names,
     template_aux_copies,
     load_scenario,
@@ -146,6 +146,7 @@ from zabob.retirement.sim.loader import (
     find_state_dir,
     latest_run_path,
     read_current_scenario,
+    rename_current_scenario,
     read_disabled_scenarios,
     read_run_status,
     run_files,
@@ -607,8 +608,7 @@ def _resolve_scenario(
     except LoadError as exc:
         if defaulted:
             raise click.ClickException(
-                f"{current_scenario_path(data_dir)} names a missing scenario: {scenario!r}; "
-                "name one"
+                f"the current scenario, {scenario!r}, is missing; name one"
             ) from None
         raise click.ClickException("; ".join(exc.issues)) from None
     if defaulted:
@@ -18597,7 +18597,8 @@ def _rename_scenario(old: str | None, new: str | None, data_dir: Path | None, *,
         shutil.rmtree(leftover)
     _echo_renamed("scenario", old, new, changed)
     working_set.use(data, new)  # renaming a scenario is working on it (#322)
-    if rename.CURRENT_SCENARIO_FILE in changed:
+    # Outside the staged edit: the records are under state/, not the data dir.
+    if rename_current_scenario(data, old, new):
         _announce_current(new, old)
     runs = find_state_dir(data, DEFAULT_STATE_DIR) / DEFAULT_RUNS_DIR
     if latest_run_path(runs, old, wait=False) or (runs / old).is_dir():
@@ -19606,8 +19607,7 @@ def _delete_scenario(name: str | None, data_dir: Path | None, yes: bool, *, what
     shutil.rmtree(folder)
     click.echo(f"deleted scenario {name}")
     working_set.remove(data, name)
-    if read_current_scenario(data) == name:
-        current_scenario_path(data).unlink(missing_ok=True)
+    if clear_current_scenario(data, name):
         _announce_current(None, name)
     for path in mentions:
         click.echo(f"  {path.relative_to(data)} still mentions it")

@@ -16,6 +16,7 @@ import pytest
 
 from zabob.retirement.sim import builder, flock, freshness, locks, price_schedule, provenance
 from zabob.retirement.sim.builder import BuilderPaths
+from zabob.retirement.sim.loader import write_current_scenario
 
 
 
@@ -267,7 +268,7 @@ def _wait_until_done(d: builder._Daemon) -> None:
 
 
 def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "retire_alice")
     daemon.scan()
     assert daemon.queue[0] == "retire_alice" and "base" in daemon.queue
     assert daemon.state == "building"
@@ -279,7 +280,7 @@ def test_queue_puts_the_current_scenario_first(daemon: builder._Daemon) -> None:
 def test_queue_follows_the_working_set_then_runs_before_ensembles(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("base\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "base")
     daemon.paths.dir.mkdir(parents=True, exist_ok=True)
     daemon.paths.working_set.write_text("ens_b\nretire_alice\nbase\n", encoding="utf-8")
     (daemon.paths.runs_dir / "ens_a").mkdir(parents=True)
@@ -704,7 +705,7 @@ def test_jobs_are_named_for_their_scenario_and_step() -> None:
 def test_the_builder_runs_everything_then_series_stores_then_sensitivities(
     daemon: builder._Daemon,
 ) -> None:
-    (daemon.data_dir / ".current_scenario").write_text("b\n", encoding="utf-8")
+    write_current_scenario(daemon.data_dir, "b")
     queue = ["a:sensitivity", "b:series", "a", "b:sensitivity", "b", "a:series"]
     assert daemon.order(queue) == ["b", "a", "b:series", "a:series", "b:sensitivity", "a:sensitivity"]
 

@@ -16,7 +16,7 @@ import sqlite3
 import tempfile
 from collections import defaultdict
 from collections.abc import Callable, Collection, Generator, Iterable, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -69,6 +69,7 @@ from zabob.retirement.sim.readme import readme_description
 from zabob.retirement.sim.runs import insert_run_metadata
 from zabob.retirement.sim.schema import SCHEMA_VERSION, apply_run_schema, inserted_id, connect_sim_file
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.user_config import current_user, data_dir_setting
 
 __all__ = [
@@ -79,12 +80,15 @@ __all__ = [
     "batch_mode", "batch_recipe", "batches_dir", "ensemble_batches", "find_batch",
     "intent_batch_dir", "is_ensemble_batch", "latest_ensemble_batch",
     "latest_run_path", "list_scenario_names", "load_scenario", "open_intent_db",
-    "read_current_scenario", "read_disabled_scenarios", "resolve_scenario_name", "scenario_run_path", "find_state_dir",
+    "read_current_scenario", "clear_current_scenario", "rename_current_scenario",
+    "legacy_current_scenario_path", "read_disabled_scenarios", "resolve_scenario_name", "scenario_run_path",
+    "find_state_dir",
     "growth_rule_name",
     "set_scenario_enabled", "template_aux_copies", "write_current_scenario",
 ]
 
 CURRENT_SCENARIO_FILE = ".current_scenario"
+CURRENT_SCENARIO_NAME = "current_scenario"
 # Set (non-empty), a command naming a scenario uses it without making it
 # current (#350): for an agent or script looking things up for the user.
 KEEP_SCENARIO_ENV = "ANALYSIS_KEEP_SCENARIO"
@@ -178,13 +182,30 @@ class _MoneyReferenceResolver:
 
 
 def current_scenario_path(data_dir: Path | str) -> Path:
-    """Path of the file recording the data repo's most recently loaded scenario."""
+    """Path of the file recording this user's current scenario in a data repo
+    (#770): ``state/users/<login>/current_scenario`` beside the data dir, so
+    people sharing one checkout (a JupyterHub, #766) each keep their own."""
+    return _user_state_dir(data_dir) / _login_folder() / CURRENT_SCENARIO_NAME
+
+
+def legacy_current_scenario_path(data_dir: Path | str) -> Path:
+    """The data repo's ``.current_scenario``, shared by everyone using the
+    checkout: what versions before #770 wrote. It is still read, for a user
+    who has recorded nothing since, and kept up with renames and deletes."""
     return Path(data_dir) / CURRENT_SCENARIO_FILE
 
 
-def read_current_scenario(data_dir: Path | str) -> str | None:
-    """Return the recorded scenario name, or ``None`` if nothing is recorded."""
-    path = current_scenario_path(data_dir)
+def _user_state_dir(data_dir: Path | str) -> Path:
+    return find_state_dir(data_dir, DEFAULT_STATE_DIR) / "users"
+
+
+def _login_folder() -> str:
+    # A login name is a single path segment on every OS we know of; make sure.
+    name = re.sub(r"[^\w.-]", "_", login_name()).lstrip(".")
+    return name or "unknown"
+
+
+def _read_name(path: Path) -> str | None:
     try:
         name = path.read_text(encoding="utf-8").strip()
     except OSError:
@@ -192,9 +213,56 @@ def read_current_scenario(data_dir: Path | str) -> str | None:
     return name or None
 
 
+def read_current_scenario(data_dir: Path | str) -> str | None:
+    """Return this user's current scenario, or ``None`` if nothing is
+    recorded. A user with no file of their own gets the data repo's
+    ``.current_scenario``; an empty file of their own means none."""
+    path = current_scenario_path(data_dir)
+    if path.is_file():
+        return _read_name(path)
+    return _read_name(legacy_current_scenario_path(data_dir))
+
+
 def write_current_scenario(data_dir: Path | str, scenario: str) -> None:
-    """Record ``scenario`` as the data repo's current scenario."""
-    current_scenario_path(data_dir).write_text(f"{scenario}\n", encoding="utf-8")
+    """Record ``scenario`` as this user's current scenario."""
+    path = current_scenario_path(data_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{scenario}\n", encoding="utf-8")
+
+
+def clear_current_scenario(data_dir: Path | str, scenario: str) -> bool:
+    """Forget ``scenario`` wherever it is recorded as current, as when it is
+    deleted; returns whether it was this user's current scenario."""
+    was_current = read_current_scenario(data_dir) == scenario
+    _replace_current(data_dir, scenario, None)
+    return was_current
+
+
+def rename_current_scenario(data_dir: Path | str, old: str, new: str) -> bool:
+    """Follow a rename of scenario ``old`` to ``new`` in every user's record
+    and the shared ``.current_scenario``; returns whether ``old`` was this
+    user's current scenario."""
+    was_current = read_current_scenario(data_dir) == old
+    _replace_current(data_dir, old, new)
+    return was_current
+
+
+def _replace_current(data_dir: Path | str, old: str, new: str | None) -> None:
+    users = _user_state_dir(data_dir)
+    paths = [*sorted(users.glob(f"*/{CURRENT_SCENARIO_NAME}")), legacy_current_scenario_path(data_dir)]
+    for path in paths:
+        if path.is_symlink() or not path.is_file() or _read_name(path) != old:
+            continue
+        # Another user's file may not be ours to write, on a shared checkout;
+        # they get "names a missing scenario" and name one.
+        with suppress(OSError):
+            if new is not None:
+                path.write_text(f"{new}\n", encoding="utf-8")
+            elif path == paths[-1]:
+                path.unlink()
+            else:
+                # Empty, not removed, so the shared file doesn't come back.
+                path.write_text("", encoding="utf-8")
 
 
 def read_disabled_scenarios(data_dir: Path | str) -> frozenset[str]:
@@ -716,8 +784,7 @@ def _default_scenario_name(data_dir: Path, scenarios: Path, scenarios_dir: Path 
         if not _scenario_dir(scenarios_dir if scenarios_dir is not None else Path(data_dir) / "scenarios",
                              recorded).is_dir():
             raise LoadError([
-                f"{current_scenario_path(data_dir)} names a missing scenario: "
-                f"{recorded!r}"
+                f"the current scenario, {recorded!r}, is missing"
             ])
         return recorded
     subs = list_scenario_names(data_dir, scenarios_dir)

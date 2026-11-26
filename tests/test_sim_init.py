@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 from zabob.retirement import checkout
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
+from zabob.retirement.sim.loader import read_current_scenario
 
 
 @pytest.fixture(autouse=True)
@@ -123,7 +124,7 @@ def test_init_copies_what_the_household_edits_and_reads_the_rest_from_templates(
     # activate-analysis needn't ask for the code repo or the user.
     assert (sim / ".analysis").read_text(encoding="utf-8") == f"{code_repo}\n"
     assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
-    assert (sim / ".current_scenario").read_text(encoding="utf-8") == "base\n"
+    assert read_current_scenario(sim) == "base"
 
 
 def test_init_commits_everything_but_the_per_machine_files(tmp_path: Path) -> None:

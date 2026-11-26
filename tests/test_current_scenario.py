@@ -12,7 +12,13 @@ import pytest
 from click.testing import CliRunner, Result
 
 from zabob.retirement.cli import main
-from zabob.retirement.sim.loader import current_scenario_path, read_current_scenario
+from zabob.retirement.sim.loader import (
+    clear_current_scenario,
+    legacy_current_scenario_path,
+    read_current_scenario,
+    rename_current_scenario,
+    write_current_scenario,
+)
 
 
 def _sim(data_dir: Path, *args: str, input: str | None = None) -> Result:
@@ -63,7 +69,7 @@ def test_naming_another_scenario_announces_the_switch(test_data_dir: Path) -> No
 
 @pytest.mark.uses_current_scenario_write
 def test_a_switch_from_no_current_scenario_names_only_the_new_one(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).unlink()
+    write_current_scenario(test_data_dir, "")
 
     result = _sim(test_data_dir, "account", "list", "--scenario", "base")
 
@@ -73,7 +79,7 @@ def test_a_switch_from_no_current_scenario_names_only_the_new_one(test_data_dir:
 
 @pytest.mark.uses_current_scenario_write
 def test_a_new_scenarios_parent_does_not_become_current(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "base")
 
     result = _sim(test_data_dir, "scenario", "create", "late", "retire_alice")
 
@@ -94,7 +100,7 @@ def test_a_new_ensemble_announces_that_it_is_current(test_data_dir: Path) -> Non
 
 @pytest.mark.uses_current_scenario_write
 def test_renaming_another_scenario_leaves_the_current_one(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "base")
 
     result = _sim(test_data_dir, "scenario", "rename", "retire_alice", "retire_bill")
 
@@ -114,20 +120,20 @@ def test_without_a_current_scenario_a_command_asks_for_one(
 ) -> None:
     # The prototype data has two scenarios, but one of them is `base`, which
     # the notebooks still fall back to; the CLI must not.
-    current_scenario_path(test_data_dir).unlink()
+    write_current_scenario(test_data_dir, "")
 
     result = _sim(test_data_dir, *args, input="")
 
     assert result.exit_code == 2, result.output
     assert "no current scenario; name one (scenarios: base, retire_alice)" in result.stderr
-    assert not current_scenario_path(test_data_dir).exists()
+    assert read_current_scenario(test_data_dir) is None
 
 
 @pytest.mark.uses_current_scenario_write
 def test_a_guided_scenario_edit_makes_its_scenario_current_even_unchanged(
     test_data_dir: Path,
 ) -> None:
-    current_scenario_path(test_data_dir).unlink()
+    write_current_scenario(test_data_dir, "")
 
     # Picked at the prompt (`edit` is guided), then written with no change.
     _sim(test_data_dir, "scenario", "edit", input="base\n\n")
@@ -136,12 +142,12 @@ def test_a_guided_scenario_edit_makes_its_scenario_current_even_unchanged(
 
 
 def test_a_current_scenario_that_is_gone_is_named_as_such(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).write_text("gone\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "gone")
 
     result = _sim(test_data_dir, "account", "list")
 
     assert result.exit_code != 0
-    assert "names a missing scenario: 'gone'" in result.stderr
+    assert "the current scenario, 'gone', is missing; name one" in result.stderr
     assert "Using scenario" not in result.stderr
 
 
@@ -154,7 +160,7 @@ def test_switch_with_no_scenario_prints_the_current_one(test_data_dir: Path) -> 
 
 
 def test_switch_with_no_current_scenario_says_none(test_data_dir: Path) -> None:
-    current_scenario_path(test_data_dir).unlink()
+    write_current_scenario(test_data_dir, "")
 
     result = _sim(test_data_dir, "switch")
 
@@ -227,3 +233,44 @@ def test_with_keep_scenario_a_new_ensemble_is_not_made_current(
     assert result.exit_code == 0, result.output
     assert read_current_scenario(test_data_dir) == "retire_alice"
     assert "Current scenario" not in result.stderr
+
+
+# ---------- per user (#770) ----------
+
+def _as(monkeypatch: pytest.MonkeyPatch, login: str) -> None:
+    monkeypatch.setattr("zabob.retirement.sim.loader.login_name", lambda default="unknown": login)
+
+
+def test_each_login_keeps_its_own_current_scenario(test_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    legacy_current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
+    _as(monkeypatch, "alice")
+    assert read_current_scenario(test_data_dir) == "base"  # nothing of her own yet: the shared file
+    write_current_scenario(test_data_dir, "retire_alice")
+    _as(monkeypatch, "bill")
+    assert read_current_scenario(test_data_dir) == "base"
+    write_current_scenario(test_data_dir, "")
+    assert read_current_scenario(test_data_dir) is None  # his own "none" hides the shared file
+    _as(monkeypatch, "alice")
+    assert read_current_scenario(test_data_dir) == "retire_alice"
+    assert legacy_current_scenario_path(test_data_dir).read_text(encoding="utf-8") == "base\n"
+
+
+def test_a_rename_follows_every_login_and_a_delete_forgets_it(
+    test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    legacy_current_scenario_path(test_data_dir).write_text("retire_alice\n", encoding="utf-8")
+    _as(monkeypatch, "bill")
+    write_current_scenario(test_data_dir, "retire_alice")
+    _as(monkeypatch, "alice")
+    write_current_scenario(test_data_dir, "base")
+
+    assert not rename_current_scenario(test_data_dir, "retire_alice", "retire_early")
+    assert legacy_current_scenario_path(test_data_dir).read_text(encoding="utf-8") == "retire_early\n"
+    _as(monkeypatch, "bill")
+    assert read_current_scenario(test_data_dir) == "retire_early"
+
+    assert clear_current_scenario(test_data_dir, "retire_early")
+    assert read_current_scenario(test_data_dir) is None
+    assert not legacy_current_scenario_path(test_data_dir).exists()
+    _as(monkeypatch, "alice")
+    assert read_current_scenario(test_data_dir) == "base"

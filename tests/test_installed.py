@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 from zabob.retirement import resources
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
+from zabob.retirement.sim.loader import read_current_scenario
 
 _ALICE = ("--id", "alice", "--display", "Alice Example", "--birthdate", "1960-05-01",
           "--sex", "f", "--filing-status", "MFJ")
@@ -65,7 +66,7 @@ def test_init_example_makes_alice_and_bill_s_household(installed_program: Path, 
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         assert [row["id"] for row in csv.DictReader(fh)][:2] == ["alice", "bill"]
     assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
-    assert (sim / ".current_scenario").read_text(encoding="utf-8").strip() == "base"
+    assert read_current_scenario(sim) == "base"
     assert (sim / "scenarios" / "retire_alice").is_dir()
     assert "checking base: ok" in result.output
     assert (tmp_path / "try" / "notebooks" / "README.md").is_file()
