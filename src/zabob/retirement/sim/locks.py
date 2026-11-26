@@ -164,14 +164,10 @@ def lock_holder(intent_dir: Path, scenario: str) -> LockHolder | None:
 _held: dict[Path, list[int]] = {}
 
 
-def _holder(intent_dir: Path) -> str:
-    """Who holds a lock: the user of the data repo whose state this is (its
-    ``sim/`` beside ``state/``), not of the one the working folder or the
-    default names (#687)."""
-    data_dir = Path(intent_dir).resolve().parent.parent / "sim"
-    if (data_dir / "persons.csv").is_file():
-        return current_user(data_dir) or login_name()
-    return os.environ.get("ANALYSIS_USER", "").strip() or login_name()
+def _holder(intent_dir: Path) -> str:  # noqa: ARG001 - the user is the same in every data repo (#773)
+    """Who holds a lock: ``$ANALYSIS_USER`` or `sim login`'s name, else the
+    login name."""
+    return current_user() or login_name()
 
 
 @contextmanager

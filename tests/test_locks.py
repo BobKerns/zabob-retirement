@@ -145,10 +145,13 @@ def test_listing_ensembles_never_waits_for_their_builds(
     assert waited == ["base"]  # opening one does
 
 
-def test_a_lock_names_the_user_of_its_own_data_repo(data_repo_sim: Path) -> None:
-    """#687: the data repo the state belongs to, not the working folder's or
-    the default, says who holds it."""
-    (data_repo_sim / ".analysis_user").write_text("bill\n", encoding="utf-8")
+def test_a_lock_names_who_sim_login_says_the_user_is(data_repo_sim: Path) -> None:
+    """#773: who holds a lock is the logged-in user, the same in every data
+    repo; the person `sim init` chose (``.analysis_user``) no longer counts."""
+    from zabob.retirement import user_config
+
+    (data_repo_sim / ".analysis_user").write_text("alice\n", encoding="utf-8")
+    user_config.set_user("bill")
     intent_dir = data_repo_sim.parent / "state" / "intent"
     with locks.build_lock(intent_dir, "base"):
         holder = locks.lock_holder(intent_dir, "base")

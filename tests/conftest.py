@@ -75,6 +75,7 @@ import pandas as pd
 import pytest
 
 from zabob.retirement import user_config
+from zabob.retirement.oscompat import login_name
 from zabob.retirement.resources import CHECKOUT_DIR
 from zabob.retirement.sim import scenario
 from zabob.retirement.sim.connection import RunConnection, ScenarioConnection, open_scenario, open_run
@@ -119,6 +120,11 @@ def _no_ambient_analysis_env(
     config = tmp_path_factory.mktemp("user-config")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
     monkeypatch.setenv("APPDATA", str(config))
+    # Logged in (#773), as the login name a command uses meanwhile, so no
+    # "Not logged in" note joins every command's output; a test of logging
+    # in removes it.
+    (config / "zabob-retirement").mkdir()
+    (config / "zabob-retirement" / "user").write_text(f"{login_name()}\n", encoding="utf-8")
     # Nor the data repo a test happens to run in: a checkout's own
     # data/private/sim. A test of that step passes `start` (see
     # tests/test_user_config.py) or changes into a data repo of its own.
