@@ -160,6 +160,7 @@ flatnonzero
 fontsize
 footgun
 framealpha
+fromarray
 frombuffer
 FSKAX
 fstat
@@ -170,8 +171,10 @@ GAAP
 getbasetemp
 geteuid
 gethostname
+getpalette
 getpid
 getuid
+getwch
 Ghostty
 globenewswire
 gmtoffset
@@ -219,6 +222,7 @@ iterm
 ITLX
 Jefferies
 jupyterhub
+kbhit
 keepends
 kendalltau
 Kensho
@@ -237,6 +241,7 @@ labelleft
 labelrotation
 labelsize
 LABSTAT
+LANCZOS
 lastrowid
 lavfi
 LEDGERBAL
@@ -263,6 +268,7 @@ MARGINBALANCE
 markerfacecolor
 markersize
 mcolors
+MEDIANCUT
 Menlo
 metas
 MFINFO
@@ -444,6 +450,7 @@ SQQQ
 SRRC
 SRRCᵢ
 startangle
+startfile
 STARTPTS
 stcg
 stdlib
@@ -556,6 +563,7 @@ XOLD
 xlim
 xticklabels
 xticks
+XTWINOPS
 xytext
 XYZFD
 ydata
