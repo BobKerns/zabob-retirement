@@ -91,6 +91,8 @@ columnless
 commentable
 companyconcept
 companyfacts
+compdef
+compinit
 configfile
 conftest
 corpdev
@@ -499,6 +501,7 @@ tcgetattr
 TCSADRAIN
 TCSANOW
 tcsetattr
+tcsh
 tctronics
 Termius
 Testland
@@ -589,6 +592,7 @@ yscale
 yticklabels
 yticks
 zabob
+zdotdir
 Zeromatter
 zorder
 zpln

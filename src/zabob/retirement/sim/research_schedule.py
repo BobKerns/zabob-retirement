@@ -58,12 +58,12 @@ from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Any
 
-from zabob.retirement.sim import price_schedule
+from zabob.retirement.sim import price_schedule, shared_writer
 
 __all__ = [
     "RESEARCH_BRANCH", "START", "SWITCH_ENV", "TOLERANCE_MICROS", "CommitOutcome",
     "ResearchOutcome", "ResearchScheduleError", "Runner", "apply_weights", "candidates",
-    "commit_research", "describe", "due", "due_symbols", "enabled", "last_researched",
+    "commit_research", "configured", "describe", "due", "due_symbols", "enabled", "last_researched",
     "merge_pending", "read_state", "research", "switched_off", "weights_changed",
 ]
 
@@ -94,9 +94,19 @@ def switched_off() -> bool:
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
+def configured(config: dict[str, Any] | None) -> bool:
+    """Whether a workspace with builder ``config`` was installed to research symbols,
+    and isn't switched off: as :func:`enabled`, whichever clone writes. What
+    it committed before another clone became the writer is merged while
+    this holds (#785)."""
+    return config is not None and bool(config.get("research", True)) and not switched_off()
+
+
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` researches symbols."""
-    return config is not None and bool(config.get("research", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and configured(config) \
+        and shared_writer.writes_here(config.get("data_dir"), config)
 
 
 def read_state(data_dir: Path) -> dict[str, Any]:

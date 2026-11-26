@@ -38,6 +38,7 @@ from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
 from zabob.retirement.research_plugin import research_plugin_command
 from zabob.retirement.jupyter.cli import jupyter_group
+from zabob.retirement.sim import shell_completion  # registers PowerShell with click (#792)
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -345,7 +346,7 @@ def sim_group_command(ctx: click.Context) -> None:
     check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
-    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init"):
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
         return
     args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
     _follow_working_folder(args)
@@ -5962,6 +5963,51 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
 
 
 sim_group_command.add_command(jupyter_group)
+
+
+@sim_group_command.group(name="completion")
+def completion_group() -> None:
+    """TAB completion for sim in your shell: install, show (#792).
+
+    bash, zsh, fish and PowerShell. `sim completion install` sets it up once;
+    no need to source the data repo's activate-retirement.
+    """
+
+
+def _completion_shell(shell: str | None) -> str:
+    if shell is None and (shell := shell_completion.detect_shell()) is None:
+        raise click.UsageError(f"name the shell: {', '.join(shell_completion.SHELLS)}")
+    return shell
+
+
+_SHELL_ARGUMENT = click.argument("shell", type=click.Choice(shell_completion.SHELLS), required=False)
+
+
+@completion_group.command(name="install")
+@_SHELL_ARGUMENT
+def completion_install(shell: str | None) -> None:
+    """Set up TAB completion for sim in SHELL (default: yours).
+
+    Writes the completion script and adds a line to the shell's startup file
+    (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that reads it; fish needs
+    no line. Running it again rewrites the script and adds nothing twice.
+    """
+    shell = _completion_shell(shell)
+    for done in shell_completion.install(shell):
+        click.echo(f"wrote {_shown(done.script, resolve=False)}")
+        if done.startup_file is not None:
+            click.echo(f"added a line reading it to {_shown(done.startup_file, resolve=False)}")
+        if done.note:
+            click.echo(done.note)
+    click.echo(f"Open a new {shell} to use it.")
+
+
+@completion_group.command(name="show")
+@_SHELL_ARGUMENT
+def completion_show(shell: str | None) -> None:
+    """Print the TAB completion script for sim in SHELL (default: yours),
+    to put somewhere of your own choosing."""
+    click.echo(shell_completion.source(_completion_shell(shell)), nl=False)
 
 
 # Set for the `sim init` that one run from another checkout's venv starts,
@@ -22787,6 +22833,42 @@ _BUILDER_DATA_DIR = click.option(
 )
 
 
+@builder_group.command(name="writer")
+@click.option("--here", "here", is_flag=True, default=False,
+              help="Make this machine the one that writes (this login on this host).")
+@click.option("--machine", "machine", default=None, metavar="LOGIN@HOST",
+              help="Make another machine the one that writes, by the name its `sim builder writer` shows.")
+@click.option("--anyone", "anyone", is_flag=True, default=False,
+              help="Name no machine: every builder writes, as a lone clone does.")
+@_BUILDER_DATA_DIR
+def builder_writer(here: bool, machine: str | None, anyone: bool, data_dir: Path | None) -> None:
+    """Which machine's builder fetches prices, rolls scenarios forward and
+    researches symbols for this data repo (#785), or with an option, change
+    it. Every other clone's builder only builds runs and catches up with
+    origin. The choice is sim/.builder.toml, committed, so every clone
+    agrees once it has pulled.
+    """
+    from zabob.retirement.sim import shared_writer
+
+    if here + bool(machine) + anyone > 1:
+        raise click.UsageError("give one of --here, --machine and --anyone")
+    resolved = _builder_data_dir(data_dir)
+    me = shared_writer.machine(resolved)
+    if machine is not None and not shared_writer.valid(machine):
+        raise click.BadParameter(f"{machine!r} isn't LOGIN@HOST", param_hint="--machine")
+    if here or machine or anyone:
+        click.echo(shared_writer.set_writer(resolved, None if anyone else machine or me))
+        return
+    writer = shared_writer.read_writer(resolved)
+    if writer is None:
+        click.echo(f"no machine is named: every builder writes (this machine is {me})")
+    elif writer == me:
+        click.echo(f"this machine ({me}) writes for this data repo")
+    else:
+        click.echo(f"{writer} writes for this data repo; this machine ({me}) only builds runs "
+                   "(`sim builder writer --here` moves it here)")
+
+
 @builder_group.command(name="install")
 @click.argument("branch", required=False)
 @click.option("--prices/--no-prices", "fetch_prices", default=None,
@@ -22831,8 +22913,14 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
     weights are written as a new dated set only when some class moved more
     than 0.5 points from its latest set. A run takes several minutes and
     about 150k tokens on Claude Code's login.
+
+    Where the data repo is shared through a remote, only one machine does
+    these three (#785): the one sim/.builder.toml names, which this names
+    when no machine is named yet. The others only build runs, and catch up
+    with origin hourly to get what it pushed. `sim builder writer` changes
+    which machine it is.
     """
-    from zabob.retirement.sim import builder, price_schedule, roll_schedule
+    from zabob.retirement.sim import builder, price_schedule, roll_schedule, shared_writer
 
     resolved = _builder_data_dir(data_dir)
     if roll_window is not None:
@@ -22844,12 +22932,15 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         done = builder.install(resolved, branch, fetch_prices, roll, roll_window, research_daily)
     except ValueError as exc:
         raise click.ClickException(f"not a workspace pair: {exc}") from None
-    for line in done:
+    config = builder.read_config(builder.BuilderPaths.for_data(resolved)) or {}
+    for line in [*done, *shared_writer.claim(resolved, config)]:
         click.echo(line)
     # By the recorded choice alone: ZABOB_PRICE_FETCH=off is for one shell
     # (an agent's, a test's), so install_timer then leaves the timer as it is.
-    config = builder.read_config(builder.BuilderPaths.for_data(resolved)) or {}
-    if config.get("prices", True) or config.get("roll", True) or config.get("research", True):
+    # A clone that does none of the three still catches up with origin
+    # hourly (#785), which with no daemon running only the timer does.
+    if config.get("prices", True) or config.get("roll", True) or config.get("research", True) \
+            or price_schedule.has_upstream(resolved):
         click.echo(price_schedule.install_timer(resolved, _builder_sim(resolved)))
     elif line := price_schedule.uninstall_timer(resolved):
         click.echo(line)
@@ -22949,6 +23040,8 @@ def builder_prices(if_due: bool, data_dir: Path | None) -> None:
     if price_schedule.switched_off():
         click.echo(f"price fetches are off ({price_schedule.SWITCH_ENV}=off)")
         return
+    if _refuse_elsewhere(resolved, config, "fetches prices", quiet=if_due):
+        return
     if if_due and not (price_schedule.enabled(config) and price_schedule.due(
             price_schedule.read_state(resolved), datetime.now(UTC))):
         click.echo("no fetch due")
@@ -23003,6 +23096,8 @@ def builder_roll(if_due: bool, data_dir: Path | None) -> None:
     if roll_schedule.switched_off():
         click.echo(f"rolls are off ({roll_schedule.SWITCH_ENV}=off)")
         return
+    if _refuse_elsewhere(resolved, config, "rolls scenarios forward", quiet=if_due):
+        return
     if if_due and not roll_schedule.due(resolved, config, datetime.now(UTC)):
         click.echo("no roll due")
         return
@@ -23054,6 +23149,8 @@ def builder_research(symbol: str | None, if_due: bool, data_dir: Path | None) ->
     if research_schedule.switched_off():
         click.echo(f"research is off ({research_schedule.SWITCH_ENV}=off)")
         return
+    if _refuse_elsewhere(resolved, config, "researches symbols", quiet=if_due):
+        return
     if if_due and not research_schedule.due(resolved, config, datetime.now(UTC)):
         click.echo("no research due")
         return
@@ -23095,7 +23192,22 @@ def builder_tick(ctx: click.Context, data_dir: Path | None) -> None:
     """What the hourly timer runs: `sim builder prices --if-due`, then
     `sim builder roll --if-due`, then `sim builder research --if-due`. One
     that fails doesn't keep the next from its turn: it is reported, and the
-    tick fails, after the last."""
+    tick fails, after the last. First, when no daemon runs to do it, it
+    catches up with ``main``'s upstream (#785)."""
+    from zabob.retirement.sim import builder, price_schedule
+    from zabob.retirement.sim.builder_log import LogWriter
+
+    resolved = _builder_data_dir(data_dir)
+    paths = builder.BuilderPaths.for_data(resolved)
+    if builder.read_config(paths) is not None and not builder.daemon_alive(paths) and not builder.held(paths):
+        writer = LogWriter(paths.log_dir)
+        try:
+            lines = price_schedule.catch_up_if_due(resolved)
+        except (price_schedule.PriceScheduleError, OSError) as exc:
+            lines = [f"not caught up with origin: {exc}"]
+        for line in lines:
+            click.echo(line)
+            writer.event(line)
     failed: click.ClickException | None = None
     for step in (builder_prices, builder_roll, builder_research):
         try:
@@ -23202,11 +23314,42 @@ def builder_status(data_dir: Path | None) -> None:
     click.echo(f"log: {paths.log_dir} (sim builder log)")
 
 
+def _refuse_elsewhere(data_dir: Path, config: dict[str, Any], what: str, *, quiet: bool) -> bool:
+    """Stop a fetch, roll or research when another machine writes for the
+    data repo (#785): what it committed here would wait for good, and the
+    writer does it too. With ``quiet`` (``--if-due``, the timer's) it only
+    says so, and True means the command stops."""
+    from zabob.retirement.sim import shared_writer
+
+    if (other := shared_writer.elsewhere(data_dir, config)) is None:
+        return False
+    said = f"{other}'s builder {what} for this data repo; `sim builder writer --here` moves that here"
+    if quiet:
+        click.echo(f"not due here: {said}")
+        return True
+    raise click.ClickException(said)
+
+
 def _builder_schedules(config: dict[str, Any], data: Path) -> dict[str, list[str]]:
     """``builder status``'s lines on fetching prices, rolling and research,
     by schedule."""
-    from zabob.retirement.sim import price_schedule, research_schedule, roll_schedule
+    from zabob.retirement.sim import price_schedule, research_schedule, roll_schedule, shared_writer
 
+    named = shared_writer.read_writer(data)
+    writer = [] if named is None else [
+        f"writer: {named}{' (this machine)' if named == shared_writer.machine(data, config) else ''} "
+        "fetches, rolls and researches for this data repo (sim builder writer)"]
+    if (other := shared_writer.elsewhere(data, config)) is not None:
+        def waiting(what: str, schedule: Any) -> list[str]:
+            # Committed here before the writer moved: still merged (#785).
+            return [f"  {what} committed here before {other} wrote waits to merge into main"] \
+                if schedule.configured(config) and schedule.read_state(data).get("pending") else []
+
+        return {"writer": writer,
+                "prices": [f"prices: fetched by {other}'s builder; this one catches up with origin hourly",
+                           *waiting("a fetch", price_schedule)],
+                "roll": [f"roll: by {other}'s builder", *waiting("a roll", roll_schedule)],
+                "research": [f"research: by {other}'s builder", *waiting("research", research_schedule)]}
     if price_schedule.enabled(config):
         prices = list(price_schedule.describe(price_schedule.read_state(data), datetime.now(UTC)))
     elif price_schedule.switched_off():
@@ -23226,7 +23369,7 @@ def _builder_schedules(config: dict[str, Any], data: Path) -> dict[str, list[str
         research = [f"research: off ({research_schedule.SWITCH_ENV}=off)"]
     else:
         research = ["research: off (sim builder install --research to start)"]
-    return {"prices": prices, "roll": roll, "research": research}
+    return {"writer": writer, "prices": prices, "roll": roll, "research": research}
 
 
 @builder_group.command(name="log")
