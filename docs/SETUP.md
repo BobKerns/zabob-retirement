@@ -61,6 +61,10 @@ Rename any of these variables you set yourself.
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
 
+Video: [Setup and install](https://youtu.be/_-NY-h16hsk) walks through
+installing from PyPI, a new data repo, and saving your work
+([日本語](https://youtu.be/VSZ0j2qAJuI)).
+
 The rest of this page is for working from a clone of the code.
 
 ## Install with one line
@@ -84,10 +88,6 @@ it to another branch, which it says) and re-runs setup. Without a terminal,
 pass the answers as options, `... | sh -s -- --yes --id alice --display
 "Alice Example" --birthdate 1960-05-01 --filing-status MFJ`; the comment at
 the top of [`scripts/install.sh`](../scripts/install.sh) lists them all.
-
-Video: [Setup and install](https://youtu.be/qnug-0zzlqA) walks through the
-install, a new data repo, activating it, and saving your work
-([日本語](https://youtu.be/Eu0r0Hk1ghM)).
 
 ## Windows
 
