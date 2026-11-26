@@ -9,7 +9,6 @@ import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Any
 
 import git
 import pytest
@@ -147,85 +146,69 @@ def test_notify_starts_the_builder_only_where_installed(
     assert started == [data_dir]
 
 
-def test_on_windows_install_records_the_pair_without_hooks_or_timers(
+def test_on_windows_install_keeps_the_timers_and_installs_the_hooks(
     pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#687, #748: no daemon on Windows, so nothing it alone would run."""
+    """#748: Windows has the daemon, its timers and its hooks, as elsewhere."""
     _code, data_dir = pair
     monkeypatch.setattr(builder, "WINDOWS", True)
-    done = builder.install(data_dir, prices=True, roll=True, research=True)
+    builder.install(data_dir, prices=True, roll=True, research=True)
     config = builder.read_config(BuilderPaths.for_data(data_dir)) or {}
-    assert (config["prices"], config["roll"], config["research"]) == (False, False, False)
-    assert not (data_dir.parent / ".git" / "hooks" / "post-commit").exists()
-    assert done[-1] == builder.NO_DAEMON
+    assert (config["prices"], config["roll"], config["research"]) == (True, True, True)
+    assert builder._ours(data_dir.parent / ".git" / "hooks" / "post-commit")
 
 
-def test_on_windows_notify_starts_no_daemon(
+def test_on_windows_notify_starts_the_daemon(
     pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _code, data_dir = pair
     monkeypatch.setattr(builder, "WINDOWS", True)
-    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("spawned"))
+    started: list[Path] = []
+    monkeypatch.setattr(builder, "spawn_daemon", lambda _paths, d: started.append(d))
     builder.install(data_dir)
-    assert builder.notify(data_dir) == builder.NO_DAEMON
-    # Nor leaves a request for a daemon that isn't there to read.
-    requests = BuilderPaths.for_data(data_dir).dir / "requests"
-    assert not requests.exists() or not any(requests.iterdir())
+    assert builder.notify(data_dir) == "started the background builder"
+    assert started == [data_dir]
 
 
-def test_on_windows_a_reader_builds_a_stale_run_itself(
-    pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
+def test_on_windows_stopping_the_daemon_asks_it_rather_than_signals_it(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#687: with no daemon to wait for, the reader builds what is pending
-    in the foreground, so its results are as current as elsewhere: with the
-    pair's code, as a builder child, its output on stderr. A failure is
-    recorded as the daemon records one, so the next open doesn't rerun it."""
-    from zabob.retirement.sim.provenance import data_stamps
-
+    """#748: a signal on Windows ends a process outright, before the daemon
+    could cancel its build or record that it stopped."""
     _code, data_dir = pair
-    monkeypatch.setattr(builder, "WINDOWS", True)
-    monkeypatch.setattr(builder, "main_check", lambda *_a: (("t1",), None))
-    builder.install(data_dir)
     paths = BuilderPaths.for_data(data_dir)
-    job = builder.job_key("base", "run")
-    monkeypatch.setattr(builder, "_pending", lambda *_a: [job])
-    monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: pytest.fail("spawned"))
-    ran: list[list[str]] = []
-    real_run, sim = subprocess.run, builder._pair_sim(paths)
-
-    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        if argv[:len(sim)] != sim:
-            return real_run(argv, **kwargs)  # git, finding the trees
-        ran.append(argv)
-        assert kwargs["env"]["ANALYSIS_BUILDER"] == "off"
-        assert kwargs["env"][builder.BUILDER_CHILD_ENV] == "1"
-        assert kwargs["stdout"] is not None  # not the reader's stdout
-        return subprocess.CompletedProcess(argv, 1)
-    monkeypatch.setattr(builder.subprocess, "run", run)
-    lines: list[str] = []
-    builder.await_fresh(paths.runs_dir, "base", echo=lines.append)
-    assert ran == [[*sim, *builder.step_command(data_dir, "base", "run")]]
-    assert lines == ["building base first: its data or code changed",
-                     "base failed (exit 1; built in the foreground); opening its latest results, which may "
-                     "be out of date. It isn't built again until its data or code changes."]
-    failed = builder.read_status(paths)["failed"][job]
-    assert failed["key"] == [["t1"], data_stamps(data_dir, "base").tree_id]
-
-
-def test_on_windows_ctrl_c_during_a_foreground_build_opens_the_latest_results(
-    pair: tuple[Path, Path], builder_on: None, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _code, data_dir = pair
     monkeypatch.setattr(builder, "WINDOWS", True)
-    builder.install(data_dir)
-    monkeypatch.setattr(builder, "_pending", lambda *_a: [builder.job_key("base", "run")])
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    monkeypatch.setattr(builder.os, "kill", lambda *_a: pytest.fail("signalled"))
+    builder._write_json(paths.status, {"pid": 4321})
+    assert builder.stop_daemon(paths) == 4321
+    assert [r["kind"] for r in builder._drain_requests(paths)] == ["stop"]
 
-    def interrupted(*_a: Any, **_kw: Any) -> None:
-        raise KeyboardInterrupt
-    monkeypatch.setattr(builder, "_build_here", interrupted)
-    lines: list[str] = []
-    builder.await_fresh(BuilderPaths.for_data(data_dir).runs_dir, "base", echo=lines.append)
-    assert lines == ["stopped building base; opening its latest results, which may be out of date"]
+
+def test_stopping_a_daemon_that_is_not_running_does_nothing(pair: tuple[Path, Path]) -> None:
+    _code, data_dir = pair
+    paths = BuilderPaths.for_data(data_dir)
+    assert builder.stop_daemon(paths) is None
+    assert builder._drain_requests(paths) == []
+
+
+def test_a_stop_request_stops_the_daemon(daemon: builder._Daemon) -> None:
+    builder._request(daemon.paths, "stop")
+    assert daemon.run() == 0
+    assert builder.read_status(daemon.paths)["state"] == "stopped"
+
+
+def test_on_windows_a_daemon_whose_code_changed_starts_the_next_one(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: no execv on Windows, where it would only start a new process."""
+    monkeypatch.setattr(builder, "WINDOWS", True)
+    monkeypatch.setattr(builder.os, "execv", lambda *_a: pytest.fail("exec'd"))
+    started: list[Path] = []
+    monkeypatch.setattr(builder, "spawn_daemon", lambda _paths, d: started.append(d))
+    monkeypatch.setattr(daemon, "scan", lambda: setattr(daemon, "restart", True))
+    assert daemon.run() == 0
+    assert started == [daemon.data_dir]
 
 
 @pytest.fixture

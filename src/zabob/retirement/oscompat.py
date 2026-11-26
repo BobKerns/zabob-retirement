@@ -13,10 +13,61 @@ from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import Any
 
-__all__ = ["WINDOWS", "enable_vt_output", "is_link", "kill_tree", "link_dir", "login_name", "open_file", "pid_alive",
-           "remove_link", "start_tree", "utf8_stdio", "vt_console"]
+__all__ = ["BIN_DIR", "WINDOWS", "enable_vt_output", "is_link", "kill_tree", "link_dir", "login_name", "open_file",
+           "pid_alive", "program", "release_tree", "remove_link", "rerun_with_console", "start_detached", "start_tree",
+           "utf8_stdio", "vt_console"]
 
 WINDOWS = sys.platform == "win32"
+
+BIN_DIR = "Scripts" if WINDOWS else "bin"
+"""A virtual environment's folder of programs: ``.venv/bin``, or ``.venv\\Scripts``."""
+
+# Windows process creation flags (#748).
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def program(folder: Path, name: str) -> Path:
+    """The program ``name`` in ``folder`` (a venv's :data:`BIN_DIR`, say):
+    ``sim``, or on Windows ``sim.exe``."""
+    return folder / (f"{name}.exe" if WINDOWS else name)
+
+
+def start_detached(command: Sequence[str], **kwargs: Any) -> subprocess.Popen:
+    """``subprocess.Popen(command, **kwargs)`` for a process that outlives
+    whoever started it: its own session on POSIX. On Windows (#748) it gets
+    a console with no window, which what it starts shares (so no git or
+    build flashes one), its own process group (Ctrl+C in the terminal that
+    started it doesn't reach it), and leaves the starter's Job Object where
+    that allows it: a scheduled task's, or a :func:`start_tree` parent's,
+    would otherwise end it with them."""
+    if not WINDOWS:
+        return subprocess.Popen(command, start_new_session=True, **kwargs)
+    flags = kwargs.pop("creationflags", 0) | _CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP
+    try:
+        return subprocess.Popen(command, creationflags=flags | _CREATE_BREAKAWAY_FROM_JOB, **kwargs)
+    except PermissionError:
+        # A job that forbids breaking away: start it inside, as the best there is.
+        return subprocess.Popen(command, creationflags=flags, **kwargs)
+
+
+def rerun_with_console() -> None:
+    """On Windows, when this process is ``pythonw`` (no console, so
+    ``sys.stdout`` is None), run the same command again under ``python``
+    with a console that has no window, and exit with its status; otherwise
+    return. A scheduled task runs ``pythonw`` so no window opens each hour,
+    but every console program it started (git, a build) would open one of
+    its own; under a windowless console they share it instead (#748)."""
+    if not WINDOWS or sys.stdout is not None:
+        return
+    python = Path(sys.executable).with_name("python.exe")
+    if not python.exists():
+        return
+    done = subprocess.run([str(python), *sys.orig_argv[1:]], stdin=subprocess.DEVNULL,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          creationflags=_CREATE_NO_WINDOW, check=False)
+    raise SystemExit(done.returncode)
 
 
 def login_name(default: str = "unknown") -> str:
@@ -189,6 +240,15 @@ def kill_tree(proc: subprocess.Popen) -> None:
         os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+
+
+def release_tree(proc: subprocess.Popen) -> None:
+    """Once ``proc``, started by :func:`start_tree`, has exited on its own:
+    on Windows, close its Job Object, which ends anything of its still
+    running; elsewhere nothing. A long-lived starter (the builder's daemon)
+    would otherwise keep a handle per process it ever started."""
+    if WINDOWS and (job := _JOBS.pop(proc.pid, None)) is not None:
+        _kernel32().CloseHandle(job)
 
 
 def pid_alive(pid: int) -> bool:

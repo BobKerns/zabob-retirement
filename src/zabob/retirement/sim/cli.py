@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
-from zabob.retirement.oscompat import WINDOWS, is_link, link_dir, login_name, utf8_stdio
+from zabob.retirement.oscompat import BIN_DIR, WINDOWS, is_link, link_dir, login_name, program, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
 from zabob.retirement.research_plugin import research_plugin_command
@@ -5942,7 +5942,9 @@ def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
                "running that checkout's sim init, so the data repo is paired with it")
     # Another venv's VIRTUAL_ENV would have uv sync into that one.
     env = {name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"} | {_INIT_AGAIN: "1"}
-    its_sim = checkout / ".venv" / "bin" / "sim"
+    from zabob.retirement.resources import program_sim
+
+    its_sim = program_sim(str(checkout))
     if not its_sim.exists():
         if shutil.which("uv") is None:
             raise click.ClickException(
@@ -5952,7 +5954,7 @@ def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
             raise click.ClickException(f"uv sync failed in {_shown(checkout)}")
     if not its_sim.exists():
         raise click.ClickException(
-            f"{_shown(checkout)} has no .venv/bin/sim, even after uv sync: run scripts/setup.sh there")
+            f"{_shown(checkout)} has no .venv/{BIN_DIR}/{its_sim.name}, even after uv sync: run scripts/setup.sh there")
     try:
         raise SystemExit(subprocess.run([str(its_sim), "init", *args], env=env, check=False).returncode)
     except OSError as exc:
@@ -10971,7 +10973,7 @@ _LEFT_OUT = {
 def _sim_command() -> str:
     """The `sim` beside the running Python, for a script to run later: the
     PATH it is run with may have none, or another checkout's."""
-    beside = Path(sys.executable).parent / "sim"
+    beside = program(Path(sys.executable).parent, "sim")
     return str(beside) if beside.is_file() else shutil.which("sim") or "sim"
 
 
@@ -22752,7 +22754,6 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         click.echo(price_schedule.install_timer(resolved, _builder_sim(resolved)))
     elif line := price_schedule.uninstall_timer(resolved):
         click.echo(line)
-    # On Windows install has said there is no daemon already (#748).
     if (line := builder.notify(resolved)) not in done:
         click.echo(line)
 
@@ -22765,7 +22766,7 @@ def _builder_sim(data_dir: Path) -> Path:
 
     code = (builder.read_config(builder.BuilderPaths.for_data(data_dir)) or {}).get("code_dir")
     sim = program_sim(code) if code else None
-    return sim if sim is not None and sim.exists() else Path(sys.executable).parent / "sim"
+    return sim if sim is not None and sim.exists() else program(Path(sys.executable).parent, "sim")
 
 
 @builder_group.command(name="uninstall")
@@ -22808,17 +22809,10 @@ def builder_start(data_dir: Path | None) -> None:
 def builder_stop(data_dir: Path | None) -> None:
     """Stop the builder, cancelling the build in progress. The next commit
     or opened run starts it again."""
-    import signal as signals
-
     from zabob.retirement.sim import builder
 
-    paths = builder.BuilderPaths.for_data(_builder_data_dir(data_dir))
-    pid = builder.read_status(paths).get("pid")
-    if not builder.daemon_alive(paths) or not isinstance(pid, int):
-        click.echo("the builder isn't running")
-        return
-    os.kill(pid, signals.SIGTERM)
-    click.echo(f"stopping the builder (pid {pid})")
+    pid = builder.stop_daemon(builder.BuilderPaths.for_data(_builder_data_dir(data_dir)))
+    click.echo("the builder isn't running" if pid is None else f"stopping the builder (pid {pid})")
 
 
 @builder_group.command(name="run", hidden=True)

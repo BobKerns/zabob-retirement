@@ -65,7 +65,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from zabob.retirement.oscompat import WINDOWS, pid_alive
+from zabob.retirement.oscompat import WINDOWS, kill_tree, pid_alive, program, release_tree, start_detached, start_tree
 from zabob.retirement.resources import CHECKOUT_DIR, INSTALLED, home_checkout, program_home, program_sim, same_home
 from zabob.retirement.sim import builder_log, flock
 from zabob.retirement.sim.lineage import is_pool
@@ -189,14 +189,6 @@ def _sensitivity_options(data_dir: Path, scenario: str) -> list[str]:
     if not quantiles:
         return []
     return ["--quantiles", ",".join(repr(float(q)) for q in quantiles)]
-
-
-# Native Windows has no background daemon yet (#748): its process groups,
-# timers and open-file rules each need their own code. The pair is still
-# recorded, and a command about to open a stale run builds it first, in the
-# foreground (:func:`await_fresh`), so results are as current as elsewhere.
-NO_DAEMON = ("background builds aren't available on Windows yet (#748): "
-             "a command builds a stale run before it opens it")
 
 
 def switched_off() -> bool:
@@ -534,7 +526,7 @@ def _drain_requests(paths: BuilderPaths) -> list[dict[str, Any]]:
 
 
 def _sim_executable() -> list[str]:
-    sim = Path(sys.executable).parent / "sim"
+    sim = program(Path(sys.executable).parent, "sim")
     return [str(sim)] if sim.exists() else [sys.executable, "-m", "zabob.retirement", "sim"]
 
 
@@ -557,11 +549,16 @@ def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
     log = builder_log.file_for(paths.log_dir, datetime.now())
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "ab") as stderr:
-        subprocess.Popen(
+        _detach(start_detached(
             [*command, "builder", "run", "--data-dir", str(data_dir)],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr,
-            start_new_session=True, env=env, close_fds=True,
-        )
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=stderr, env=env, close_fds=True,
+        ))
+
+
+def _detach(process: subprocess.Popen[bytes]) -> None:
+    """Leave ``process`` running and never wait for it: a return code keeps
+    Popen from warning, when collected, that it still runs."""
+    process.returncode = 0
 
 
 def notify(data_dir: Path, *, start: bool = True) -> str:
@@ -573,9 +570,6 @@ def notify(data_dir: Path, *, start: bool = True) -> str:
     paths = BuilderPaths.for_data(data_dir)
     if read_config(paths) is None:
         return "background builds aren't installed here (sim builder install)"
-    if WINDOWS:
-        # Nothing would read a request (#748); a reader checks for itself.
-        return NO_DAEMON
     _request(paths, "rescan")
     if daemon_alive(paths):
         return "asked the background builder to look again"
@@ -917,10 +911,10 @@ class _Daemon:
         env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
         self.log(f"building {job}")
         self.paths.dir.mkdir(parents=True, exist_ok=True)
-        process = subprocess.Popen(
+        process = start_tree(
             [*_sim_executable(), *step_command(self.data_dir, name, step)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert process.stdout is not None
         # A thread, so a chatty build never blocks on a full pipe while the
@@ -944,6 +938,7 @@ class _Daemon:
             if self.fetch_reader is not None:
                 self.fetch_reader.join(timeout=5)
             code = self.fetcher.returncode
+            release_tree(self.fetcher)
             self.fetcher = self.fetch_reader = None
             self.fetch_ended = time.monotonic()
             self.log("fetched prices" if code == 0 else f"price fetch failed (exit {code})")
@@ -969,10 +964,10 @@ class _Daemon:
             return
         self.log("fetching prices")
         env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.fetcher = subprocess.Popen(
+        self.fetcher = start_tree(
             [*_sim_executable(), "builder", "prices", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.fetcher.stdout is not None
         self.fetch_reader = threading.Thread(target=self.writer.copy, args=(self.fetcher.stdout,),
@@ -991,6 +986,7 @@ class _Daemon:
             if self.roll_reader is not None:
                 self.roll_reader.join(timeout=5)
             code = self.roller.returncode
+            release_tree(self.roller)
             self.roller = self.roll_reader = None
             self.roll_ended = time.monotonic()
             self.log("rolled scenarios forward" if code == 0 else f"roll failed (exit {code})")
@@ -1017,10 +1013,10 @@ class _Daemon:
             return
         self.log("rolling scenarios forward")
         env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.roller = subprocess.Popen(
+        self.roller = start_tree(
             [*_sim_executable(), "builder", "roll", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.roller.stdout is not None
         self.roll_reader = threading.Thread(target=self.writer.copy, args=(self.roller.stdout,),
@@ -1039,6 +1035,7 @@ class _Daemon:
             if self.research_reader is not None:
                 self.research_reader.join(timeout=5)
             code = self.researcher.returncode
+            release_tree(self.researcher)
             self.researcher = self.research_reader = None
             self.research_ended = time.monotonic()
             self.log("researched a symbol" if code == 0 else f"research failed (exit {code})")
@@ -1065,10 +1062,10 @@ class _Daemon:
             return
         self.log("researching a symbol")
         env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-        self.researcher = subprocess.Popen(
+        self.researcher = start_tree(
             [*_sim_executable(), "builder", "research", "--if-due", "--data-dir", str(self.data_dir)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=True, env=env, close_fds=True,
+            env=env, close_fds=True,
         )
         assert self.researcher.stdout is not None
         self.research_reader = threading.Thread(target=self.writer.copy, args=(self.researcher.stdout,),
@@ -1081,6 +1078,7 @@ class _Daemon:
         if build is None or build.process.poll() is None:
             return False
         self.build = None
+        release_tree(build.process)
         build.drain()
         from zabob.retirement.sim.freshness import code_tree
 
@@ -1137,6 +1135,8 @@ class _Daemon:
             while not self.stopping and not self.restart:
                 for request in _drain_requests(self.paths):
                     rescan = True
+                    if request.get("kind") == "stop":
+                        self.stopping = True
                     if request.get("kind") == "first" and request.get("scenario"):
                         name = request["scenario"]
                         jobs = [job_key(name, step) for step in request.get("steps") or ("run",)
@@ -1176,6 +1176,11 @@ class _Daemon:
             self.log("restarting" if self.restart else "stopped")
             os.close(lock)  # frees the daemon lock for the next one
         if self.restart:
+            if WINDOWS:
+                # Windows's execv starts a new process and ends this one
+                # anyway, so start the next daemon as any other is (#748).
+                spawn_daemon(self.paths, self.data_dir)
+                return 0
             os.execv(sys.executable, [
                 sys.executable, "-m", "zabob.retirement", "sim", "builder", "run",
                 "--data-dir", str(self.data_dir),
@@ -1194,7 +1199,14 @@ def _took(seconds: float) -> str:
 
 
 def _kill(process: subprocess.Popen[bytes]) -> None:
-    """Stop a build and its workers (its own process group)."""
+    """Stop a build and its workers (its own process group). On Windows,
+    which has no SIGTERM to send, they are ended at once, Job Object and all
+    (#748); a build ended either way leaves only a reserved run name, which
+    readers skip, and its scenario's lock, freed as it exits."""
+    if WINDOWS:
+        kill_tree(process)
+        process.wait()
+        return
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -1279,12 +1291,6 @@ def await_fresh(
         return
     paths, data_dir, jobs = found
     echo = echo or (lambda text: print(text, file=sys.stderr))
-    if WINDOWS:
-        try:
-            _build_here(paths, data_dir, jobs, echo)
-        except KeyboardInterrupt:
-            echo(f"stopped building {scenario}; opening its latest results, which may be out of date")
-        return
     # Every step it reads, not only those pending now: one a pending job
     # turns up (a series store a run needs) is then waited on, so no other
     # reader's request preempts it.
@@ -1295,67 +1301,6 @@ def await_fresh(
         _wait(paths, scenario, jobs, made, echo, steps)
     except KeyboardInterrupt:
         echo(f"gave up waiting for {scenario}; opening its latest results, which may be out of date")
-
-
-def _build_here(paths: BuilderPaths, data_dir: Path, jobs: Sequence[str],
-                echo: Callable[[str], None]) -> None:
-    """Build ``jobs`` now, in this process's terminal, as the daemon would
-    (#748: no daemon on Windows): the pair's code, as a builder child, its
-    output on stderr so the reader's stdout stays the reader's. A failed one
-    is said and recorded as the daemon records it, so it isn't run again
-    until its data or code changes, and its latest results are opened."""
-    from zabob.retirement.sim.freshness import code_tree
-    from zabob.retirement.sim.provenance import data_stamps
-
-    env = {**os.environ, BUILDER_SWITCH_ENV: "off", BUILDER_CHILD_ENV: "1"}
-    config = read_config(paths) or {}
-    trees, _reason = main_check(config_branch(config), home_checkout(config.get("code_dir") or ""))
-    out = _stderr_fd()
-    for job in jobs:
-        name, step = parse_job(job)
-        echo(f"building {job} first: its data or code changed")
-        done = subprocess.run([*_pair_sim(paths), *step_command(data_dir, name, step)],
-                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE if out is None else out,
-                              env=env, check=False)
-        if out is None and done.stdout:
-            sys.stderr.write(done.stdout.decode("utf-8", "replace"))
-        code = done.returncode
-        # As in the daemon: an ensemble with failed members exits 0, yet is
-        # still to build, and would be built again on every open.
-        incomplete = code == 0 and step in needed_steps(data_dir, paths.runs_dir, name, code_tree())
-        if code == 0 and not incomplete:
-            _record_failure(paths, job, None)
-            continue
-        message = (f"exit {code}" if code else "built, but not every member succeeded") + \
-            "; built in the foreground"
-        if trees is not None:
-            _record_failure(paths, job, {"key": [list(trees), data_stamps(data_dir, name).tree_id],
-                                         "exit": code, "at": time.time(), "message": message})
-        echo(f"{job} failed ({message}); opening its latest results, which may be out of date. "
-             "It isn't built again until its data or code changes.")
-        return
-
-
-def _stderr_fd() -> int | None:
-    """stderr's file descriptor, or None where it has none (a test's runner)."""
-    try:
-        sys.stderr.flush()
-        return sys.stderr.fileno()
-    except (AttributeError, OSError, ValueError):
-        return None
-
-
-def _record_failure(paths: BuilderPaths, job: str, failure: dict[str, Any] | None) -> None:
-    """Record (or with None, clear) ``job``'s failure in the status file, where
-    the daemon keeps its own and :func:`_pending` looks."""
-    status = read_status(paths)
-    failed = dict(status.get("failed") or {})
-    if failure is None:
-        if failed.pop(job, None) is None:
-            return
-    else:
-        failed[job] = failure
-    _write_json(paths.status, {**status, "failed": failed})
 
 
 def build_pending(runs_dir: Path, scenario: str, mode: str | None = "monte_carlo") -> bool:
@@ -1534,9 +1479,15 @@ top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
 [ -f "$top/state/builder/config.json" ] || exit $status
 code="$(cat "$top/sim/.analysis" 2>/dev/null)" || exit $status
 case "$code" in
-    {INSTALLED}*) sim="${{code#{INSTALLED}}}/sim" ;;
-    *) sim="$code/.venv/bin/sim" ;;
+    {INSTALLED}*) dir="${{code#{INSTALLED}}}" ;;
+    *) dir="$code/.venv/bin" ;;
 esac
+# Git for Windows's sh: the Windows path sim/.analysis holds, as its own,
+# and a venv's programs in Scripts, as .exe (#748).
+if command -v cygpath >/dev/null 2>&1; then dir="$(cygpath -u "$dir")"; fi
+[ -d "$dir" ] || dir="${{dir%/bin}}/Scripts"
+sim="$dir/sim"
+[ -x "$sim" ] || sim="$dir/sim.exe"
 [ -x "$sim" ] || exit $status
 "$sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
 exit $status
@@ -1583,12 +1534,8 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     branch = branch or config_branch(before)
     prices = bool(before.get("prices", True)) if prices is None else prices
     roll = bool(before.get("roll", True)) if roll is None else roll
-    if WINDOWS:
-        # The fetch, roll and research timers are the daemon's (#748).
-        prices = roll = research = False
     roll_window = roll_window or str(before.get("roll_window") or roll_schedule.DEFAULT_WINDOW)
-    if not WINDOWS:
-        research = bool(before.get("research", True)) if research is None else research
+    research = bool(before.get("research", True)) if research is None else research
     from zabob.retirement.sim.research import find_claude
 
     # Found on this shell's PATH now, for the hourly timer, whose PATH lacks
@@ -1610,10 +1557,6 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         done.append(f"runs Claude Code at {claude}" if claude else
                     "can't find claude (Claude Code): research will fail until it's installed "
                     "and `sim builder install` is run again")
-    if WINDOWS:
-        # The hooks only poke the daemon; a reader checks for itself.
-        done.append(NO_DAEMON)
-        return done
     hooks.mkdir(parents=True, exist_ok=True)
     for name in HOOK_NAMES:
         hook = hooks / name
@@ -1630,18 +1573,29 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
     return done
 
 
+def stop_daemon(paths: BuilderPaths) -> int | None:
+    """Ask the workspace's daemon to stop, cancelling its build; its pid,
+    or None when none runs. SIGTERM on POSIX; on Windows a request it reads
+    within a tick, since a signal there would end it before it could cancel
+    its build or say it stopped (#748)."""
+    pid = read_status(paths).get("pid")
+    if not daemon_alive(paths) or not isinstance(pid, int):
+        return None
+    if WINDOWS:
+        _request(paths, "stop")
+        return pid
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return None
+    return pid
+
+
 def uninstall(data_dir: Path) -> list[str]:
     """Opt this workspace out. The data repo's hooks stay (other data
     worktrees may be opted in); without a config they do nothing."""
     paths = BuilderPaths.for_data(data_dir.resolve())
-    if daemon_alive(paths):
-        status = read_status(paths)
-        pid = status.get("pid")
-        if isinstance(pid, int):
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+    stop_daemon(paths)
     paths.config.unlink(missing_ok=True)
     done = [f"removed {paths.config}"]
     if paths.prices_worktree.exists():

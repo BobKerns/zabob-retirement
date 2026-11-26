@@ -365,6 +365,7 @@ pypi
 pytestmark
 PYTHONDONTWRITEBYTECODE
 PYTHONPYCACHEPREFIX
+pythonw
 QQQM
 QQQX
 QSBS
@@ -413,6 +414,7 @@ runfile
 safecrlf
 sandboxed
 scen
+schtasks
 sdir
 secho
 SECID

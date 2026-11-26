@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 import git
 import pytest
@@ -433,6 +434,48 @@ def test_install_on_macos_loads_an_hourly_launch_agent(
 
     assert price_schedule.uninstall_timer(tmp_path, run=_fake_run(calls, []), platform="darwin")
     assert not plist.exists()
+
+
+def test_install_on_windows_registers_an_hourly_task_run_by_pythonw(
+    tmp_path: Path, fetching: None,
+) -> None:
+    """#748: Task Scheduler, from an XML file (the command line is limited
+    to 261 characters), running the pythonw beside sim so no window opens."""
+    scripts = tmp_path / "zabob retirement" / "Scripts"
+    scripts.mkdir(parents=True)
+    sim, pythonw = scripts / "sim.exe", scripts / "pythonw.exe"
+    pythonw.touch()
+    tasks: dict[str, str] = {}
+
+    def run(args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        name = args[args.index("/TN") + 1]
+        if args[1] == "/Create":
+            tasks[name] = Path(args[args.index("/XML") + 1]).read_text(encoding="utf-16")
+        elif args[1] == "/Delete":
+            del tasks[name]
+        return subprocess.CompletedProcess(args, 0 if args[1] != "/Query" or name in tasks else 1, "", "")
+
+    line = price_schedule.install_timer(tmp_path, sim, run=run, platform="win32")
+    name = f"\\Zabob Retirement\\{price_schedule.timer_label(tmp_path)}"
+    assert name in line
+    task = ElementTree.fromstring(tasks[name].split("?>", 1)[1])
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    assert task.findtext("t:Actions/t:Exec/t:Command", namespaces=ns) == str(pythonw)
+    assert task.findtext("t:Actions/t:Exec/t:Arguments", namespaces=ns) == subprocess.list2cmdline(
+        ["-m", "zabob.retirement", "sim", "builder", "tick", "--data-dir", str(tmp_path.resolve())])
+    assert task.findtext("t:Triggers/t:TimeTrigger/t:Repetition/t:Interval", namespaces=ns) == "PT1H"
+    assert (task.findtext("t:Triggers/t:TimeTrigger/t:StartBoundary", namespaces=ns) or "").endswith(":07:00")
+    assert task.findtext("t:Principals/t:Principal/t:LogonType", namespaces=ns) == "InteractiveToken"
+    assert task.findtext("t:Settings/t:MultipleInstancesPolicy", namespaces=ns) == "IgnoreNew"
+
+    assert "removed" in (price_schedule.uninstall_timer(tmp_path, run=run, platform="win32") or "")
+    assert tasks == {}
+    assert price_schedule.uninstall_timer(tmp_path, run=run, platform="win32") is None
+
+
+def test_on_windows_without_pythonw_the_task_runs_sim_itself(tmp_path: Path) -> None:
+    sim = tmp_path / "sim.exe"
+    assert price_schedule._timer_command(sim, tmp_path, "win32")[0] == str(sim)
 
 
 def test_tests_never_fetch_or_install_a_timer(priced: tuple[Path, git.Repo]) -> None:

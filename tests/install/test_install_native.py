@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -28,9 +30,9 @@ WINDOWS = sys.platform == "win32"
 def session(new_user_env: dict[str, str]) -> dict[str, str]:
     """A new user's environment. The rest of this machine's (git and the
     system folders on PATH, SYSTEMROOT on Windows) stays, less anything of
-    the program's. On Windows the builder stays on, so its foreground
-    builds (#748) are what is checked; elsewhere its daemon would outlive
-    the test."""
+    the program's. On Windows the builder stays on, so its daemon (#748)
+    is checked too, without fetching, rolling or researching; elsewhere it
+    would outlive the test."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("ANALYSIS_") and k != "VIRTUAL_ENV"}
     env.update(new_user_env)
     env["USERPROFILE"] = env["HOME"]  # Path.home() on Windows
@@ -38,7 +40,9 @@ def session(new_user_env: dict[str, str]) -> dict[str, str]:
     env["APPDATA"] = str(Path(env["HOME"]) / "AppData" / "Roaming")
     env["XDG_CONFIG_HOME"] = str(Path(env["HOME"]) / ".config")
     env["PATH"] = os.pathsep.join([str(BIN), env.get("PATH", "")])
-    if not WINDOWS:
+    if WINDOWS:
+        env.update({"ANALYSIS_PRICE_FETCH": "off", "ANALYSIS_ROLL": "off", "ANALYSIS_RESEARCH": "off"})
+    else:
         env["ANALYSIS_NO_BUILDER"] = "1"
     return env
 
@@ -76,13 +80,51 @@ def test_a_scenario_runs_and_reports(session: dict[str, str], data_dir: Path) ->
     assert "2030" in _sim(session, "report", "income", "retire_alice")
 
 
-@pytest.mark.skipif(not WINDOWS, reason="the foreground build is Windows's (#748)")
-def test_a_changed_scenario_is_rebuilt_before_it_is_shown(session: dict[str, str], data_dir: Path) -> None:
+@pytest.mark.skipif(not WINDOWS, reason="elsewhere the daemon would outlive the test (#748)")
+def test_the_background_builder_rebuilds_a_changed_scenario(session: dict[str, str], data_dir: Path) -> None:
+    """The commit's hook (Git for Windows's sh) starts the daemon, which
+    builds base again; the networth waits for that build if it is still
+    going. Then `sim builder stop` ends the daemon, by a request it reads."""
     _sim(session, "run", "base")
     persons = data_dir / "persons.csv"
     persons.write_text(persons.read_text(encoding="utf-8").replace("1965-03-15", "1965-04-15"), encoding="utf-8")
     _sim(session, "commit", "base")
-    assert "building base first" in _sim(session, "networth", "base")
+    try:
+        _sim(session, "networth", "base")
+        assert _until(lambda: "built base" in _sim(session, "builder", "log")), _sim(session, "builder", "log")
+    finally:
+        _sim(session, "builder", "stop")
+        assert _until(lambda: "builder: not running" in _sim(session, "builder", "status"))
+
+
+def _until(check: Callable[[], bool], seconds: float = 120) -> bool:
+    """Whether ``check`` comes true within ``seconds``."""
+    deadline = time.monotonic() + seconds
+    while not check():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(1)
+    return True
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Task Scheduler is Windows's (#748)")
+def test_the_hourly_task_is_registered_and_removed(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A real Task Scheduler task, run by the pythonw beside sim so no
+    window opens each hour. Removed again: the runner is shared."""
+    from zabob.retirement.sim import price_schedule
+
+    monkeypatch.delenv(price_schedule.SWITCH_ENV, raising=False)
+    name = price_schedule._task_name(data_dir)
+    line = price_schedule.install_timer(data_dir, BIN / "sim.exe")
+    try:
+        assert "added the scheduled task" in line, line
+        task = subprocess.run(["schtasks", "/Query", "/TN", name, "/XML"], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", check=False)
+        assert task.returncode == 0, task.stderr
+        assert str(BIN / "pythonw.exe") in task.stdout
+    finally:
+        price_schedule.uninstall_timer(data_dir)
+    assert subprocess.run(["schtasks", "/Query", "/TN", name], capture_output=True, check=False).returncode
 
 
 def test_a_notebook_runs_headless(session: dict[str, str], data_dir: Path) -> None:
