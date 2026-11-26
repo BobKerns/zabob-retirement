@@ -618,7 +618,7 @@ def scenario_picker(
         repo's data/private/sim.
     default : str | None, optional
         The default scenario to select. If None, resolves using
-        $ANALYSIS_SCENARIO, .current_scenario, or "base".
+        $ANALYSIS_SCENARIO, the current scenario (ADR-004 §4a), or "base".
     scenarios_dir : Path | None, optional
         The directory containing scenario definitions. Defaults to None.
     runs_dir : Path | None, optional
@@ -660,7 +660,7 @@ def scenario_picker(
     data_dir = find_data_dir(data_dir)
     if default is None:
     # Same resolution the CLI uses: $ANALYSIS_SCENARIO, else the data repo's
-    # .current_scenario, else "current".
+    # the current scenario (ADR-004 §4a), else "current".
         default = resolve_scenario_name(
             data_dir, os.environ.get("ANALYSIS_SCENARIO") or None,
             scenarios_dir=scenarios_dir,
@@ -919,7 +919,7 @@ def multi_scenario_picker(
         repo's data/private/sim.
     default_baseline : str | None, optional
         The default baseline scenario to select. If None, resolves using
-        $ANALYSIS_SCENARIO, .current_scenario, or "current".
+        $ANALYSIS_SCENARIO, the current scenario (ADR-004 §4a), or "current".
     default_variants : list[str] | None, optional
         The default variant scenarios to select. If None, selects the first
         few available variants up to max_variants.
@@ -940,7 +940,7 @@ def multi_scenario_picker(
     data_dir = Path(data_dir)
     if default_baseline is None:
         # Same resolution the CLI uses: $ANALYSIS_SCENARIO, else the data repo's
-        # .current_scenario, else "current".
+        # the current scenario (ADR-004 §4a), else "current".
         default_baseline = resolve_scenario_name(
             data_dir, os.environ.get("ANALYSIS_SCENARIO") or None,
             intent_dir=intent_dir, runs_dir=runs_dir,

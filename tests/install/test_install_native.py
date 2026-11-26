@@ -34,7 +34,7 @@ def session(new_user_env: dict[str, str]) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("ANALYSIS_") and k != "VIRTUAL_ENV"}
     env.update(new_user_env)
     env["USERPROFILE"] = env["HOME"]  # Path.home() on Windows
-    # Where `sim init` records the default data repo (#687): the new user's.
+    # Where `sim init` records the data repo (#687) and `sim login` the user (#773): the new user's.
     env["APPDATA"] = str(Path(env["HOME"]) / "AppData" / "Roaming")
     env["XDG_CONFIG_HOME"] = str(Path(env["HOME"]) / ".config")
     env["PATH"] = os.pathsep.join([str(BIN), env.get("PATH", "")])
@@ -57,12 +57,20 @@ def _sim(env: dict[str, str], *args: str) -> str:
 def data_dir(session: dict[str, str]) -> Path:
     """``sim init --example``: the prototype household in ~/zabob-retirement."""
     out = _sim(session, "init", "--example")
-    assert "your default data repo" in out
+    assert "your data repo" in out
     return Path(session["HOME"]) / "zabob-retirement" / "sim"
 
 
 def test_init_stores_text_with_lf_line_endings(data_dir: Path) -> None:
     assert (data_dir.parent / ".gitattributes").read_text(encoding="utf-8") == "* text=auto\n"
+
+
+def test_a_new_user_is_asked_to_log_in(session: dict[str, str], data_dir: Path) -> None:
+    """`sim init` records the data repo, not who you are (#773)."""
+    assert "Not logged in: `sim login` says who you are" in _sim(session, "switch")
+    out = _sim(session, "login", "alice")
+    assert "User: alice" in out and "Current scenario: base" in out
+    assert "Not logged in" not in _sim(session, "switch")
 
 
 def test_every_scenario_loads(session: dict[str, str], data_dir: Path) -> None:
