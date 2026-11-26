@@ -251,7 +251,7 @@ flowchart LR
   roll -->|"sim scenario roll,<br/>nightly by the builder"| scenario_files
   market -->|"sim prices fetch,<br/>daily by the builder"| price_files
   research -->|"sim symbol research,<br/>one symbol each morning by the builder,<br/>each about monthly"| allocation_files
-  public -->|"analysis historical"| history
+  public -->|"sim historical"| history
   history -.->|calibrates| templates
 
   class people,exports,market,public,research out

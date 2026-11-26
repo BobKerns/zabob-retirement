@@ -139,10 +139,11 @@ def test_a_name_given_on_the_line_is_not_asked(sim: Callable[..., Result], test_
     assert "accounts: " not in result.output
 
 
-# Required params that aren't names a scenario defines: a date, and the
-# inputs of the importers, which are run from scripts.
+# Required params that aren't names a scenario defines: a date, the
+# inputs of the importers, which are run from scripts, and the public
+# series `sim historical` summarizes.
 _STILL_REQUIRED = {"sim import holdings files", "sim import budget file",
-                   "sim import budget from_account"}
+                   "sim import budget from_account", "sim historical series_specs"}
 
 
 def test_only_non_names_are_required() -> None:

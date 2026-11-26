@@ -259,7 +259,7 @@ under CI or an agent. Each run of the plugin browses the web for several
 minutes and uses around 150k tokens. Its settings (tab languages, tax
 state) come from the data repo's `research.yaml`, and setup says which it
 used; once installed, a re-run of setup updates it. Install or remove it by
-hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
+hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
 [the finance research guide](guides/finance-research.md).
 
 ## What the script does, step by step (for reference or manual setup)
@@ -325,7 +325,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     ```
 11. Optionally, install the finance-research Claude plugin:
     ```sh
-    .venv/bin/analysis research-plugin install --data-dir data/private/sim
+    .venv/bin/sim symbol research-plugin install --data-dir data/private/sim
     ```
 
 ## Blocked keywords

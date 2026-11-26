@@ -1,4 +1,4 @@
-"""``analysis historical``: summarize public price and return series for
+"""``sim historical``: summarize public price and return series for
 calibrating an ensemble's varying rates."""
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from zabob.retirement.historical.calibration import (
 @click.command(name="historical", epilog=(
     "Series sources: bls:ID (or a bare BLS id), bea:CODE, rcpie:COLUMN, damodaran:COLUMN, "
     "fred:ID, csv:PATH; see docs/guides/historical-calibration.md."))
-@click.argument("series", nargs=-1, required=True)
+# Not `series`: these are public series (SOURCE:ID), not a scenario's, so
+# the completion test's naming params mustn't take them for one.
+@click.argument("series_specs", nargs=-1, required=True, metavar="SERIES...")
 @click.option("--reference", help="Series to correlate with and measure the gap against (default: none).")
 @click.option("--period", "periods", multiple=True, metavar="NAME=FIRST-LAST",
               help="A period to summarize, by the years the annual rates end in; repeatable "
@@ -42,7 +44,7 @@ from zabob.retirement.historical.calibration import (
 @click.option("--contact", default=default_contact, show_default="git config user.email",
               help="Email for the User-Agent (BLS requires one); "
                    "$HISTORICAL_CALIBRATION_CONTACT overrides git's.")
-def historical_command(series: tuple[str, ...], reference: str | None, periods: tuple[str, ...],
+def historical_command(series_specs: tuple[str, ...], reference: str | None, periods: tuple[str, ...],
                        window: int, hold_years: int, basis: str, runs_above: float | None, fmt: str, cache: Path,
                        refresh: bool, contact: str | None) -> None:
     """Summarize public price and return series for calibrating rates.
@@ -56,12 +58,13 @@ def historical_command(series: tuple[str, ...], reference: str | None, periods: 
     if runs_above is not None and fmt == "csv":
         raise click.UsageError("--runs-above prints a Markdown table; it can't be combined with --format csv")
     try:
-        run(series, reference_arg=reference, period_args=periods, window=window, hold_years=hold_years, basis=basis,
-            runs_above_pct=runs_above, fmt=fmt, cache=cache, refresh=refresh, contact=contact)
+        run(series_specs, reference_arg=reference, period_args=periods, window=window, hold_years=hold_years,
+            basis=basis, runs_above_pct=runs_above, fmt=fmt, cache=cache, refresh=refresh, contact=contact)
     except DataError as exc:
         raise click.ClickException(str(exc)) from exc
 
 
+# Internal: it draws the guide's charts, so it stays under `analysis`.
 @click.command(name="historical-charts")
 @click.argument("out_dir", type=click.Path(file_okay=False, path_type=Path),
                 default="docs/guides/century-of-rates")

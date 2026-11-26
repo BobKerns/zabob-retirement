@@ -22,7 +22,7 @@ what is needed to ask:
 - `sim prices fetch` asks Yahoo Finance for the prices of the ticker symbols
   you name. Only the symbols leave your computer, not your holdings or
   balances.
-- `analysis historical` downloads public economic series from the U.S.
+- `sim historical` downloads public economic series from the U.S.
   Bureau of Labor Statistics, the Bureau of Economic Analysis, FRED and
   NYU Stern. The BLS refuses requests without contact details, so these
   requests carry the email address you give it (`--contact`, or your

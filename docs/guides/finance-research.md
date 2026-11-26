@@ -23,10 +23,10 @@ That's why the plugin is opt-in: nothing loads until you install it.
 ## Install it
 
 ```sh
-.venv/bin/analysis research-plugin install
+.venv/bin/sim symbol research-plugin install
 ```
 
-Installed with `uv tool install`, the command is `analysis research-plugin
+Installed with `uv tool install`, the command is `sim symbol research-plugin
 install`.
 
 `scripts/setup.sh` offers this once, defaulting to no, when `claude` is on
@@ -46,7 +46,7 @@ Then ask in Claude Code, from any folder: "tear sheet on ABCDX". To remove
 it:
 
 ```sh
-.venv/bin/analysis research-plugin uninstall
+.venv/bin/sim symbol research-plugin uninstall
 ```
 
 **Without the household settings.** The repo's own copy,
@@ -56,7 +56,7 @@ marketplace; once you trust the folder in Claude Code, `/plugin install
 finance-research@analysis` installs it. This is the copy a collaborator
 gets.
 
-**In claude.ai.** `analysis research-plugin render --skill-zips` also writes
+**In claude.ai.** `sim symbol research-plugin render --skill-zips` also writes
 `out/finance-research/skills/<skill>.skill`, one archive per skill, to
 upload in claude.ai's skill settings.
 
@@ -121,7 +121,7 @@ no rules file still works: the skill finds that state's rules itself.
 
 To change the skills' text, edit `skills/` directly. To change a defaults
 block, edit its template, then run
-`.venv/bin/analysis research-plugin render --neutral` to update the
+`.venv/bin/sim symbol research-plugin render --neutral` to update the
 committed block; a test fails until they match, and another fails if any
 Japanese text appears outside `overlays/`. To add a language, add
 `overlays/<code>/language.yaml` (its English name, its parent-tab label and
@@ -148,7 +148,7 @@ expect the settings in `evals/research.yaml` (Japanese tabs, California),
 so render with those first; `evals-neutral/` checks the neutral plugin:
 
 ```sh
-.venv/bin/analysis research-plugin render \
+.venv/bin/sim symbol research-plugin render \
   --config plugins/finance-research/evals/research.yaml --out out/finance-research-eval
 claude plugin eval out/finance-research-eval/finance-research
 claude plugin eval plugins/finance-research --eval-dir evals-neutral

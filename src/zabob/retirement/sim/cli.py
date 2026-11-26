@@ -34,6 +34,8 @@ import pandas as pd
 
 from zabob.retirement.oscompat import WINDOWS, is_link, link_dir, login_name, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
+from zabob.retirement.historical.cli import historical_command
+from zabob.retirement.research_plugin import research_plugin_command
 from zabob.retirement.amazon.notebook import load_monthly_summaries
 from zabob.retirement.expenses.baseline import (
     build_expense_baseline,
@@ -5888,6 +5890,9 @@ def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: st
     click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
     _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
     return sim
+
+
+sim_group_command.add_command(historical_command)  # #763
 
 
 @sim_group_command.group("notebooks")
@@ -17143,6 +17148,10 @@ def _fill_research_name(data: Path, symbol: str, name: str | None) -> None:
     no weights are written (#640); a name already there is never changed."""
     if name and prices.fill_names(data, {symbol: name}):
         click.echo(f"{symbol}: named {name!r} in securities.csv")
+
+
+# The plugin `sim symbol research` runs (#763).
+symbol_group_command.add_command(research_plugin_command)
 
 
 @symbol_group_command.command("list")

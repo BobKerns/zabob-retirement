@@ -282,7 +282,7 @@ if [ "${CI-}" ] || [ "${CLAUDECODE-}" ] || [ "${CLAUDE_CODE_REMOTE-}" ] \
     :
 elif claude plugin list 2>/dev/null | grep -q 'finance-research@finance-research-local'; then
     echo "Updating the finance-research Claude plugin..."
-    .venv/bin/analysis research-plugin install --data-dir data/private/sim || \
+    .venv/bin/sim symbol research-plugin install --data-dir data/private/sim || \
         echo "  (not updated; see the message above)" >&2
 elif [ -t 0 ]; then
     echo "The finance-research Claude plugin writes tear sheets on funds and"
@@ -292,11 +292,11 @@ elif [ -t 0 ]; then
     read -r answer || answer=""
     case $answer in
         [Yy]*)
-            .venv/bin/analysis research-plugin install --data-dir data/private/sim || \
+            .venv/bin/sim symbol research-plugin install --data-dir data/private/sim || \
                 echo "  (not installed; see the message above)" >&2
             ;;
         *)
-            echo "  Skipped; install it later with: .venv/bin/analysis research-plugin install"
+            echo "  Skipped; install it later with: .venv/bin/sim symbol research-plugin install"
             ;;
     esac
 fi
