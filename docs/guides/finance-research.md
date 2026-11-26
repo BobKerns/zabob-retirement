@@ -37,6 +37,11 @@ install`, to `zabob-retirement/finance-research/` in your data folder:
 `$XDG_DATA_HOME`, by default `~/.local/share`), and
 installs it for your user from there. It says which settings it used.
 
+Sign in to Claude Code first: run `claude` once and follow its sign-in.
+A run from `sim symbol research` asks you to sign in if you haven't, but
+the background builder's morning research runs with no one to ask, so
+those runs fail until you have.
+
 Claude Code reads the installed plugin in place, so don't delete that
 folder. After changing `research.yaml`, run the command
 again (setup does, once the plugin is installed) and start a new Claude Code
