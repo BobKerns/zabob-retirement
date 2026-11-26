@@ -33,7 +33,7 @@ template whole.
 <data_repo>/
     activate-analysis             # sourced shell script ([ADR-004](../docs/architecture/ADR-004-reproducibility-and-activation.md) §4)
     .retention.yaml               # which old runs `sim load`/`sim run` prune ([ADR-004](../docs/architecture/ADR-004-reproducibility-and-activation.md) §10)
-    persons.csv                   # household owners + operator identities ($ANALYSIS_USER)
+    persons.csv                   # household owners and those it leaves money to
     accounts.csv                  # chart of accounts
     itemizations/<name>.csv       # optional money rollups referenced as @<name>
     tables/<kind>[__<series>].csv    # tax-law aux tables; one per kind ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.4)
@@ -115,9 +115,8 @@ When sourced, `activate-analysis` will:
 - Ensure `.analysis`, `.current_scenario`, `.analysis_user` and `.retention.yaml` are ignored in the data repo's `.gitignore`,
   unless a line there comments one out (`# .retention.yaml`) or negates it (`!.retention.yaml`), to commit it.
 - Create `.venv` with `uv sync --group dev` if needed, then activate it.
-- Take `ANALYSIS_USER` from the environment or `.analysis_user`; if neither names a
-  person in `persons.csv`, list the `primary` persons and ask for an id or display
-  name, then remember it in `.analysis_user`.
+- Show the data repo, who you are (`sim login`) and your current scenario in
+  the prompt.
 - Enable shell completion for `analysis`, `amazon`, and `sim`.
 
 ## Editing rows

@@ -262,7 +262,7 @@ the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
 before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
 `$ANALYSIS_DATA_DIR` (which the data repo's `activate-analysis` sets), or
-your default data repo (`sim use`). TAB completion needs bash or zsh with
+the data repo `sim switch` shows. TAB completion needs bash or zsh with
 `activate-analysis` sourced.
 
 A command run without a name it needs asks for it, listing the choices,

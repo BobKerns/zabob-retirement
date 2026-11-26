@@ -49,7 +49,7 @@ class Server:
 
 def root() -> Path:
     """Where the notebooks and .mcp.json are: the code checkout's top, or,
-    installed (#662), the data repo's (the one `sim init`/`sim use`
+    installed (#662), the data repo's (the one `sim init`/`sim switch`
     recorded, or $ANALYSIS_DATA_DIR's), where `sim init` copied the
     notebooks."""
     from zabob.retirement.resources import CHECKOUT_DIR

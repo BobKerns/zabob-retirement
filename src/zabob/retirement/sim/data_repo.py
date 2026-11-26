@@ -166,8 +166,9 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     git, the pointers activate-analysis reads, and the first commit."""
     sim = root / "sim"
     (sim / ".gitignore").write_text("".join(f"{name}\n" for name in _IGNORED), encoding="utf-8")
-    # activate-analysis finds the program and the user from these, so it
-    # needn't ask for either.
+    # activate-analysis finds the program from .analysis. .analysis_user is
+    # the person the repo was made for: git's committer for its commits while
+    # nobody has said who they are with `sim login` (#773).
     home = str(CODE_REPO_DIR) if CODE_REPO_DIR is not None else program_home()
     (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8")
     (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8")

@@ -11,8 +11,9 @@ would leave any scenario unable to load is never written.
 
 A scenario itself is renamed with :func:`rename_scenario`: its folder, its
 ``scenario.csv`` name, every child's ``parent_scenario``, every pool's
-components (ADR-009), the data repo's ``.current_scenario``, and the links
-to it in the data repo's README files.
+components (ADR-009), and the links to it in the data repo's README files.
+The command follows it in the user's current scenario too
+(``loader.forget_current_scenario``), outside the staged edit.
 :func:`copy_scenario` makes a sibling copy under a new name (issue #295).
 """
 
@@ -32,7 +33,7 @@ from zabob.retirement.sim.dates import RelativeDate, parse_relative_date
 from zabob.retirement.sim.lineage import default_description, is_template, load_order, parse_parents
 from zabob.retirement.sim.lineage import TEMPLATE_AUX_DIR
 from zabob.retirement.sim.lineage import scenario_dir as _folder_of
-from zabob.retirement.sim.loader import CURRENT_SCENARIO_FILE, LoadError, load_scenario
+from zabob.retirement.sim.loader import LoadError, load_scenario
 from zabob.retirement.sim.schema import connect_sim_file
 
 __all__ = [
@@ -693,10 +694,6 @@ def rename_scenario(data_dir: Path, old: str, new: str) -> list[str]:
                     readme.write_text("\n".join(lines), encoding="utf-8")
                     if f"scenarios/{each}/README.md" not in changed:
                         changed.append(f"scenarios/{each}/README.md")
-    current = data_dir / CURRENT_SCENARIO_FILE
-    if current.is_file() and not current.is_symlink() and current.read_text(encoding="utf-8").strip() == old:
-        current.write_text(f"{new}\n", encoding="utf-8")
-        changed.append(CURRENT_SCENARIO_FILE)
     return changed
 
 
