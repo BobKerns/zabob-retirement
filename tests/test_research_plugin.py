@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from zabob.retirement import research_plugin as rp
@@ -195,6 +196,33 @@ def test_install_renders_then_installs_from_local_marketplace(tmp_path, monkeypa
         ["claude", "plugin", "marketplace", "add", str(out.resolve())],
         ["claude", "plugin", "install", f"{rp.PLUGIN_NAME}@{rp.LOCAL_MARKETPLACE}"],
     ]
+
+
+def test_the_default_config_is_neutral_and_names_every_setting():
+    """#798: commented out, it changes nothing, but shows every setting."""
+    assert rp.parse_config(rp.DEFAULT_CONFIG) == rp.NEUTRAL
+    settings = rp.DEFAULT_CONFIG.split("\n\n", 1)[1]  # past the opening note
+    uncommented = "\n".join(line.removeprefix("# ") for line in settings.splitlines())
+    assert set(yaml.safe_load(uncommented)) == {"languages", "tax_state", "tabs"}
+    assert set(yaml.safe_load(uncommented)["tabs"]) == set(rp.OPTIONAL_TABS)
+
+
+def test_install_gives_a_data_repo_without_settings_the_commented_ones(tmp_path, monkeypatch):
+    """#798: a repo made before sim init wrote one; one it has is kept."""
+    monkeypatch.setattr(rp.shutil, "which", lambda name: "/usr/bin/claude")
+    monkeypatch.setattr(rp.subprocess, "run", lambda args, check: None)
+    data = tmp_path / "data"
+    data.mkdir()
+    args = ["install", "--data-dir", str(data), "--out", str(tmp_path / "out")]
+    result = CliRunner().invoke(rp.research_plugin_command, args)
+    assert result.exit_code == 0, result.output
+    assert (data / rp.CONFIG_FILENAME).read_text(encoding="utf-8") == rp.DEFAULT_CONFIG
+    assert "every setting commented out" in result.output
+    (data / rp.CONFIG_FILENAME).write_text("languages: [en, ja]\n", encoding="utf-8")
+    result = CliRunner().invoke(rp.research_plugin_command, args)
+    assert result.exit_code == 0, result.output
+    assert (data / rp.CONFIG_FILENAME).read_text(encoding="utf-8") == "languages: [en, ja]\n"
+    assert "commented out" not in result.output
 
 
 def test_install_without_claude_fails(monkeypatch):

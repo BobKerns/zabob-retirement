@@ -16,6 +16,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from zabob.retirement.research_plugin import write_default_config
 from zabob.retirement.resources import CHECKOUT_DIR, NOTEBOOKS_DIR, PROTOTYPE_DIR, program_home
 from zabob.retirement.sim import registries
 from zabob.retirement.sim.data_commit import CommitError, ensure_identity
@@ -129,6 +130,7 @@ def create_data_repo(
     _write_csv(sim / "tables" / "filing_status.csv", registries.AUX_KIND_COLUMNS["filing_status"],
                [{"effective_date": start, "filing_status": filing_status}])
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return _finish(root, person, commit=commit, notebooks=notebooks)
 
@@ -149,6 +151,7 @@ def create_example_repo(root: Path, *, commit: bool = True, notebooks: bool = Fa
     with (sim / "persons.csv").open(newline="", encoding="utf-8") as fh:
         person = next(row for row in csv.DictReader(fh) if row["role"] == "primary")
     (sim / RETENTION_FILENAME).write_text(DEFAULT_RETENTION, encoding="utf-8")
+    write_default_config(sim)
     write_current_scenario(sim, START_SCENARIO)
     return person["id"], _finish(root, person, commit=commit, notebooks=notebooks)
 
