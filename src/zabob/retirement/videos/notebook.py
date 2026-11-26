@@ -17,7 +17,7 @@ a tape (``docs/videos/README.md`` has the full description)::
     Sleep 3s
 
 JupyterLab runs on a fresh copy of the prepared demo, with this checkout's
-notebooks copied in and ``ANALYSIS_DATA_DIR`` set, so a notebook reads the
+notebooks copied in and ``ZABOB_DATA_DIR`` set, so a notebook reads the
 demo's runs and nothing else. Chromium's screencast sends a frame whenever
 the page changes; ffmpeg holds each frame until the next, which gives the
 clip its real timing at the video's full resolution.
@@ -224,8 +224,8 @@ class _Lab:
         env = {
             **os.environ,
             "HOME": str(home),
-            "ANALYSIS_DATA_DIR": str(data_dir),
-            "ANALYSIS_NO_BUILDER": "1",
+            "ZABOB_DATA_DIR": str(data_dir),
+            "ZABOB_NO_BUILDER": "1",
             # Nor the recording user's default data repo (#687).
             "XDG_CONFIG_HOME": str(home / ".config"),
             "APPDATA": str(home / ".config"),

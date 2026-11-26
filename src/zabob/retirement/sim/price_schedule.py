@@ -42,7 +42,7 @@ weekday's US market close, without touching the user's checkout (Bob):
 - A symbol that fails is recorded, with when it first failed, and doesn't
   stop the others. A fetch where every symbol failed (no network, say) is
   tried again an hour later, not counted as done.
-- Never under ``ANALYSIS_PRICE_FETCH=off`` (the tests set it) or
+- Never under ``ZABOB_PRICE_FETCH=off`` (the tests set it) or
   ``sim builder install --no-prices``, nor without a builder config: so
   never for ``--no-builder`` repos, CI or agents.
 
@@ -97,7 +97,7 @@ HOOK_GIT_ENV = (
     "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
     "GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_QUARANTINE_PATH",
 )
-SWITCH_ENV = "ANALYSIS_PRICE_FETCH"
+SWITCH_ENV = "ZABOB_PRICE_FETCH"
 MARKET = ZoneInfo("America/New_York")
 # After the 16:00 close, once the provider's close is final.
 AFTER_CLOSE = time(17, 30)
@@ -114,7 +114,7 @@ CRON_MINUTE = 7
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_PRICE_FETCH=off`` (or 0/no/false): no fetch, no timer."""
+    """``ZABOB_PRICE_FETCH=off`` (or 0/no/false): no fetch, no timer."""
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
@@ -597,7 +597,7 @@ def _push(top: Path) -> str:
 
 # -- catching up with origin (#785) ------------------------------------------------------
 
-CATCH_UP_ENV = "ANALYSIS_CATCH_UP"
+CATCH_UP_ENV = "ZABOB_CATCH_UP"
 # How often the daemon (or, with none running, the hourly timer) looks.
 CATCH_UP_SECONDS = 3600.0
 
@@ -622,7 +622,7 @@ def has_upstream(data_dir: Path) -> bool:
 
 
 def catch_up_off() -> bool:
-    """``ANALYSIS_CATCH_UP=off`` (or 0/no/false): never fetch from or move to
+    """``ZABOB_CATCH_UP=off`` (or 0/no/false): never fetch from or move to
     ``origin`` (the tests set it)."""
     return os.environ.get(CATCH_UP_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 

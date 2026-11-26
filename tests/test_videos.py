@@ -331,7 +331,7 @@ def test_prepare_demo_runs_setup_and_commits_what_it_leaves(videos_root: Path, t
     data.mkdir()
     (data / "scenario.csv").write_text("name\nbase\n", encoding="utf-8")
     setup = tmp_path / "setup.sh"
-    setup.write_text('echo "$ANALYSIS_DATA_DIR" > "$ANALYSIS_DATA_DIR/where.txt"\n', encoding="utf-8")
+    setup.write_text('echo "$ZABOB_DATA_DIR" > "$ZABOB_DATA_DIR/where.txt"\n', encoding="utf-8")
     store = render.prepare_demo(data, setup, theme, tmp_path / "store")
     assert (store / "data" / "where.txt").read_text(encoding="utf-8").strip() == str(demo_root / "data")
     status = render.run(["git", "status", "--porcelain"], cwd=store / "data").stdout
@@ -347,8 +347,8 @@ def test_the_tapes_environment_drops_the_builders_activation(
     videos_root: Path, tmp_path: Path, demo_root: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A build from an activated shell mustn't hand its user or repo name to
-    the tapes (activate-analysis would ask who you are, on camera)."""
-    for name in ("ANALYSIS_USER", "ANALYSIS_DATA_REPO_NAME", "ANALYSIS_REPO_DIR", "VIRTUAL_ENV"):
+    the tapes (activate-retirement would ask who you are, on camera)."""
+    for name in ("ZABOB_USER", "ZABOB_DATA_REPO_NAME", "ZABOB_REPO_DIR", "VIRTUAL_ENV"):
         monkeypatch.setenv(name, "from-the-builder")
     data = tmp_path / "data"
     data.mkdir()
@@ -454,7 +454,7 @@ def test_tape_data_falls_back_to_the_videos_repo(
     builder = _tape_builder(videos_root, repo_root, tmp_path, "")
     monkeypatch.delenv(VIDEO_DATA_ENV, raising=False)
     # Never the planner's real data repo, even when it's set.
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(repo_root / "prototype_data"))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(repo_root / "prototype_data"))
     with pytest.raises(scripts.ScriptError, match="needs data"):
         builder.tape_data()
     monkeypatch.setenv(VIDEO_DATA_ENV, str(own))

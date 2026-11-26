@@ -138,7 +138,7 @@ def test_a_missing_identity_is_set_in_the_data_repo_only(
     empty.write_text("", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    monkeypatch.setenv("ANALYSIS_USER", "alice")
+    monkeypatch.setenv("ZABOB_USER", "alice")
     monkeypatch.setenv("EMAIL", env_email)
     _edit(data, "scenarios/retire_alice/README.md")
     data_commit.commit(data, scoped_changes(data, ["retire_alice"]))

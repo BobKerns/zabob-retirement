@@ -7,10 +7,10 @@
 # to start from. The init scene removes it first and makes it again on
 # camera.
 
-export HOME="$(dirname "$ANALYSIS_DATA_DIR")/home"
+export HOME="$(dirname "$ZABOB_DATA_DIR")/home"
 mkdir -p "$HOME"
-unset ANALYSIS_DATA_DIR
-# The same answers the init scene types. ANALYSIS_NO_BUILDER (set for every
+unset ZABOB_DATA_DIR
+# The same answers the init scene types. ZABOB_NO_BUILDER (set for every
 # recording) keeps it from turning on builds.
 sim init --id alice --display "Alice Example" --birthdate 1962-04-15 \
     --sex f --filing-status MFJ

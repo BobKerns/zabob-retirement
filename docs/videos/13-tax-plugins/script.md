@@ -131,7 +131,7 @@ credit.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/dc && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -337,7 +337,7 @@ from last year's return.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/check && cd ~/zabob-retirement/sim && sim switch dc > /dev/null 2>&1; clear"
 Enter
@@ -385,7 +385,7 @@ same in both runs.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/use && cd ~/zabob-retirement/sim && sim switch dc-credit > /dev/null 2>&1; clear"
 Enter
@@ -420,7 +420,7 @@ three percent of it nearly covers the bill, leaving thirty three dollars.
 ```tape
 Set FontSize 14
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/worth && cd ~/zabob-retirement/sim && sim switch dc-credit > /dev/null 2>&1; clear"
 Enter

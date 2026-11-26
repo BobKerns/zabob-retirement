@@ -184,7 +184,7 @@ version of everything with git, and makes it your data folder from now on. On a 
 command line tools, which include git, let it finish, and run sim init
 again.
 
-> Production note: the tapes' environment sets `ANALYSIS_NO_BUILDER`, so
+> Production note: the tapes' environment sets `ZABOB_NO_BUILDER`, so
 > this `sim init` doesn't turn on background builds, which a real one does.
 
 ## Scene `inside`: What's inside
@@ -222,7 +222,7 @@ The tax tables and other standard assumptions aren't copied here. They're
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR && clear"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR && clear"
 Enter
 Sleep 300ms
 Show
@@ -241,7 +241,7 @@ Sim switch says which one is current: base. In bash or zsh, an optional
 line in the setup guide also shows your data and the current scenario in
 the prompt, and lets the tab key finish names for you.
 
-> Production note: the recordings set `ANALYSIS_DATA_DIR` to the prototype
+> Production note: the recordings set `ZABOB_DATA_DIR` to the prototype
 > copy, so each tape unsets it while hidden; a new user has none, and the
 > default `sim init` recorded is what the commands use.
 
@@ -250,7 +250,7 @@ the prompt, and lets the tab key finish names for you.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR && clear"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR && clear"
 Enter
 Sleep 2s
 Show
@@ -300,7 +300,7 @@ when you're done. Video four goes through them.
 ```tape
 Set FontSize 26
 Hide
-Type "export HOME=$PWD/home && cd && unset ANALYSIS_DATA_DIR"
+Type "export HOME=$PWD/home && cd && unset ZABOB_DATA_DIR"
 Enter
 Type "sim scenario create my_plan base --description 'Our first plan' > /dev/null 2>&1 && clear"
 Enter

@@ -62,11 +62,11 @@ jobs:
           uv venv --python 3.14 "$RUNNER_TEMP/check"
           uv pip install --python "$RUNNER_TEMP/check/bin/python" dist/zabob_retirement-*.whl
           cd "$RUNNER_TEMP"
-          ANALYSIS_NO_BUILDER=1 GIT_CONFIG_GLOBAL=/dev/null \
+          ZABOB_NO_BUILDER=1 GIT_CONFIG_GLOBAL=/dev/null \
               GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@example.com \
               GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@example.com \
               "$RUNNER_TEMP/check/bin/sim" init --example "$RUNNER_TEMP/example"
-          ANALYSIS_NO_BUILDER=1 "$RUNNER_TEMP/check/bin/sim" check --all --data-dir "$RUNNER_TEMP/example/sim"
+          ZABOB_NO_BUILDER=1 "$RUNNER_TEMP/check/bin/sim" check --all --data-dir "$RUNNER_TEMP/example/sim"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:

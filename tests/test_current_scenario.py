@@ -1,7 +1,7 @@
 """The current scenario (#214): a command that takes an optional scenario
 records a named one as current, announcing the switch when it changes (#233),
 announces a defaulted one on stderr once, and with no current scenario asks
-for a name rather than guessing. With $ANALYSIS_KEEP_SCENARIO set, a named
+for a name rather than guessing. With $ZABOB_KEEP_SCENARIO set, a named
 scenario is used without becoming current (#350)."""
 
 from __future__ import annotations
@@ -207,7 +207,7 @@ def test_switch_to_a_missing_scenario_fails_and_keeps_the_current_one(
 def test_with_keep_scenario_naming_a_scenario_leaves_the_current_one(
     test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_KEEP_SCENARIO", "1")
+    monkeypatch.setenv("ZABOB_KEEP_SCENARIO", "1")
 
     result = _sim(test_data_dir, "account", "list", "--scenario", "base")
 
@@ -220,7 +220,7 @@ def test_with_keep_scenario_naming_a_scenario_leaves_the_current_one(
 def test_with_keep_scenario_switch_still_switches(
     test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_KEEP_SCENARIO", "1")
+    monkeypatch.setenv("ZABOB_KEEP_SCENARIO", "1")
 
     result = _sim(test_data_dir, "switch", "base")
 
@@ -232,7 +232,7 @@ def test_with_keep_scenario_switch_still_switches(
 def test_with_keep_scenario_a_new_ensemble_is_not_made_current(
     test_data_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_KEEP_SCENARIO", "1")
+    monkeypatch.setenv("ZABOB_KEEP_SCENARIO", "1")
 
     result = _sim(test_data_dir, "ensemble", "create", "spread", "retire_alice")
 

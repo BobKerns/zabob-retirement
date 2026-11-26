@@ -1,6 +1,6 @@
 """Pick the person a data repo is used as (ADR-004 §4).
 
-``scripts/link-data.sh`` and ``activate-analysis`` both run
+``scripts/link-data.sh`` and ``activate-retirement`` both run
 ``python -m zabob.retirement.sim.choose_user <sim-dir>``: it lists the ``primary``
 persons in ``persons.csv``, reads an id or display name, and prints the chosen
 id on stdout. The list and prompt go to stderr, so the shell can capture the id

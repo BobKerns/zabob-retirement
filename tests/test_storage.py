@@ -80,7 +80,7 @@ def test_state_store_does_not_create_json_state_files(tmp_path: Path) -> None:
 
 
 def test_insert_event_credits_the_login_name(tmp_path: Path, monkeypatch) -> None:
-    """With no ANALYSIS_USER and no `sim login`, the login name (#687, #773),
+    """With no ZABOB_USER and no `sim login`, the login name (#687, #773),
     which getpass reads from LOGNAME before USER (and USERNAME on Windows)."""
     from zabob.retirement import user_config
 

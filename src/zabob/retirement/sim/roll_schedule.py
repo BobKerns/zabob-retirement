@@ -44,7 +44,7 @@ other, so marking ``base`` marks every what-if built on it; one opts out with
   price files can). The merge pokes the builder through the data repo's
   ``post-merge`` hook, so the rolled scenarios, and what is built on them,
   are built again.
-- Never under ``ANALYSIS_ROLL=off`` (the tests set it) or ``sim builder
+- Never under ``ZABOB_ROLL=off`` (the tests set it) or ``sim builder
   install --no-roll``, nor without a builder config.
 
 The state shared by the data repo's worktrees is in git's common directory:
@@ -81,7 +81,7 @@ __all__ = [
 ROLL_BRANCH = "builder/roll"
 _ROLL_REF = f"refs/heads/{ROLL_BRANCH}"
 _MAIN_REF = f"refs/heads/{price_schedule.DATA_BRANCH}"
-SWITCH_ENV = "ANALYSIS_ROLL"
+SWITCH_ENV = "ZABOB_ROLL"
 DEFAULT_WINDOW = "01:00-05:00"
 STATE_FILE = "analysis-roll.json"
 LOCK_FILE = "analysis-roll.lock"
@@ -99,7 +99,7 @@ class RollScheduleError(Exception):
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_ROLL=off`` (or 0/no/false): no roll."""
+    """``ZABOB_ROLL=off`` (or 0/no/false): no roll."""
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 
@@ -305,7 +305,7 @@ def _sim() -> list[str]:
 def _roll_one(data: Path, name: str, month: str, *, own: bool = False) -> tuple[int, list[str]]:
     """``sim scenario roll`` in the worktree: its exit status and output."""
     # Not waiting on the builder: the daemon may be this roll's parent.
-    env = {**os.environ, BUILDER_SWITCH_ENV: "off", "ANALYSIS_DATA_DIR": str(data)}
+    env = {**os.environ, BUILDER_SWITCH_ENV: "off", "ZABOB_DATA_DIR": str(data)}
     try:
         done = subprocess.run(
             [*_sim(), "scenario", "roll", name, month, "--yes", "--no-keep",
