@@ -160,6 +160,10 @@ moves you to another data repo, and so does running a `sim` command inside
 one, saying so. The shell prompt that `activate-retirement` sets shows all
 three, as `[retirement:<data repo>:<you>:<scenario>]`.
 
+TAB completes commands, options and these names (scenarios, accounts,
+chains and the rest) once `sim completion install` has set it up for your
+shell: bash, zsh, fish or PowerShell ([Setup](SETUP.md#install-the-program)).
+
 To rename a scenario (or an ensemble; the two commands are the same):
 
 ```sh
