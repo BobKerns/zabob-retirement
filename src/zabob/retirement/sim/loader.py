@@ -215,12 +215,18 @@ def forget_current_scenario(data_dir: Path | str, old: str, new: str | None = No
     was = read_current_scenario(data_dir) == old
     if was:
         write_current_scenario(data_dir, new or "")
+    # The shared file may be another login's, in a data repo shared on a
+    # hub: following it is a courtesy, and this user's own record (above)
+    # is what the announcement reports.
     shared = current_scenario_path(data_dir)
-    if shared.is_file() and not shared.is_symlink() and shared.read_text(encoding="utf-8").strip() == old:
-        if new:
-            shared.write_text(f"{new}\n", encoding="utf-8")
-        else:
-            shared.unlink()
+    try:
+        if shared.is_file() and not shared.is_symlink() and shared.read_text(encoding="utf-8").strip() == old:
+            if new:
+                shared.write_text(f"{new}\n", encoding="utf-8")
+            else:
+                shared.unlink()
+    except OSError:
+        pass
     return was
 
 
@@ -662,7 +668,7 @@ def resolve_scenario_name(
     """Pick a scenario from the data repo and describe where it lives.
 
     If ``scenario`` is given, validate it exists. Otherwise fall back, in order,
-    to the name recorded in ``.current_scenario``, the sole scenario folder if
+    to the user's current scenario (ADR-004 §4a), the sole scenario folder if
     there is only one, and finally ``current``.
     """
     data_dir = Path(data_dir).resolve()
