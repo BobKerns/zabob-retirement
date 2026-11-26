@@ -5,50 +5,51 @@
 # the next publish finishes (#695).
 
 [en]
-video = "hxrTcMLw8DA"
-uploaded = 2026-11-24T18:34:37Z
-snippet = "94a7749ac8bee284"
+video = "vgSKeECyiUI"
+uploaded = 2026-11-26T19:10:43Z
+snippet = "888914978a64367b"
 scenes = [
   ["title", 15.50],
   ["contents", 17.65],
   ["why-lifespan", 31.26],
   ["table", 26.58],
-  ["set", 53.92],
+  ["set", 53.80],
   ["death", 45.60],
   ["rails", 33.97],
-  ["rail-add", 60.76],
+  ["rail-add", 60.60],
   ["margins", 23.75],
-  ["rail-report", 43.36],
-  ["rail-mc", 47.80],
+  ["rail-report", 43.48],
+  ["rail-mc", 47.36],
   ["strategy", 27.48],
-  ["respond", 59.84],
+  ["respond", 59.44],
   ["breaches", 27.95],
-  ["respond-compare", 42.56],
-  ["nb", 33.40],
+  ["respond-compare", 42.72],
+  ["nb", 33.83],
   ["ai", 24.55],
   ["end", 8.46],
 ]
 
 [ja]
-video = "CsWZEGf-QCI"
-uploaded = 2026-11-24T18:34:55Z
-snippet = "4012c05b294e2e7a"
+video = "KVrM_u2yoUs"
+uploaded = 2026-11-26T19:10:59Z
+snippet = "9926a58f0c6a8a9a"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 18.55],
   ["contents", 17.47],
   ["why-lifespan", 36.11],
   ["table", 34.70],
-  ["set", 53.84],
+  ["set", 54.52],
   ["death", 51.25],
   ["rails", 37.51],
-  ["rail-add", 60.44],
+  ["rail-add", 60.76],
   ["margins", 25.61],
-  ["rail-report", 43.16],
-  ["rail-mc", 48.96],
+  ["rail-report", 43.52],
+  ["rail-mc", 48.16],
   ["strategy", 30.87],
-  ["respond", 58.56],
+  ["respond", 60.76],
   ["breaches", 28.86],
-  ["respond-compare", 42.56],
+  ["respond-compare", 42.68],
   ["nb", 33.00],
   ["ai", 26.94],
   ["end", 8.77],

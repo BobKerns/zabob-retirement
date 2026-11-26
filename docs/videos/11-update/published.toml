@@ -5,16 +5,17 @@
 # the next publish finishes (#695).
 
 [en]
-video = "NS_b5ItezQk"
-uploaded = 2026-11-23T19:19:49Z
-snippet = "c6505a7745acec9a"
+video = "51e5NJPoSMs"
+uploaded = 2026-11-26T20:44:22Z
+snippet = "8ef79e0cd82076c9"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 12.02],
   ["contents", 16.81],
   ["why", 29.25],
   ["roll", 111.42],
-  ["taxes", 55.60],
-  ["spending", 36.60],
+  ["taxes", 55.56],
+  ["spending", 36.48],
   ["compare", 44.28],
   ["after", 37.29],
   ["what-ifs", 28.58],
@@ -25,21 +26,21 @@ scenes = [
 ]
 
 [ja]
-video = "5SmA9xplhgw"
-uploaded = 2026-11-14T07:36:07Z
-snippet = "78971128741a6e3c"
+video = "y1C8tGfzdDw"
+uploaded = 2026-11-25T10:34:42Z
+snippet = "2ad5ba93bcd48ea6"
 scenes = [
-  ["title", 14.37],
-  ["contents", 17.18],
-  ["why", 31.46],
-  ["roll", 118.84],
-  ["taxes", 55.60],
-  ["spending", 36.68],
-  ["compare", 44.82],
-  ["after", 37.09],
-  ["what-ifs", 30.05],
-  ["strategies", 24.23],
-  ["imports", 29.95],
-  ["ai", 22.19],
-  ["end", 12.18],
+  ["title", 14.69],
+  ["contents", 18.22],
+  ["why", 33.34],
+  ["roll", 124.00],
+  ["taxes", 55.36],
+  ["spending", 36.36],
+  ["compare", 46.21],
+  ["after", 39.52],
+  ["what-ifs", 31.70],
+  ["strategies", 25.53],
+  ["imports", 31.96],
+  ["ai", 22.77],
+  ["end", 12.84],
 ]

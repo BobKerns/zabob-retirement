@@ -5,15 +5,16 @@
 # the next publish finishes (#695).
 
 [en]
-video = "ygnstUbBFbc"
-uploaded = 2026-11-23T20:47:11Z
-snippet = "59a770d6f1f1694c"
+video = "0Sdb4wnNczE"
+uploaded = 2026-11-26T21:51:48Z
+snippet = "4ae3dec782dea675"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 13.22],
   ["contents", 14.47],
   ["recap", 22.75],
   ["table-first", 28.84],
-  ["dc", 97.16],
+  ["dc", 82.56],
   ["schedule-h", 37.21],
   ["where", 35.79],
   ["class", 23.53],
@@ -21,7 +22,7 @@ scenes = [
   ["setup", 36.68],
   ["year", 32.04],
   ["rules", 32.86],
-  ["check", 58.84],
+  ["check", 51.48],
   ["use", 62.56],
   ["worth", 26.56],
   ["tradeoff", 43.70],
@@ -31,27 +32,27 @@ scenes = [
 ]
 
 [ja]
-video = "tckwO18axvw"
-uploaded = 2026-11-12T07:50:09Z
-snippet = "0138b573198ef425"
+video = "YjeeQYazdT8"
+uploaded = 2026-11-25T11:56:19Z
+snippet = "66f5d88c8b910646"
 scenes = [
-  ["title", 14.99],
-  ["contents", 16.67],
-  ["recap", 26.28],
-  ["table-first", 28.79],
-  ["dc", 99.96],
-  ["schedule-h", 36.95],
-  ["where", 41.08],
-  ["class", 27.99],
-  ["params", 23.28],
-  ["setup", 38.69],
-  ["year", 38.75],
-  ["rules", 39.39],
-  ["check", 51.68],
-  ["use", 60.76],
-  ["worth", 27.49],
-  ["tradeoff", 47.08],
-  ["nb", 21.66],
-  ["ai", 24.44],
-  ["end", 15.83],
+  ["title", 14.95],
+  ["contents", 16.76],
+  ["recap", 27.03],
+  ["table-first", 29.19],
+  ["dc", 81.12],
+  ["schedule-h", 38.45],
+  ["where", 43.98],
+  ["class", 28.65],
+  ["params", 24.86],
+  ["setup", 41.08],
+  ["year", 40.60],
+  ["rules", 42.29],
+  ["check", 51.56],
+  ["use", 61.63],
+  ["worth", 28.62],
+  ["tradeoff", 46.85],
+  ["nb", 22.52],
+  ["ai", 25.65],
+  ["end", 16.73],
 ]

@@ -5,31 +5,31 @@
 # the next publish finishes (#695).
 
 [en]
-video = "Rc-ZaJR0imA"
-uploaded = 2026-11-24T17:54:57Z
-snippet = "cab2cf04f4c43abe"
+video = "1CMyN97Yw_I"
+uploaded = 2026-11-26T17:14:40Z
+snippet = "0d7b192c93095775"
 scenes = [
   ["title", 21.84],
   ["contents", 20.60],
   ["builds-on", 29.74],
   ["create", 28.35],
-  ["claim-early", 16.20],
+  ["claim-early", 16.28],
   ["mix-in", 23.79],
   ["run-all", 15.51],
   ["compare-graph", 31.09],
-  ["compare", 34.76],
+  ["compare", 34.96],
   ["after-tax-dip", 46.15],
   ["break-even", 30.60],
   ["account", 22.92],
-  ["nb-compare", 32.80],
+  ["nb-compare", 32.77],
   ["ai", 18.18],
   ["end", 10.85],
 ]
 
 [ja]
-video = "RzuxWGN0sv4"
-uploaded = 2026-11-24T17:55:14Z
-snippet = "8878fa7d368e0c9a"
+video = "2bSA1QEFIVs"
+uploaded = 2026-11-26T17:14:53Z
+snippet = "dc3a795dfe7fe0f3"
 scenes = [
   ["title", 23.70],
   ["contents", 21.14],
@@ -39,7 +39,7 @@ scenes = [
   ["mix-in", 25.32],
   ["run-all", 18.86],
   ["compare-graph", 33.04],
-  ["compare", 34.76],
+  ["compare", 35.04],
   ["after-tax-dip", 50.14],
   ["break-even", 36.29],
   ["account", 24.80],
