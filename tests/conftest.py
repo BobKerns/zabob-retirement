@@ -152,6 +152,8 @@ def _no_ambient_analysis_env(
     monkeypatch.setenv("ANALYSIS_ROLL", "off")
     # Nor researches symbols with Claude each morning (#640).
     monkeypatch.setenv("ANALYSIS_RESEARCH", "off")
+    # Nor fetches from the data repo's origin and moves main (#785).
+    monkeypatch.setenv("ANALYSIS_CATCH_UP", "off")
 
 
 _STABLE_CODE_STAMPS = CodeStamps(version="0" * 40, dirty=False, repo_path="CODE_REPO")

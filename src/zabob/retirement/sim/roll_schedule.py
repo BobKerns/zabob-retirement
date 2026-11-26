@@ -67,7 +67,7 @@ from pathlib import Path
 from typing import Any
 
 from zabob.retirement.oscompat import is_link, link_dir
-from zabob.retirement.sim import price_schedule, registries
+from zabob.retirement.sim import price_schedule, registries, shared_writer
 from zabob.retirement.sim.lineage import is_pool, is_template_name, load_order, read_meta, scenario_dir, scenario_start
 from zabob.retirement.sim.loader import DISABLE_FILE
 from zabob.retirement.sim.locks import BUILDER_SWITCH_ENV
@@ -105,7 +105,9 @@ def switched_off() -> bool:
 
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` rolls scenarios."""
-    return config is not None and bool(config.get("roll", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and bool(config.get("roll", True)) and not switched_off() \
+        and shared_writer.writes_here(config.get("data_dir"))
 
 
 # -- the window -------------------------------------------------------------------

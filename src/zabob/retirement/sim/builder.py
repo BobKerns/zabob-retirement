@@ -703,6 +703,7 @@ class _Daemon:
         self.researcher: subprocess.Popen[bytes] | None = None
         self.research_reader: threading.Thread | None = None
         self.research_looked = float("-inf")
+        self.caught_up = float("-inf")
         self.research_ended = float("-inf")
 
     # The key a build is good for: the code trees and the scenario's data tree.
@@ -932,6 +933,19 @@ class _Daemon:
         self.cancelled.pop(job, None)
         self.state = "building"
 
+    def catch_up_tick(self) -> None:
+        """#785: once an hour, between builds, fetch ``main``'s upstream and
+        fast-forward ``main`` to it (``price_schedule.catch_up``), so prices,
+        rolls and weights another clone's builder pushed arrive here."""
+        from zabob.retirement.sim import price_schedule
+
+        if self.build is not None or self.held \
+                or time.monotonic() - self.caught_up < price_schedule.CATCH_UP_SECONDS:
+            return
+        self.caught_up = time.monotonic()
+        for line in price_schedule.catch_up(self.data_dir):
+            self.log(line)
+
     def prices_tick(self, now: bool) -> None:
         """#560: note a price fetch that ended; merge fetched prices that
         wait for main, between builds; start a fetch when one is due. Looks on a rescan, or
@@ -1157,6 +1171,7 @@ class _Daemon:
                 if self.build is None and self.queue and self.started_trees is not None:
                     self.start_next(self.started_trees)
                     self.write_status()
+                self.catch_up_tick()
                 self.prices_tick(looked_again)
                 self.roll_tick(looked_again)
                 self.research_tick(looked_again)

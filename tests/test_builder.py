@@ -1002,3 +1002,43 @@ def test_the_builder_hooks_start_notify_without_the_hooks_repository(
     assert "builder notify" in text
     for name in price_schedule.HOOK_GIT_ENV:
         assert f"-u {name} " in text
+
+
+def test_the_daemon_catches_up_with_origin_hourly_between_builds(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#785: so what another clone's builder pushed arrives here."""
+    from zabob.retirement.sim import price_schedule
+
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up", lambda d: calls.append(d) or ["caught up"])
+    daemon.build = object()  # ty: ignore[invalid-assignment]  # building: not now
+    daemon.catch_up_tick()
+    assert calls == []
+    daemon.build = None
+    daemon.catch_up_tick()
+    daemon.catch_up_tick()  # within the hour: not again
+    assert calls == [daemon.data_dir]
+    daemon.caught_up -= price_schedule.CATCH_UP_SECONDS
+    daemon.catch_up_tick()
+    assert calls == [daemon.data_dir] * 2
+
+
+def test_the_timer_catches_up_when_no_daemon_runs(
+    pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from click.testing import CliRunner
+
+    from zabob.retirement.sim import price_schedule
+    from zabob.retirement.sim.cli import sim_group_command
+
+    _code, data_dir = pair
+    builder.install(data_dir)
+    calls: list[Path] = []
+    monkeypatch.setattr(price_schedule, "catch_up", lambda d: calls.append(d) or ["caught up"])
+    out = CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert out.exit_code == 0, out.output
+    assert calls == [data_dir] and "caught up" in out.output
+    monkeypatch.setattr(builder, "daemon_alive", lambda _paths: True)
+    CliRunner().invoke(sim_group_command, ["builder", "tick", "--data-dir", str(data_dir)])
+    assert calls == [data_dir]  # the daemon does it

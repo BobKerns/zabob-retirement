@@ -58,7 +58,7 @@ from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Any
 
-from zabob.retirement.sim import price_schedule
+from zabob.retirement.sim import price_schedule, shared_writer
 
 __all__ = [
     "RESEARCH_BRANCH", "START", "SWITCH_ENV", "TOLERANCE_MICROS", "CommitOutcome",
@@ -96,7 +96,9 @@ def switched_off() -> bool:
 
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` researches symbols."""
-    return config is not None and bool(config.get("research", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and bool(config.get("research", True)) and not switched_off() \
+        and shared_writer.writes_here(config.get("data_dir"))
 
 
 def read_state(data_dir: Path) -> dict[str, Any]:

@@ -70,12 +70,12 @@ from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from zabob.retirement.sim import flock
+from zabob.retirement.sim import flock, shared_writer
 
 __all__ = [
-    "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
-    "describe", "due", "enabled", "fetch", "install_timer", "last_close", "merge_pending",
-    "read_state", "stale_held", "switched_off", "uninstall_timer",
+    "CATCH_UP_ENV", "DATA_BRANCH", "PRICES_BRANCH", "SWITCH_ENV", "FetchOutcome", "PriceScheduleError",
+    "catch_up", "catch_up_off", "describe", "due", "enabled", "fetch", "has_upstream", "install_timer",
+    "last_close", "merge_pending", "read_state", "stale_held", "switched_off", "uninstall_timer",
 ]
 
 PRICES_BRANCH = "builder/prices"
@@ -120,7 +120,9 @@ def switched_off() -> bool:
 
 def enabled(config: dict[str, Any] | None) -> bool:
     """Whether a workspace with builder ``config`` fetches prices."""
-    return config is not None and bool(config.get("prices", True)) and not switched_off()
+    # Another machine may be the one that writes for this data repo (#785).
+    return config is not None and bool(config.get("prices", True)) and not switched_off() \
+        and shared_writer.writes_here(config.get("data_dir"))
 
 
 def last_close(now: datetime) -> datetime:
@@ -591,6 +593,87 @@ def _push(top: Path) -> str:
         said = [line for line in (done.stderr or done.stdout).splitlines() if line.strip()]
         return f"push of {DATA_BRANCH} to {remote} failed: {said[0] if said else 'git push failed'}"
     return f"pushed {DATA_BRANCH} to {name}"
+
+
+# -- catching up with origin (#785) ------------------------------------------------------
+
+CATCH_UP_ENV = "ANALYSIS_CATCH_UP"
+# How often the daemon (or, with none running, the hourly timer) looks.
+CATCH_UP_SECONDS = 3600.0
+
+
+def _upstream(top: Path) -> tuple[str, str] | None:
+    """``main``'s remote and upstream branch (``origin``, ``origin/main``),
+    or None when it has none on a remote."""
+    remote = _git(top, "config", f"branch.{DATA_BRANCH}.remote").stdout.strip()
+    upstream = _git(top, "rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{DATA_BRANCH}@{{upstream}}")
+    if remote in ("", ".") or upstream.returncode:
+        return None
+    return remote, upstream.stdout.strip()
+
+
+def has_upstream(data_dir: Path) -> bool:
+    """Whether the data repo's ``main`` tracks a branch on a remote: whether
+    other clones may share it (#785)."""
+    try:
+        return _upstream(_top(data_dir)) is not None
+    except PriceScheduleError:
+        return False
+
+
+def catch_up_off() -> bool:
+    """``ANALYSIS_CATCH_UP=off`` (or 0/no/false): never fetch from or move to
+    ``origin`` (the tests set it)."""
+    return os.environ.get(CATCH_UP_ENV, "").strip().lower() in {"off", "0", "no", "false"}
+
+
+def catch_up(data_dir: Path) -> list[str]:
+    """Fetch ``main``'s upstream and fast-forward ``main`` to it, when it is
+    checked out and clean here and the upstream is strictly ahead (#785):
+    the same conditions the builder merges its own branches under. So a
+    clone whose builder doesn't write (``shared_writer``) still gets the
+    prices, rolls and weights another one pushed, and one that does stays
+    strictly ahead, so its pushes go through. The fast-forward runs the data
+    repo's ``post-merge`` hook, which pokes the builder. Only the daemon
+    calls this, between builds, or the timer when no daemon runs. Lines for
+    the log: none when there was nothing new."""
+    if catch_up_off():
+        return []
+    try:
+        top = _top(data_dir)
+    except PriceScheduleError:
+        return []
+    found = _upstream(top)
+    if found is None:
+        return []  # nothing to catch up with
+    remote, name = found
+    try:
+        # No terminal to ask on: a fetch that wants a password fails, not hangs.
+        done = subprocess.run(
+            ["git", "-C", str(top), "fetch", "-q", remote],
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+            timeout=PUSH_SECONDS, env=git_environ({"GIT_TERMINAL_PROMPT": "0"}),
+        )
+    except subprocess.TimeoutExpired:
+        return [f"fetch from {remote} failed: no answer in {PUSH_SECONDS}s"]
+    except OSError as exc:
+        return [f"fetch from {remote} failed: {exc}"]
+    if done.returncode:
+        said = [line for line in (done.stderr or done.stdout).splitlines() if line.strip()]
+        return [f"fetch from {remote} failed: {said[0] if said else 'git fetch failed'}"]
+    ours, theirs = _ref(top, _MAIN_REF), _ref(top, name)
+    if ours is None or theirs is None or ours == theirs or _is_ancestor(top, theirs, ours):
+        return []
+    if not _is_ancestor(top, ours, theirs):
+        return [f"not catching up: {DATA_BRANCH} and {name} have diverged; git pull on {DATA_BRANCH} merges them"]
+    if (why := _why_not(top)) is not None:
+        return [f"not catching up with {name} yet: {why}"]
+    count = _git(top, "rev-list", "--count", f"{ours}..{theirs}").stdout.strip()
+    moved = _git(top, "merge", "--ff-only", "-q", name)
+    if moved.returncode:
+        said = [line for line in (moved.stderr or moved.stdout).splitlines() if line.strip()]
+        return [f"couldn't catch up with {name}: {said[0] if said else 'git merge failed'}"]
+    return [f"caught up with {name} ({count} commit{'' if count == '1' else 's'})"]
 
 
 # -- the timer -----------------------------------------------------------------------------
