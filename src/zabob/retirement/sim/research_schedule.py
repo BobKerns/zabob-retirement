@@ -392,6 +392,7 @@ class RunReport:
     message: str = ""
     cost_usd: float | None = None
     seconds: float = 0.0
+    denied: tuple[str, ...] = ()
 
 
 # (symbol, work dir, data dir, progress) -> report; the skill writes into
@@ -414,7 +415,7 @@ def run_with_claude(symbol: str, work: Path, data: Path, progress: Callable[[str
             done = research.run_skill(symbol, symbol, work, plugin, claude=claude, progress=progress)
         except (research.ResearchError, research_plugin.ResearchConfigError) as exc:
             return RunReport(False, str(exc))
-    return RunReport(done.ok, done.message, done.cost_usd, done.seconds)
+    return RunReport(done.ok, done.message, done.cost_usd, done.seconds, done.denied)
 
 
 @dataclass
@@ -552,7 +553,7 @@ def research(
             last = {"symbol": chosen, "at": now.timestamp(), "seconds": report.seconds,
                     "cost": report.cost_usd}
             if not report.ok or not kept:
-                why = report.message if not report.ok else "the run wrote no files"
+                why = report.message if not report.ok else research_mod.nothing_written(report.denied)
                 first = (failing.get(chosen) or {}).get("since", now.timestamp())
                 failing[chosen] = {"error": why, "at": now.timestamp(), "since": first}
                 _update_state(top, failing=failing, costs=costs, pending=_settle(top),

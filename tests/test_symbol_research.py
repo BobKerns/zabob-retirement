@@ -460,7 +460,8 @@ def test_a_run_renders_the_plugin_runs_claude_and_imports(test_data_dir: Path, f
     # Each allowed command is spelled out in the prompt exactly as the rule has it.
     assert all(f"`{a.removeprefix('Bash(').removesuffix(' *)')}`" in args[1] for a in bash)
     edits = [a for a in allowed if a.startswith(("Edit", "Write"))]
-    assert len(edits) == 1 and edits[0].startswith("Edit(//") and edits[0].endswith("/work/**)")
+    # One per spelling of the work folder (#800): here, as given and resolved.
+    assert edits and all(e.startswith("Edit(//") and e.endswith("/work/**)") for e in edits)
     assert all(str(s) in args[1] for s in scripts)  # the prompt says where the scripts are
     assert symbols.latest_set(test_data_dir, "ABCDX") is not None
 
@@ -494,6 +495,48 @@ def test_a_run_that_writes_nothing_points_at_the_plugin(
     assert result.exit_code != 0
     assert "--plugin-dir" in result.output
     assert not (test_data_dir / "research").exists()
+
+
+def test_a_run_whose_writes_were_refused_says_so(
+    test_data_dir: Path, fake_claude: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: on Windows a mis-spelled Edit rule refused every write; the
+    error now names what Claude Code refused."""
+    monkeypatch.setenv("FAKE_CLAUDE_BUNDLE", "")
+    monkeypatch.setenv("FAKE_CLAUDE_DENIED", "C:/Users/Alice/work/ABCDX-tear-sheet.md")
+    result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
+    assert result.exit_code != 0
+    assert "Claude Code refused Write C:/Users/Alice/work/ABCDX-tear-sheet.md" in result.output
+    assert "--plugin-dir" not in result.output
+
+
+@pytest.mark.parametrize(("windows", "path", "rule"), [
+    (True, "C:/Users/First Last/AppData/Local/Temp/work", "//c/Users/First Last/AppData/Local/Temp/work"),
+    (True, "d:/work", "//d/work"),
+    (False, "/home/alice/work", "//home/alice/work"),
+])
+def test_a_rule_spells_an_absolute_path_as_claude_code_matches_it(
+    windows: bool, path: str, rule: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: Claude Code matches C:/Users/x as /c/Users/x, so a rule naming
+    //C:/... refused every write of a Windows run."""
+    monkeypatch.setattr(research, "WINDOWS", windows)
+    assert research._rule_path(path) == rule
+
+
+def test_the_work_folder_is_writable_under_its_short_name_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#800: Windows sets %TEMP% to the 8.3 form of a profile folder with a
+    space, so a run wrote under C:/Users/FIRSTL~1/... as well as the long
+    name; a rule for only one refused the other."""
+    monkeypatch.setattr(research, "_short_path", lambda p: p.replace("First Last", "FIRSTL~1"))
+    work = tmp_path / "First Last" / "work"
+    rules = research._path_rules("Edit", work)
+    long = work.resolve().as_posix()
+    assert f"Edit(/{long}/**)" in rules
+    assert f"Edit(/{long.replace('First Last', 'FIRSTL~1')}/**)" in rules
+    assert len(rules) == len(set(rules))
 
 
 def test_run_skill_stops_at_the_timeout(

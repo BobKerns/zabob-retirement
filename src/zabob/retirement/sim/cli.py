@@ -17255,9 +17255,13 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         click.echo(f"Finished in {outcome.seconds / 60:.1f} minutes{cost}.")
         has_files = any(p.is_file() and p.suffix.lower() in research.KEPT_SUFFIXES for p in work.iterdir())
         if not has_files:
-            why = outcome.message if not outcome.ok else (
-                "the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
-                "in the plugin (--plugin-dir)?")
+            if not outcome.ok:
+                why = outcome.message
+            elif outcome.denied:
+                why = research.nothing_written(outcome.denied)
+            else:
+                why = ("the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
+                       "in the plugin (--plugin-dir)?")
             raise click.ClickException(f"the research failed: {why}")
         bundle = research.bundle_dir(data, key)
         research.keep_bundle(work, bundle)

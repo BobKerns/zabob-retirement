@@ -620,9 +620,24 @@ def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None
     )
 
 
-def _path_rule(tool: str, folder: Path) -> str:
-    # Permission rules take an absolute path as //path.
-    return f"{tool}(/{folder.resolve().as_posix()}/**)"
+def _rule_path(posix: str) -> str:
+    """An absolute path as a permission rule spells it: ``//path``. Claude
+    Code matches a Windows path in POSIX form, ``C:/Users/x`` as
+    ``/c/Users/x`` (#800), so a rule naming ``/C:/...`` never matches."""
+    if WINDOWS and len(posix) > 2 and posix[1] == ":" and posix[0].isalpha():
+        posix = f"/{posix[0].lower()}{posix[2:]}"
+    return f"/{posix}"
+
+
+def _path_rules(tool: str, folder: Path) -> list[str]:
+    """``tool``'s rules for ``folder`` under each spelling a run may use for
+    it (#800): as given, resolved, and on Windows its 8.3 short name. A
+    run's folder comes from %TEMP%, which Windows sets to the short form
+    (``C:/Users/FIRST~1/...``) when the profile folder has a space, while
+    resolving gives the long one, and the model writes under either."""
+    resolved = folder.resolve()
+    spellings = [folder.absolute().as_posix(), resolved.as_posix(), Path(_short_path(str(resolved))).as_posix()]
+    return [f"{tool}({_rule_path(spelling)}/**)" for spelling in dict.fromkeys(spellings)]
 
 
 def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, claude: str = "claude",
@@ -645,7 +660,7 @@ def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, cla
         "Skill", "WebSearch", "WebFetch", "Read", "Glob", "Grep",
         # An Edit rule covers Write as well; Claude Code ignores a Write(path)
         # rule and warns on stderr, which a failed run would report as its reason.
-        _path_rule("Edit", work_dir),
+        *_path_rules("Edit", work_dir),
         *(f"Bash({script_command(script)} *)" for script in scripts),
     ]
     return [
@@ -686,6 +701,26 @@ class RunResult:
     """The final ``result`` text, or why the run failed."""
     cost_usd: float | None = None
     seconds: float = 0.0
+    denied: tuple[str, ...] = ()
+    """The tool calls Claude Code refused (``permission_denials``), described."""
+
+
+def nothing_written(denied: tuple[str, ...] = ()) -> str:
+    """Why a run that ended without error left no files: with what it was
+    refused, which is usually the reason (#800)."""
+    if not denied:
+        return "the run wrote no files"
+    more = f" and {len(denied) - 5} more" if len(denied) > 5 else ""
+    return f"the run wrote no files; Claude Code refused {'; '.join(denied[:5])}{more}"
+
+
+def _denials(result: dict[str, Any]) -> tuple[str, ...]:
+    out = []
+    for denial in result.get("permission_denials") or []:
+        if isinstance(denial, dict):
+            out.extend(describe_event({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": denial.get("tool_name"), "input": denial.get("tool_input")}]}}))
+    return tuple(out)
 
 
 # Where Claude Code's installers put ``claude``. The builder's hourly timer
@@ -787,7 +822,8 @@ def run_skill(
     cost = result.get("total_cost_usd")
     ok = not result.get("is_error") and proc.returncode == 0
     return RunResult(ok, str(result.get("result") or result.get("subtype") or ""),
-                     cost_usd=float(cost) if isinstance(cost, (int, float)) else None, seconds=seconds)
+                     cost_usd=float(cost) if isinstance(cost, (int, float)) else None, seconds=seconds,
+                     denied=_denials(result))
 
 
 def compare_lines(proposed: Allocation, latest: tuple[str, list[tuple[str, str]]] | None) -> list[str]:
