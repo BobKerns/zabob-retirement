@@ -156,6 +156,8 @@ def _no_ambient_env(
     monkeypatch.setenv("ZABOB_ROLL", "off")
     # Nor researches symbols with Claude each morning (#640).
     monkeypatch.setenv("ZABOB_RESEARCH", "off")
+    # Nor fetches from the data repo's origin and moves main (#785).
+    monkeypatch.setenv("ZABOB_CATCH_UP", "off")
 
 
 _STABLE_CODE_STAMPS = CodeStamps(version="0" * 40, dirty=False, repo_path="CODE_REPO")
@@ -1200,6 +1202,25 @@ def data_repo_origin(tmp_path: Path, data_repo_sim: Path) -> Path:
         repo.create_remote("origin", str(origin))
         repo.git.push("-q", "-u", "origin", "main")
     return origin
+
+
+@pytest.fixture(scope="function")
+def other_clone(tmp_path: Path, data_repo_origin: Path, commit_files: CommitFiles) -> Callable[..., str]:
+    """``other_clone({path: text}, message)``: another clone of
+    ``data_repo_origin`` (another machine, #785) commits the files on its
+    ``main`` and pushes; returns the commit. Paths are from the data repo's
+    top (``sim/...``)."""
+    clone = tmp_path / "elsewhere"
+
+    def _push(files: dict[str, str], message: str = "another machine's commit") -> str:
+        if not clone.exists():
+            git.Repo.clone_from(data_repo_origin, clone).close()
+        with git.Repo(clone) as other:
+            other.git.pull("-q", "--ff-only")
+            made = commit_files(other, files, message)
+            other.git.push("-q", "origin", "main")
+        return made
+    return _push
 
 
 @pytest.fixture(scope="function")

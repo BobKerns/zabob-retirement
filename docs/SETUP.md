@@ -274,6 +274,17 @@ fetch, prices waiting to merge and why, and any symbol that keeps failing;
 `sim builder prices` fetches now. `sim builder install --no-prices`, or
 `ZABOB_PRICE_FETCH=off`, turns the fetches off.
 
+When the data repo has more than one clone (another computer, another login,
+a container), only one builder fetches prices, rolls scenarios and researches
+symbols ([#785](https://github.com/BobKerns/zabob-retirement/issues/785)):
+the one `sim/.builder.toml` names, committed, so every clone agrees.
+`sim builder install` names its machine, and pushes that, when the data repo
+has a remote, nothing is named yet, and this install fetches, rolls or
+researches. The others only build runs, and once an hour fetch
+`origin` and fast-forward `main` when it is checked out and clean, so the
+prices, rolls and weights arrive without a `git pull`.
+`sim builder writer` says which machine it is; `--here` moves it to this one.
+
 The same timer rolls forward, at night, each scenario marked to roll
 (`sim scenario edit NAME --roll monthly`; what is built on it too, after it,
 unless marked `off`) once its start month is over, so
