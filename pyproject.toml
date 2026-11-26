@@ -41,7 +41,7 @@ dependencies = [
   "playwright>=1.65.2",
   "pyyaml>=6.0.4",
   "jinja2>=3.1.6",
-  "ofxtools>=1.1.1",
+  "ofxtools>=1.1.2",
 ]
 
 [project.optional-dependencies]
@@ -73,7 +73,7 @@ dev = [
   "pytest-cov>=7.1.0",
   "ruff>=0.17.6",
   "pytest-xdist>=3.8.0",
-  "ty>=0.0.107",
+  "ty>=0.0.112",
   "pytest-split>=0.11.0",
 ]
 
