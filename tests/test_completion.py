@@ -10,6 +10,7 @@ from click.testing import CliRunner
 from zabob.retirement.sim import names
 from zabob.retirement.sim.cli import sim_group_command
 from zabob.retirement.sim.completion import NameType
+from zabob.retirement.sim.loader import write_current_scenario
 
 
 def _complete(data_dir: Path | None, line: str) -> list[str]:
@@ -114,7 +115,7 @@ def test_a_guard_rail_completes(data_dir: Path) -> None:
 
 
 def test_account_completes_in_the_current_scenario(test_data_dir: Path) -> None:
-    (test_data_dir / ".current_scenario").write_text("retire_alice\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "retire_alice")
     assert "Asset_Checking" in _complete(test_data_dir, "account edit ")
 
 

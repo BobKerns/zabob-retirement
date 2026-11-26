@@ -382,14 +382,14 @@ compute them for other series and years.
 To see a scenario's trees, `sim ensemble factors` lists each factor under
 its parent with the link's ρ, and how many varying rows hang from it;
 `--varying` adds those rows, each with the ρ the tree gives it to its
-factor and to the tree's root, and `--chart` draws the trees (with
+factor and to the tree's root, and `--graph` draws the trees (with
 `--varying`, the rows too, as boxes on dotted links from their factors):
 
 ```sh
 sim ensemble factors markets            # the factors, nested, with each ρ
 sim ensemble factors markets --varying  # and the rows under each factor
-sim ensemble factors markets --chart    # the trees, drawn
-sim ensemble factors markets --chart --varying  # and the rows on each factor
+sim ensemble factors markets --graph    # the trees, drawn
+sim ensemble factors markets --graph --varying  # and the rows on each factor
 sim ensemble factors markets --mermaid  # as a Mermaid flowchart, for a README
 ```
 
@@ -933,18 +933,18 @@ Name more than one variant to set them all against the baseline at once,
 as the notebook's ensemble table does: one table of each variant's deltas
 and one of every recipe's tail means and reserve shares, each row one year
 and one recipe. A variant that doesn't pair with the baseline has a blank
-`P(ahead)`. Its `--chart` puts each variant's panels in a column of their
+`P(ahead)`. Its `--graph` puts each variant's panels in a column of their
 own, side by side on a shared scale, for at most four variants:
 
 ```sh
 sim ensemble compare retire_alice conservative aggressive --reserve 500000
 ```
 
-Add `--chart` to either `sim ensemble summary` or `sim ensemble compare` to
+Add `--graph` to either `sim ensemble summary` or `sim ensemble compare` to
 see the notebook's charts instead of the tables: the fan chart, or the
 comparison's panels described below. A terminal that shows images (iTerm2,
 kitty, Ghostty, WezTerm, VS Code's) draws them in place; any other gets a
-PNG file and its path. `--chart-file chart.svg` (or `.png`) writes the
+PNG file and its path. `--graph-file chart.svg` (or `.png`) writes the
 chart to a file instead. Add `--table` for both, the chart first.
 
 The notebook's other controls have options too. `--dollars nominal` shows
@@ -1218,8 +1218,8 @@ Useful options:
 - `--row NAME` shows one row on its own: its change in every year (or
   `--years`), one column per quantile it was moved to. TAB completes the
   rows the batch varied.
-- `--chart` draws the notebook's charts instead of the tables (`--table`
-  for both, `--chart-file` to write a .png or .svg): the share heatmap and
+- `--graph` draws the notebook's charts instead of the tables (`--table`
+  for both, `--graph-file` to write a .png or .svg): the share heatmap and
   the tornado at the last reporting year; with `--row`, its change over time
   and, for a quantile ladder, its response curve; with `--attribute`, where
   its change comes from. On a Monte Carlo batch it draws R² by year and each
@@ -1336,7 +1336,7 @@ batch is newer: a sensitivity batch's few members each move one row, so
 their draws say little about distributions or correlations. `--mode
 sensitivity` reads the latest sensitivity batch instead, and `--batch`
 names one batch by its timestamp. An ensemble that hasn't been run yet is
-run first. `--chart` won't draw a sensitivity batch, since its charts would
+run first. `--graph` won't draw a sensitivity batch, since its charts would
 show only the few percentiles it chose; its tables still list what each
 member drew. On a large ensemble the pair chart's dots are smaller and
 translucent, so the cloud's shape shows through where they overlap.
@@ -1350,8 +1350,8 @@ p-value under 0.05 turns up now and then by chance, about one row in
 twenty. Correlated pairs follow, with the correlation each achieved, as in
 the Monte Carlo report above.
 
-`--chart` draws what `--node` or `--pair` lists, as the notebook does (or
-`--chart-file growth.png` writes it; add `--table` for the table too). A
+`--graph` draws what `--node` or `--pair` lists, as the notebook does (or
+`--graph-file growth.png` writes it; add `--table` for the table too). A
 node's chart is a histogram of its drawn values, with the distribution's
 median and 5th and 95th percentiles marked, beside a histogram of its
 **u**, which should come out flat. A pair's is a scatter of the two rows'
@@ -1363,4 +1363,4 @@ future's turbulence scale under a t copula, and each year's shock on a
 process path. Values are stored as the simulator stores them (cents,
 micros, day numbers); the views ending in `_display` show dollars, percent
 and dates. Any SQLite tool opens it, and `sensitivity.ipynb`'s Draws section
-charts one row's draws and one pair's scores, as `--chart` does.
+charts one row's draws and one pair's scores, as `--graph` does.

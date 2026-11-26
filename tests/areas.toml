@@ -39,7 +39,7 @@ tests = ["tests/test_amazon_*.py", "tests/test_cli.py"]
 [[area]]
 name = "install"
 paths = [
-    "packages/**", "docker/base/**", "docker/install-test/**", "docker/setup-test/**",
+    "docker/base/**", "docker/install-test/**", "docker/setup-test/**",
     "scripts/install.sh", "scripts/start-container.sh", "hatch_build.py",
     "PYPI.md", "README.md", "LICENSE", "tests/install/**",
 ]

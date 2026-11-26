@@ -1,5 +1,5 @@
 """One run's charts (#327): ``sim/run_charts.py`` and ``sim/allocation_charts.py``,
-and ``--chart``/``--chart-file``/``--table`` on ``sim networth``, ``sim report ...``,
+and ``--graph``/``--graph-file``/``--table`` on ``sim networth``, ``sim report ...``,
 ``sim account history`` and ``sim allocation`` (whose own tests are in test_allocation.py)."""
 
 from __future__ import annotations
@@ -55,21 +55,21 @@ def test_chart_file_writes_the_chart_and_table_adds_the_table(
     report_run_file: Path, tmp_path: Path, command: list[str], table: str,
 ) -> None:
     chart = tmp_path / "chart.svg"
-    alone = _invoke(*command, "--chart-file", str(chart), run_file=report_run_file)
+    alone = _invoke(*command, "--graph-file", str(chart), run_file=report_run_file)
     assert alone.exit_code == 0, alone.output
     assert alone.output == f"wrote {chart}\n"  # the chart only (#393)
     assert chart.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     assert "<svg" in chart.read_text(encoding="utf-8")
-    both = _invoke(*command, "--chart-file", str(chart), "--table", run_file=report_run_file)
+    both = _invoke(*command, "--graph-file", str(chart), "--table", run_file=report_run_file)
     assert both.exit_code == 0, both.output
     assert both.output.startswith(f"wrote {chart}\n") and table in both.output
 
 
 def test_graph_options_are_checked_before_the_report(report_run_file: Path, tmp_path: Path) -> None:
-    both = _invoke("report", "gains", "--chart", "--chart-file", str(tmp_path / "c.png"),
+    both = _invoke("report", "gains", "--graph", "--graph-file", str(tmp_path / "c.png"),
                    run_file=report_run_file)
-    assert both.exit_code == 2 and "use one of --chart and --chart-file" in both.output
-    gif = _invoke("networth", "--chart-file", str(tmp_path / "c.gif"), run_file=report_run_file)
+    assert both.exit_code == 2 and "use one of --graph and --graph-file" in both.output
+    gif = _invoke("networth", "--graph-file", str(tmp_path / "c.gif"), run_file=report_run_file)
     assert gif.exit_code == 2 and "must end in .png or .svg" in gif.output
     assert "tax" not in gif.output.splitlines()[0]  # no table before the error
 
@@ -80,7 +80,7 @@ def test_graph_without_a_terminal_image_protocol_writes_a_png(
     import tempfile
 
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    result = _invoke("report", "tax", "--chart", run_file=report_run_file)  # no terminal
+    result = _invoke("report", "tax", "--graph", run_file=report_run_file)  # no terminal
     assert result.exit_code == 0, result.output
     written = next(tmp_path.glob("tax-*.png"))
     assert f"wrote {written}" in result.output
@@ -97,10 +97,10 @@ def test_chart_alone_and_chart_before_the_table_with_table(
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     table = _invoke(*command, run_file=report_run_file).output
     assert table == _invoke(*command, "--table", run_file=report_run_file).output
-    alone = _invoke(*command, "--chart", run_file=report_run_file)
+    alone = _invoke(*command, "--graph", run_file=report_run_file)
     assert alone.exit_code == 0, alone.output
     assert alone.output.startswith("wrote ")  # where the PNG went, and why
-    both = _invoke(*command, "--chart", "--table", run_file=report_run_file)
+    both = _invoke(*command, "--graph", "--table", run_file=report_run_file)
     assert both.exit_code == 0, both.output
     assert both.output.startswith("wrote ") and both.output.endswith(table)
     assert both.output.count("\n") == alone.output.count("\n") + table.count("\n")
@@ -109,7 +109,7 @@ def test_chart_alone_and_chart_before_the_table_with_table(
 def test_chart_with_nothing_to_draw_still_says_so(
     report_run_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    result = _invoke("account", "history", BROKERAGE, "--start", "2099-01", "--chart",
+    result = _invoke("account", "history", BROKERAGE, "--start", "2099-01", "--graph",
                      run_file=report_run_file)
     assert result.exit_code == 0, result.output
     assert f"no balances for {BROKERAGE} in that range" in result.output
@@ -124,7 +124,7 @@ def test_output_before_an_error_is_still_shown_with_a_chart(
         raise click.ClickException("no chart today")
 
     monkeypatch.setattr(cli, "_draw_report", broken)
-    result = _invoke("report", "gains", "--chart", run_file=report_run_file)
+    result = _invoke("report", "gains", "--graph", run_file=report_run_file)
     assert result.exit_code == 1
     assert "realized vs. unrealized gains" in result.output and "no chart today" in result.output
 
@@ -134,7 +134,7 @@ def test_guard_rails_graph(retire_alice_run_file: Path, data_dir: Path, tmp_path
     chart = tmp_path / "rails.png"
     result = CliRunner().invoke(main, [
         "sim", "report", "guard-rails", "--runfile", str(retire_alice_run_file),
-        "--data-dir", str(data_dir), "--carried", "--chart-file", str(chart), "--table",
+        "--data-dir", str(data_dir), "--carried", "--graph-file", str(chart), "--table",
     ], env={"COLUMNS": "250"})
     assert result.exit_code == 0, result.output
     assert "guard rail margins" in result.output
@@ -238,7 +238,7 @@ def test_graph_file_is_written_when_there_is_nothing_to_show(
 ) -> None:
     """A script that asked for the file finds one, saying there's nothing to chart."""
     chart = tmp_path / "chart.svg"
-    result = _invoke(*command, "--chart-file", str(chart), run_file=retire_alice_run_file)
+    result = _invoke(*command, "--graph-file", str(chart), run_file=retire_alice_run_file)
     assert result.exit_code == 0, result.output
     assert "No " in chart.read_text(encoding="utf-8") and "to chart." in chart.read_text(encoding="utf-8")
 

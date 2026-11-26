@@ -18,6 +18,7 @@ from zabob.retirement.cli import main
 from zabob.retirement.sim import registries
 from zabob.retirement.sim.loader import load_scenario
 from zabob.retirement.sim.scenario import SERIES_README
+from zabob.retirement.sim.loader import read_current_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROTOTYPE = REPO_ROOT / "prototype_data"
@@ -368,7 +369,7 @@ def test_sim_load_records_current_scenario_and_defaults_to_it(
          "--allow-dirty-data", "--no-run"],
     )
     assert result.exit_code == 0, result.output
-    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "retire_alice"
+    assert read_current_scenario(data) == "retire_alice"
 
     # No scenario argument: falls back to the recorded one.
     again = runner.invoke(
@@ -473,7 +474,7 @@ def test_sim_scenario_create_derives_and_activates(test_data_dir: Path, tmp_path
     assert result.exit_code == 0, result.output
 
     scenario_dir = data / "scenarios" / "late"
-    assert (data / ".current_scenario").read_text(encoding="utf-8").strip() == "late"
+    assert read_current_scenario(data) == "late"
     for role in ("source", "destination"):
         assert (scenario_dir / "chains" / role / ".gitignore").read_text(encoding="utf-8") == ""
     assert (scenario_dir / "chains" / "source" / "_example.csv").read_text(encoding="utf-8") == (

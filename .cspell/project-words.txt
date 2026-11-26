@@ -6,6 +6,7 @@ ACCTTYPE
 acquirability
 addback
 addl
+adduser
 adelay
 affordances
 aformat
@@ -76,6 +77,7 @@ CCSTMTRS
 CCSTMTTRNRS
 charmbracelet
 CHECKNUM
+chgrp
 chipmaker
 chunksize
 CLAUDECODE
@@ -160,6 +162,7 @@ flatnonzero
 fontsize
 footgun
 framealpha
+fromarray
 frombuffer
 FSKAX
 fstat
@@ -169,9 +172,14 @@ FXAIX
 GAAP
 getbasetemp
 geteuid
+getgid
 gethostname
+getpalette
 getpid
+getpwall
+getpwnam
 getuid
+getwch
 Ghostty
 globenewswire
 gmtoffset
@@ -219,6 +227,7 @@ iterm
 ITLX
 Jefferies
 jupyterhub
+kbhit
 keepends
 kendalltau
 Kensho
@@ -237,6 +246,7 @@ labelleft
 labelrotation
 labelsize
 LABSTAT
+LANCZOS
 lastrowid
 lavfi
 LEDGERBAL
@@ -250,6 +260,7 @@ linecap
 linespacing
 linestyle
 linthresh
+localoptions
 LOGNAME
 lognormal
 lookback
@@ -263,6 +274,7 @@ MARGINBALANCE
 markerfacecolor
 markersize
 mcolors
+MEDIANCUT
 Menlo
 metas
 MFINFO
@@ -299,6 +311,7 @@ nextstrain
 NOCASE
 noconfirm
 nohup
+NOMATCH
 nonbusiness
 nonflat
 noninteractive
@@ -310,6 +323,7 @@ noto
 ntdll
 ntos
 NTSTATUS
+nullglob
 nunique
 OBBBA
 OFXHEADER
@@ -415,6 +429,7 @@ SECLIST
 SECLISTMSGSRSV
 SECNAME
 semideviation
+serverapp
 servname
 setopt
 setp
@@ -429,6 +444,7 @@ sidefx
 SIGNONMSGSRSV
 signum
 Simons
+singleuser
 Sixel
 Smirnov
 SNSXX
@@ -443,6 +459,7 @@ SQQQ
 SRRC
 SRRCᵢ
 startangle
+startfile
 STARTPTS
 stcg
 stdlib
@@ -452,6 +469,7 @@ STMTRS
 STMTTRN
 STMTTRNRS
 Stooq
+strerror
 SUBACCTFUND
 SUBACCTSEC
 subclassing
@@ -524,6 +542,7 @@ unsourced
 unspsc
 upserts
 usefixtures
+usermod
 USSTK
 vaccts
 VBTLX
@@ -536,8 +555,10 @@ vmin
 vsplit
 VTSAX
 VTWNX
+waitpid
 Webull
 wezterm
+WNOHANG
 wordcount
 worktree
 worktrees
@@ -555,6 +576,7 @@ XOLD
 xlim
 xticklabels
 xticks
+XTWINOPS
 xytext
 XYZFD
 ydata

@@ -242,7 +242,7 @@ def defaults_context(config: ResearchConfig, skill: str, source: Path = SOURCE_D
 
 def render_defaults(config: ResearchConfig, skill: str, source: Path = SOURCE_DIR) -> str:
     """The "Defaults for this installation" section for ``skill``."""
-    import jinja2  # only when rendering: this module loads with every `analysis` command
+    import jinja2  # only when rendering: this module loads with every `sim` command
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(source / "defaults"),
@@ -364,7 +364,7 @@ def _resolve_config(data_dir: Path | None, config_file: Path | None) -> tuple[Re
 
 _data_dir_option = click.option(
     "--data-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
-    help=f"Data repo whose {CONFIG_FILENAME} to use (default: the one `sim use` shows).",
+    help=f"Data repo whose {CONFIG_FILENAME} to use (default: the one `sim switch` shows).",
 )
 _config_option = click.option(
     "--config", "config_file", type=click.Path(dir_okay=False, exists=True, path_type=Path), default=None,

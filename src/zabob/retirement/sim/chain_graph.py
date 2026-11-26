@@ -6,7 +6,8 @@ from :func:`zabob.retirement.sim.chain_map.mermaid` with Mermaid itself, in head
 Chromium through Playwright, which keeps the image the same as the
 notebook's flowchart. :func:`terminal_protocol` asks the terminal which
 protocol it takes, and :func:`kitty_sequence` / :func:`iterm_sequence`
-wrap the PNG for it.
+wrap the PNG for it; :func:`sixel_sequence` redraws it as Sixel, the one
+protocol Windows Terminal takes (#777).
 
 The chart never leaves the machine, and drawing it needs no network: the
 Mermaid script ships with the package (``vendor/``, gzipped; the notebook's
@@ -24,11 +25,11 @@ import re
 import select
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 __all__ = [
-    "MERMAID_SCRIPT", "GraphError", "fit_columns", "iterm_sequence",
-    "kitty_sequence", "render", "terminal_protocol",
+    "MERMAID_SCRIPT", "SIXEL_CELL", "GraphError", "fit_columns", "iterm_sequence",
+    "kitty_sequence", "open_fallback", "render", "sixel_sequence", "terminal_protocol",
 ]
 
 MERMAID_VERSION = "11.17.2"
@@ -39,7 +40,7 @@ binary file. The CLI and the notebook's flowchart widget both draw with it,
 so neither needs the network. To upgrade, replace it, change ``MERMAID_VERSION``, and update
 the hash in ``tests/test_chain_graph.py``."""
 
-type Protocol = Literal["kitty", "iterm"]
+type Protocol = Literal["kitty", "iterm", "sixel"]
 type ImageFormat = Literal["png", "svg"]
 
 _INSTALL_HINT = ("install Google Chrome, or run `uv run playwright install chromium`; "
@@ -164,15 +165,104 @@ def iterm_sequence(png: bytes, columns: int | None = None) -> str:
     return f"\x1b]1337;File=inline=1;size={len(png)}{width};preserveAspectRatio=1:{data}\x07\n"
 
 
+_SIXEL_COLORS = 256
+"""Color registers a Sixel image may use: Windows Terminal, xterm and foot
+all keep 256 (the VT340 had 16, but nothing that still draws Sixel stops
+there)."""
+
+SIXEL_CELL = (10.0, 20.0)
+"""The cell, in Sixel pixels, that Windows Terminal maps an image onto
+whatever its font: the size to assume when a Sixel terminal doesn't say."""
+
+
+def sixel_sequence(png: bytes, columns: int | None = None,
+                   cell: tuple[float, float] | None = None) -> str:
+    """``png`` as a Sixel image, for terminals that take neither kitty's
+    protocol nor iTerm2's (Windows Terminal, foot, xterm). Sixel carries
+    pixels, not a size to show them at, so an image wider than ``columns``
+    cells of ``cell`` pixels is shrunk to fit first. Transparent pixels are
+    drawn on white, as the charts are, and the colors cut to
+    :data:`_SIXEL_COLORS` without dithering, so a chart's flat fills and thin
+    lines keep their edges."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png))
+    if image.mode != "RGB":
+        image = Image.alpha_composite(Image.new("RGBA", image.size, "white"),
+                                      image.convert("RGBA")).convert("RGB")
+    if columns and cell:
+        width = max(1, int(columns * cell[0]))
+        if image.width > width:
+            height = max(1, round(image.height * width / image.width))
+            image = image.resize((width, height), Image.Resampling.LANCZOS)
+    indexed = image.quantize(colors=_SIXEL_COLORS, method=Image.Quantize.MEDIANCUT,
+                              dither=Image.Dither.NONE)
+    palette = np.frombuffer(bytes(indexed.getpalette() or []), dtype=np.uint8).reshape(-1, 3)
+    return sixel_encode(np.asarray(indexed, dtype=np.int16), palette) + "\n"
+
+
+def sixel_encode(pixels: Any, palette: Any) -> str:
+    """The Sixel image of ``pixels``, a height by width array of indexes
+    into ``palette``, an array of RGB rows (0 to 255). Sixel draws six rows
+    at a time (a band), one color at a time across the band, so each color
+    in a band becomes a run-length coded row of six-bit columns."""
+    import numpy as np
+
+    height, width = pixels.shape
+    # Raster attributes: square pixels, and the size, so the terminal makes
+    # room for the whole image before it draws.
+    out = [f'\x1bPq"1;1;{width};{height}']
+    for index in np.unique(pixels).tolist():
+        red, green, blue = (round(int(c) * 100 / 255) for c in palette[index])
+        out.append(f"#{index};2;{red};{green};{blue}")  # Sixel colors are percents
+    pad = (-height) % 6
+    if pad:  # the last band's rows below the image are no color
+        pixels = np.vstack([pixels, np.full((pad, width), -1, dtype=pixels.dtype)])
+    weights = (1 << np.arange(6)).reshape(6, 1)
+    bands = []
+    for top in range(0, height, 6):
+        band = pixels[top:top + 6]
+        rows = []
+        for color in np.unique(band[band >= 0]).tolist():
+            bits = ((band == color) * weights).sum(axis=0)
+            rows.append(f"#{color}{_sixel_runs(bits[:np.flatnonzero(bits)[-1] + 1])}")
+        bands.append("$".join(rows))  # $: back to the band's left edge for the next color
+    out.append("-".join(bands))  # -: down to the next band
+    out.append("\x1b\\")
+    return "".join(out)
+
+
+def _sixel_runs(bits: Any) -> str:
+    """One color's six-bit columns across a band as Sixel characters, a run
+    of four or more of the same written ``!<count><char>``."""
+    import numpy as np
+
+    starts = np.concatenate(([0], np.flatnonzero(np.diff(bits)) + 1))
+    lengths = np.diff(np.append(starts, len(bits))).tolist()
+    parts = []
+    for value, length in zip(bits[starts].tolist(), lengths, strict=True):
+        char = chr(63 + value)
+        parts.append(f"!{length}{char}" if length > 3 else char * length)
+    return "".join(parts)
+
+
 # The query kitty's documentation gives for detecting its graphics protocol:
 # a one-pixel image query, then the device-attributes query every terminal
 # answers. A terminal that takes kitty graphics answers the first one before
-# the second, so reading up to the second's reply never hangs.
+# the second, so reading up to the second's reply never hangs; and the
+# second's reply lists Sixel (attribute 4) when the terminal draws it.
 _KITTY_QUERY = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c"
-_DEVICE_ATTRIBUTES = re.compile(rb"\x1b\[\?[\d;]*c")
+_DEVICE_ATTRIBUTES = re.compile(rb"\x1b\[\?([\d;]*)c")
 # Any id: iTerm2 answers a kitty query with i=0, not the id it was asked with.
 _KITTY_OK = re.compile(rb"\x1b_Gi=\d+;OK\x1b\\")
 _ITERM_PROGRAMS = {"iTerm.app", "vscode", "WezTerm"}
+# The cell size in pixels (XTWINOPS 16), for a terminal that doesn't put its
+# pixel size where the ioctl reads it (Windows has no such ioctl at all).
+_CELL_QUERY = "\x1b[16t\x1b[c"
+_CELL_REPLY = re.compile(rb"\x1b\[6;(\d+);(\d+)t")
 
 
 def kitty_reply(reply: bytes) -> bool:
@@ -180,9 +270,19 @@ def kitty_reply(reply: bytes) -> bool:
     return _KITTY_OK.search(reply) is not None
 
 
+def sixel_reply(reply: bytes) -> bool:
+    """Whether the device attributes in ``reply`` list Sixel graphics (4).
+    The first number is the terminal's class (62 for a VT220, say), not an
+    attribute, so it doesn't count."""
+    match = _DEVICE_ATTRIBUTES.search(reply)
+    return match is not None and b"4" in match.group(1).split(b";")[1:]
+
+
 def _ask_terminal(query: str, timeout: float = 1.0) -> bytes:
     """Write ``query`` to the terminal and read its reply, up to the
     device-attributes answer that ends it, or ``timeout`` seconds."""
+    if sys.platform == "win32":
+        return _ask_console(query, timeout)
     import termios
     import tty
 
@@ -205,6 +305,34 @@ def _ask_terminal(query: str, timeout: float = 1.0) -> bytes:
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
     return reply
+
+
+def _ask_console(query: str, timeout: float) -> bytes:
+    """:func:`_ask_terminal` on Windows, which has no termios: with the
+    console's input in VT mode, the terminal's reply arrives as typed
+    characters, which ``msvcrt`` reads without echoing them."""
+    assert sys.platform == "win32"  # and so the checker knows it
+    import msvcrt
+    import time
+
+    from zabob.retirement import oscompat
+
+    with oscompat.vt_console():
+        sys.stdout.write(query)
+        sys.stdout.flush()
+        reply = ""
+        deadline = time.monotonic() + timeout
+        while not _DEVICE_ATTRIBUTES.search(reply.encode()) and time.monotonic() < deadline:
+            if msvcrt.kbhit():
+                reply += msvcrt.getwch()
+            else:
+                time.sleep(0.01)
+        late = time.monotonic() + 0.05
+        while time.monotonic() < late:
+            while msvcrt.kbhit():
+                reply += msvcrt.getwch()
+            time.sleep(0.01)
+    return reply.encode()
 
 
 def swallow_replies(timeout: float = 0.2) -> None:
@@ -233,25 +361,59 @@ def terminal_protocol() -> Protocol | None:
     """The image protocol this terminal takes, or ``None`` when it takes
     none, the output isn't a terminal, or it's inside tmux (which needs
     passthrough wrapping this doesn't do). ``$ANALYSIS_IMAGE_PROTOCOL``
-    (``kitty``, ``iterm`` or ``none``) overrides the guess, for a terminal
-    it gets wrong, but never sends images to output that isn't a terminal."""
+    (``kitty``, ``iterm``, ``sixel``, or ``none``, ``file`` or ``open`` for
+    no protocol) overrides the guess, for a terminal it gets wrong, but never
+    sends images to output that isn't a terminal.
+
+    The guess: iTerm2 by name; then whatever the terminal answers to the
+    kitty query (kitty's own protocol, or Sixel in its device attributes),
+    with the terminals known to take iTerm2's protocol getting that ahead of
+    Sixel, whose 256 colors draw a chart less well. Sixel needs the
+    terminal to say so: ``$WT_SESSION`` names Windows Terminal but not its
+    version (one before 1.22 draws no Sixel), and it passes on to any
+    window started from one (a ``start cmd`` console, say), so it decides
+    nothing (#777)."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None  # escapes would only garble a pipe or a file
     forced = os.environ.get("ANALYSIS_IMAGE_PROTOCOL", "").lower()
-    if forced in ("kitty", "iterm"):
+    if forced in ("kitty", "iterm", "sixel"):
         return forced  # even in tmux: whoever set it may have passthrough on
-    if forced == "none" or os.environ.get("TMUX"):
+    if forced in ("none", "file", "open") or os.environ.get("TMUX"):
         return None
     if os.environ.get("TERM_PROGRAM") == "iTerm.app":
         # iTerm2 accepts a kitty image but showed nothing (issue #142), so it
         # gets its own protocol, without asking.
         return "iterm"
+    reply = b""
     try:
-        if kitty_reply(_ask_terminal(_KITTY_QUERY)):
-            return "kitty"
-    except (ImportError, OSError):  # no termios (Windows), or no controlling terminal
+        reply = _ask_terminal(_KITTY_QUERY)
+    except (ImportError, OSError):  # no console or controlling terminal to ask
         pass
-    return "iterm" if os.environ.get("TERM_PROGRAM") in _ITERM_PROGRAMS else None
+    if kitty_reply(reply):
+        return "kitty"
+    if os.environ.get("TERM_PROGRAM") in _ITERM_PROGRAMS:
+        return "iterm"
+    if sixel_reply(reply):
+        return "sixel"
+    return None
+
+
+def open_fallback() -> bool:
+    """Whether a chart the terminal can't show should open in the image
+    viewer: when someone is at this machine to see it (a terminal on the
+    output, not over SSH, a desktop on Linux), unless
+    ``$ANALYSIS_IMAGE_PROTOCOL`` says ``file`` (or ``none``), or ``open``
+    to open it regardless."""
+    forced = os.environ.get("ANALYSIS_IMAGE_PROTOCOL", "").lower()
+    if forced in ("none", "file"):
+        return False
+    if forced == "open":
+        return True
+    if not sys.stdout.isatty() or os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
+        return False
+    if sys.platform in ("win32", "darwin"):
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def cell_size() -> tuple[float, float] | None:
@@ -269,6 +431,23 @@ def cell_size() -> tuple[float, float] | None:
     if not (x_pixels and y_pixels and columns and rows):
         return None
     return x_pixels / columns, y_pixels / rows
+
+
+def asked_cell_size() -> tuple[float, float] | None:
+    """The cell size the terminal gives when asked (``CSI 16 t``), for a
+    Sixel image when :func:`cell_size` can't say: Windows has no ioctl. Only
+    for Sixel, whose image must be drawn to its width; the other protocols
+    size an image themselves, and asking costs a round trip."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return None
+    try:
+        match = _CELL_REPLY.search(_ask_terminal(_CELL_QUERY))
+    except (ImportError, OSError):
+        return None
+    if match is None or not (int(match.group(1)) and int(match.group(2))):
+        return None
+    height, width = int(match.group(1)), int(match.group(2))
+    return float(width), float(height)
 
 
 # Mermaid's labels are 16px; a terminal cell is about 1.2 times its font's height.

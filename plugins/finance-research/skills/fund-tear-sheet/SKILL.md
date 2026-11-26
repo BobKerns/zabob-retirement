@@ -7,7 +7,7 @@ description: Build an investor tear sheet on a named mutual fund, ETF, money mar
 
 A fund is a bundle of other securities plus a set of rules and costs. The questions differ from a company's: what's in the bundle, what does it cost, how well does it do what it promises, what risks come with it, and what are the cheaper or simpler alternatives. Build the answer from public sources, and show where every number came from and as of when — fund data goes stale fast (yields daily, holdings monthly or quarterly).
 
-<!-- defaults:start (rendered from defaults/fund-tear-sheet.md.j2; edit the template, then run: analysis research-plugin render --neutral) -->
+<!-- defaults:start (rendered from defaults/fund-tear-sheet.md.j2; edit the template, then run: sim symbol research-plugin render --neutral) -->
 ## Defaults for this installation
 - **Tabs:** Overview, Tear sheet, Price chart, Detail, Glossary.
 - **Translated tabs:** none.

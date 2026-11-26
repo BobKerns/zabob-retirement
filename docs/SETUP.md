@@ -16,16 +16,24 @@ fetches Python 3.14 if you don't have it:
 uv tool install zabob-retirement
 ```
 
-(`zabob-retire` is the same program under a shorter name.) Then make your
-data repo, the git repository of CSV files that holds your household:
+Then make your data repo, the git repository of CSV files that holds your
+household:
 
 ```sh
-sim init        # in ~/zabob-retirement, asking who you are
+sim init        # in ~/zabob-retirement, asking about your household
 ```
 
-That's all: `sim init` makes it your default data repo, so every `sim`
-command finds it, from any folder and in any new terminal. `sim use DIR`
-switches to another. In bash or zsh, `source
+Then say who you are, by default your login name:
+
+```sh
+sim login       # or: sim login Alice
+```
+
+That's all: `sim init` makes it your data repo, so every `sim` command finds
+it, from any folder and in any new terminal, and `sim login` records your name
+on what you make and change. `sim switch` shows both, and your current
+scenario; `sim switch --data DIR` switches to another data repo, as does
+running a `sim` command inside one. In bash or zsh, `source
 ~/zabob-retirement/sim/activate-analysis` adds the data repo and you to the
 prompt and turns on TAB completion of names; it's optional.
 
@@ -34,7 +42,9 @@ install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
 commands before entering your own. Either way the data repo gets the
-notebooks, in its `notebooks/`; `analysis jupyter` opens them.
+notebooks, in its `notebooks/`; `sim jupyter start` opens them. To give
+everyone in the household their own JupyterLab, see [Share with your
+household](guides/jupyterhub.md).
 
 To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 --replace` to take the new notebooks (it replaces the copies in your data
@@ -96,9 +106,12 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 - There is no TAB completion of names, since `activate-analysis` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
-- Windows Terminal doesn't take the image protocols `--graph` and `--chart`
-  use, so it saves the chart as a PNG and prints its path. VS Code's
-  terminal shows them (below).
+- `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
+  later (its Settings, **About**, gives the version; the Microsoft Store
+  updates it). In an older one, or the plain console window, it saves the
+  chart as a PNG, prints its path and opens it in your image viewer. If a
+  current Windows Terminal saves a PNG anyway, set
+  `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
 ### Windows: WSL
 
@@ -129,15 +142,14 @@ To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
 extension, and open a folder from Ubuntu with `code .` (in a clone of the
 code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
-Terminal doesn't take the image protocols `--graph` and `--chart` use, so there it saves
-the chart as a PNG and prints its path (see
+Terminal 1.22 or later shows them too (see
 [Drawing chain flowcharts](#drawing-chain-flowcharts-in-the-terminal)).
-`analysis jupyter` works too: if no browser opens, Ctrl+click the link it
+`sim jupyter start` works too: if no browser opens, Ctrl+click the link it
 prints.
 
 If `wsl --install` fails with a message about virtualization, it is turned
@@ -167,7 +179,7 @@ It installs [uv](https://github.com/astral-sh/uv) if missing, configures the
 `.githooks` hooks (which keep runtime data and real account names out of
 commits), sets `merge.ff false` and `pull.ff true` in this repo and the linked
 data repo (an explicit merge always makes a merge commit; a pull still
-fast-forwards when it can), runs `uv sync --group dev` (installing the Python
+fast-forwards when it can), runs `uv sync --group dev --extra hub` (installing the Python
 version pinned in `.python-version` only if `uv sync` can't find a usable
 interpreter), and installs the notebook-cleaning `nbstripout` filter (strips
 outputs and per-run/per-machine metadata churn like `kernelspec.display_name`
@@ -190,7 +202,7 @@ verification gates do.
 Last, it links the data and code repositories together. It asks for the path to
 your data repo, makes `data/private` point to it, and asks which of the data
 repo's primary persons you are. Give a path with no data repo yet and it offers
-to create one there with `sim init`, which asks who you are. Leave the path
+to create one there with `sim init`, which asks about your household. Leave the path
 blank and it fills `data/private` with the template data instead, used as a
 `test` person, which is what CI does. Arguments to `setup.sh` go to
 `scripts/link-data.sh` instead of the question: a data repo's path,
@@ -259,7 +271,7 @@ under CI or an agent. Each run of the plugin browses the web for several
 minutes and uses around 150k tokens. Its settings (tab languages, tax
 state) come from the data repo's `research.yaml`, and setup says which it
 used; once installed, a re-run of setup updates it. Install or remove it by
-hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
+hand with `.venv/bin/sim symbol research-plugin install` or `uninstall`; see
 [the finance research guide](guides/finance-research.md).
 
 ## What the script does, step by step (for reference or manual setup)
@@ -285,7 +297,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     git config pull.ff true
     ```
     Run the last two in the data repo as well.
-6. Run `uv sync --group dev` (installing the pinned Python from
+6. Run `uv sync --group dev --extra hub` (installing the pinned Python from
    `.python-version` first with `uv python install` only if this fails)
 
    This also puts `zabob_retirement_truststore.pth` in the venv's site-packages. It
@@ -325,7 +337,7 @@ hand with `.venv/bin/analysis research-plugin install` or `uninstall`; see
     ```
 11. Optionally, install the finance-research Claude plugin:
     ```sh
-    .venv/bin/analysis research-plugin install --data-dir data/private/sim
+    .venv/bin/sim symbol research-plugin install --data-dir data/private/sim
     ```
 
 ## Blocked keywords
@@ -382,6 +394,7 @@ flowchart work offline, and the chart never leaves your machine.
 - [Ghostty](https://ghostty.org) (macOS, Linux)
 - [WezTerm](https://wezterm.org) (macOS, Linux, Windows)
 - VS Code's integrated terminal, with `terminal.integrated.enableImages` on
+- Windows Terminal 1.22 or later (Windows; the Microsoft Store keeps it current)
 
 On an iPad, connecting over SSH to the machine that runs the code, use
 [gterm](https://apps.apple.com/us/app/gterm-ghostty-ssh/id6774837597) from the
@@ -391,12 +404,16 @@ other SSH apps, but everything this project needs works. Termius has just
 added the same library, but in testing (October 2026) it did not work yet: one
 try gave a blank screen, another hung.
 
-iTerm2 gets its own image protocol. Elsewhere `--graph` (or `--chart`) asks the terminal
+iTerm2 gets its own image protocol. Elsewhere `--graph` asks the terminal
 whether it takes the kitty graphics protocol, and falls back to iTerm2's
-protocol for older VS Code and WezTerm. In any other terminal, including macOS
-Terminal and inside tmux, it writes the chart to a PNG file and prints its
-path. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
-`kitty`, `iterm` or `none`.
+protocol for older VS Code and WezTerm, then to Sixel, the one Windows
+Terminal takes (and foot, xterm and others that say they do). Sixel images
+have at most 256 colors, which a chart barely notices. In any other terminal,
+including macOS Terminal and inside tmux, it writes the chart to a PNG file,
+prints its path, and opens it in your image viewer, unless you're connected
+over SSH. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
+`kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
+open it even over SSH.
 
 ## Jupyter and filesystem MCP servers
 
@@ -417,12 +434,14 @@ overwriting an existing one), then launches `jupyter lab` with that same
 token, so the Jupyter MCP server always talks to the instance you started:
 
 ```sh
-analysis jupyter
+sim jupyter start
 ```
 
-Any extra arguments are passed through to `jupyter lab` verbatim, e.g.
-`analysis jupyter --no-browser`. If `.mcp.json` gets corrupted, delete it and
-rerun `analysis jupyter` to regenerate it.
+It runs in the background, with its output in `state/jupyter.log`; `sim
+jupyter stop` stops it. Arguments after `--` are passed through to `jupyter
+lab` verbatim, e.g. `sim jupyter start -- --ServerApp.port_retries=0`. If
+`.mcp.json` gets corrupted, delete it and rerun `sim jupyter start` to
+regenerate it.
 
 ## Optional MCP registration
 

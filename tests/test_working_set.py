@@ -11,10 +11,10 @@ from click.testing import CliRunner, Result
 
 from zabob.retirement.cli import main
 from zabob.retirement.sim import working_set
-from zabob.retirement.sim.loader import current_scenario_path
 from zabob.retirement.sim.locks import BUILDER_CHILD_ENV
 from zabob.retirement.sim.notebook_ui.pickers import note_picks
 from zabob.retirement.sim.working_set import read_working_set, working_set_path
+from zabob.retirement.sim.loader import write_current_scenario
 
 pytestmark = pytest.mark.uses_working_set_write
 
@@ -87,7 +87,7 @@ def test_a_background_build_is_not_use(
 def test_naming_or_defaulting_a_scenario_on_the_cli_is_use(test_data_dir: Path) -> None:
     assert _sim(test_data_dir, "account", "list", "--scenario", "base").exit_code == 0
     assert read_working_set(test_data_dir) == ["base"]
-    current_scenario_path(test_data_dir).write_text("retire_alice\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "retire_alice")
     assert _sim(test_data_dir, "account", "list").exit_code == 0
     assert read_working_set(test_data_dir) == ["retire_alice", "base"]
 
@@ -118,7 +118,7 @@ def test_a_new_scenario_is_use_but_its_parent_is_not(test_data_dir: Path) -> Non
 @pytest.mark.uses_current_scenario_write
 def test_cli_rename_puts_it_on_top_and_delete_drops_it(test_data_dir: Path) -> None:
     _seed(test_data_dir).write_text("base\nretire_alice\n", encoding="utf-8")
-    current_scenario_path(test_data_dir).write_text("base\n", encoding="utf-8")
+    write_current_scenario(test_data_dir, "base")
     assert _sim(test_data_dir, "scenario", "rename", "retire_alice", "retire_bill").exit_code == 0
     assert read_working_set(test_data_dir) == ["retire_bill", "base"]
     assert _sim(test_data_dir, "scenario", "delete", "retire_bill", "--yes").exit_code == 0

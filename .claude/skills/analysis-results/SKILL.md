@@ -158,8 +158,10 @@ which scenario in the lineage sets it.
 .claude/skills/analysis-results/notebook.sh net_worth.ipynb
 ```
 
-It starts JupyterLab (as `analysis jupyter`, from the main checkout, in the
-background) if it isn't running, and opens the notebook in the browser. Tell
+It runs `sim jupyter start NOTEBOOK` from the main checkout: that starts
+JupyterLab in the background if it isn't running, and opens the notebook in
+the browser. JupyterLab keeps running for the user afterwards; `sim jupyter
+stop` stops it. Tell
 the user which widget or section to look at, and which scenario to pick in
 it (`net_worth` and `events` open on `base`; the others on the current
 scenario).

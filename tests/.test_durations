@@ -2592,7 +2592,6 @@
 "tests/test_registries.py::test_format_calendar_amount[set_rate-nan--]": 0.001,
 "tests/test_registries.py::test_format_calendar_amount_fixed_places_and_whole_dollars": 0.001,
 "tests/test_release.py::test_the_pypi_page_links_only_absolute_urls": 0.001,
-"tests/test_release.py::test_zabob_retire_has_and_pins_zabob_retirement_s_version": 0.001,
 "tests/test_rename.py::test_a_rename_of_what_a_template_defines_is_refused[calendar-core_inflation-inflation_core]": 0.042,
 "tests/test_rename.py::test_a_rename_of_what_a_template_defines_is_refused[series-food-groceries]": 0.079,
 "tests/test_rename.py::test_a_rename_onto_a_built_in_account_is_refused[command0]": 0.042,

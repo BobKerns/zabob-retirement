@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import os
+import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import Any
 
-__all__ = ["WINDOWS", "is_link", "kill_tree", "link_dir", "login_name", "pid_alive", "remove_link", "start_tree",
-           "utf8_stdio"]
+__all__ = ["WINDOWS", "enable_vt_output", "is_link", "kill_tree", "link_dir", "login_name", "open_file", "pid_alive",
+           "remove_link", "start_tree", "utf8_stdio", "vt_console"]
 
 WINDOWS = sys.platform == "win32"
 
@@ -230,3 +232,99 @@ def utf8_stdio() -> None:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None and (getattr(stream, "encoding", "") or "").lower().replace("-", "") != "utf8":
             reconfigure(encoding="utf-8")
+
+
+# Console modes (SetConsoleMode). Output: interpret escape sequences rather
+# than print them. Input: hand the terminal's escape-sequence replies through
+# as characters, rather than line by line with echo.
+_ENABLE_PROCESSED_OUTPUT = 0x0001
+_ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+_ENABLE_LINE_INPUT = 0x0002
+_ENABLE_ECHO_INPUT = 0x0004
+_ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
+_STD_INPUT_HANDLE = -10
+_STD_OUTPUT_HANDLE = -11
+
+
+def _console_mode(kernel32: Any, which: int) -> tuple[Any, int] | None:
+    """The console handle ``which`` names and its mode, or ``None`` when it
+    isn't a console (redirected)."""
+    import ctypes
+    from ctypes import wintypes
+
+    handle = kernel32.GetStdHandle(which)
+    mode = wintypes.DWORD()
+    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+        return None
+    return handle, mode.value
+
+
+def _console_kernel32() -> Any:
+    assert sys.platform == "win32"  # and so the checker knows it
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetStdHandle.restype = wintypes.HANDLE
+    kernel32.GetStdHandle.argtypes = (wintypes.DWORD,)
+    kernel32.GetConsoleMode.restype = wintypes.BOOL
+    kernel32.GetConsoleMode.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.SetConsoleMode.restype = wintypes.BOOL
+    kernel32.SetConsoleMode.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    return kernel32
+
+
+def enable_vt_output() -> bool:
+    """Have the Windows console pass escape sequences (colors, images) to
+    the terminal instead of printing them, as every program that writes them
+    does; left on, as they do. Whether output takes them: always true off
+    Windows, false when the output isn't a console."""
+    if not WINDOWS:
+        return True
+    kernel32 = _console_kernel32()
+    console = _console_mode(kernel32, _STD_OUTPUT_HANDLE & 0xFFFFFFFF)
+    if console is None:
+        return False
+    handle, mode = console
+    wanted = mode | _ENABLE_PROCESSED_OUTPUT | _ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    return wanted == mode or bool(kernel32.SetConsoleMode(handle, wanted))
+
+
+@contextlib.contextmanager
+def vt_console() -> Generator[None]:
+    """On Windows, the console set for asking the terminal a question:
+    escape sequences out, and the reply in as characters, not echoed and not
+    waiting for Enter. The input mode comes back as it was afterwards.
+    Raises ``OSError`` when there is no console to ask."""
+    kernel32 = _console_kernel32()
+    if not enable_vt_output():
+        raise OSError("the output isn't a console")
+    console = _console_mode(kernel32, _STD_INPUT_HANDLE & 0xFFFFFFFF)
+    if console is None:
+        raise OSError("the input isn't a console")
+    handle, saved = console
+    mode = (saved | _ENABLE_VIRTUAL_TERMINAL_INPUT) & ~(_ENABLE_LINE_INPUT | _ENABLE_ECHO_INPUT)
+    if not kernel32.SetConsoleMode(handle, mode):
+        raise OSError("couldn't set the console's input mode")
+    try:
+        yield
+    finally:
+        kernel32.SetConsoleMode(handle, saved)
+
+
+def open_file(path: Path) -> bool:
+    """Open ``path`` in the program the desktop opens its kind of file with,
+    without waiting for it. Whether something took it: false where there is
+    no opener (Linux without ``xdg-open``), or it failed to start."""
+    try:
+        if sys.platform == "win32":
+            os.startfile(path)  # noqa: S606 - the user's own chart, in their own viewer
+            return True
+        opener = "open" if sys.platform == "darwin" else shutil.which("xdg-open")
+        if opener is None:
+            return False
+        subprocess.Popen([opener, str(path)], stdin=subprocess.DEVNULL,  # noqa: S603
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return False
+    return True

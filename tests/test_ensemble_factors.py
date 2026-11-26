@@ -77,7 +77,7 @@ def test_mermaid_prints_the_tree_as_a_flowchart(template_data_dir: Path, markets
 
 
 @pytest.mark.parametrize("args, refusal", [
-    (("--mermaid", "--chart"), "use one of --mermaid, --chart and --chart-file"),
+    (("--mermaid", "--graph"), "use one of --mermaid, --graph and --graph-file"),
     (("--mermaid", "--varying"), "--mermaid prints only the tree"),
 ])
 def test_mermaid_refuses_the_other_outputs(
@@ -105,7 +105,7 @@ def test_the_chart_file_holds_the_drawn_tree(
 ) -> None:
     out = tmp_path / "factors.png"
 
-    result = _factors(template_data_dir, markets, "--chart-file", str(out))
+    result = _factors(template_data_dir, markets, "--graph-file", str(out))
 
     assert result.exit_code == 0, result.output
     assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

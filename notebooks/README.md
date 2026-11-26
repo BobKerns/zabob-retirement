@@ -17,7 +17,7 @@ Notes:
 
 VS Code's notebook renderer clips a table that is wider than the window instead of
 scrolling it, and VS Code plus a Python kernel needs a fair amount of memory. If a
-notebook is not satisfactory there, run `analysis jupyter` and open it in JupyterLab
+notebook is not satisfactory there, run `sim jupyter start` and open it in JupyterLab
 instead: wide tables scroll sideways, and it can use less memory. (It may still be too
 much for a small machine with many browser tabs open.)
 
@@ -27,7 +27,7 @@ Several views also have terminal equivalents that need no notebook or kernel:
 | --- | --- |
 | accounts and opening balances | `analysis sim account list` |
 | the lots in an account | `analysis sim account holdings <account>` |
-| the portfolio by asset class (`accounts.ipynb`'s pie) | `analysis sim allocation [--by GROUP] [--chart]` |
+| the portfolio by asset class (`accounts.ipynb`'s pie) | `analysis sim allocation [--by GROUP] [--graph]` |
 | the accounts holding a symbol | `analysis sim account holders <symbol>` |
 | chains, as a table and one chain at a time as a flowchart | `analysis sim chain list`, `analysis sim chain show CHAIN [--graph \| --mermaid]` |
 | scheduled transactions | `analysis sim scheduled list` |
@@ -41,27 +41,27 @@ Several views also have terminal equivalents that need no notebook or kernel:
 | year-to-date rows | `analysis sim ytd list` |
 | itemizations, their totals and what references them | `analysis sim itemization list`, `analysis sim itemization show NAME` |
 | a run's summary: provenance, lots, year-end net worth, negative-balance warnings, years past a guard rail | `analysis sim explain [SCENARIO \| RUNFILE]`; every notebook that opens a run lists its negative-balance warnings under the scenario picker |
-| net worth by year or month, CPI-constant (default) or nominal | `analysis sim networth [SCENARIO] [--monthly] [--dollars cpi_constant\|nominal] [--chart]` |
-| balance history of an account or lot (`accounts.ipynb`) | `analysis sim account history ACCOUNT [--lot LOT] [--yearly] [--chart]` |
+| net worth by year or month, CPI-constant (default) or nominal | `analysis sim networth [SCENARIO] [--monthly] [--dollars cpi_constant\|nominal] [--graph]` |
+| balance history of an account or lot (`accounts.ipynb`) | `analysis sim account history ACCOUNT [--lot LOT] [--yearly] [--graph]` |
 | basis step-ups at a death, with the rule that applied (`accounts.ipynb`) | `analysis sim explain [SCENARIO \| RUNFILE]` |
-| income and expenses by category (`net_worth.ipynb`) | `analysis sim report income`, `analysis sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--chart]` |
-| economic income carried down to the change in net worth, after tax or pre-tax (`net_worth.ipynb`) | `analysis sim report income [--pre-tax] [--chart]` |
-| realized vs. unrealized gains (`net_worth.ipynb`) | `analysis sim report gains [--chart]` |
-| federal and state tax with their AGI, deduction and taxable income, and tax reconciliation (`net_worth.ipynb`) | `analysis sim report tax [--reconciliation] [--chart]` |
-| guard rails: each year's margin and the cumulative one, and a summary (`net_worth.ipynb`) | `analysis sim report guard-rails [--rail NAME] [--carried] [--chart]` |
-| spending against the plan: budgeted vs. delivered, redirected, filled (`net_worth.ipynb`) | `analysis sim report spending [--by category\|account\|tag:ROLE] [--chart]` |
-| the portfolio's drift from its target allocation (`accounts.ipynb`) | `analysis sim allocation --drift [--targets SET] [--chart]` |
+| income and expenses by category (`net_worth.ipynb`) | `analysis sim report income`, `analysis sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--graph]` |
+| economic income carried down to the change in net worth, after tax or pre-tax (`net_worth.ipynb`) | `analysis sim report income [--pre-tax] [--graph]` |
+| realized vs. unrealized gains (`net_worth.ipynb`) | `analysis sim report gains [--graph]` |
+| federal and state tax with their AGI, deduction and taxable income, and tax reconciliation (`net_worth.ipynb`) | `analysis sim report tax [--reconciliation] [--graph]` |
+| guard rails: each year's margin and the cumulative one, and a summary (`net_worth.ipynb`) | `analysis sim report guard-rails [--rail NAME] [--carried] [--graph]` |
+| spending against the plan: budgeted vs. delivered, redirected, filled (`net_worth.ipynb`) | `analysis sim report spending [--by category\|account\|tag:ROLE] [--graph]` |
+| the portfolio's drift from its target allocation (`accounts.ipynb`) | `analysis sim allocation --drift [--targets SET] [--graph]` |
 | a scenario's guard rails, as defined | `analysis sim guard-rail list` |
 | every event, filtered by reason/tax/account/date | none yet (#189) |
-| an ensemble's mean/median/SD, 5th–95th percentiles and tail means by year, for net worth, one account, or one lot, and its fan chart | `analysis sim ensemble summary <recipe> [--account NAME [--lot LOT]] [--log] [--chart]` |
-| two or more scenarios side by side: run versions, what differs, year-end net worth, break-even, guard rails, strategies, spending, Social Security, tax, one account or lot (`scenario_compare.ipynb`) | `analysis sim compare [BASELINE] [VARIANT ...] [--section SECTION] [--account NAME [--lot LOT]] [--chart]` |
-| an ensemble's members against its guard rails: share past, ever past, RMS overshoot (`ensemble.ipynb`) | `analysis sim ensemble guard-rails <recipe> [--rail NAME] [--chart]` |
-| an ensemble's spending against the plan across members (`ensemble.ipynb`) | `analysis sim ensemble spending <recipe> [--category NAME] [--chart]` |
-| how far an ensemble's portfolios stray from a target set (`ensemble.ipynb`) | `analysis sim ensemble drift <recipe> [--targets SET] [--asset-class CLASS] [--chart]` |
-| two ensembles compared on risk: percentile, paired and tail-mean deltas, and each guard rail's change | `analysis sim ensemble compare <baseline> <variant> [--account NAME [--lot LOT]] [--log] [--chart]` |
+| an ensemble's mean/median/SD, 5th–95th percentiles and tail means by year, for net worth, one account, or one lot, and its fan chart | `analysis sim ensemble summary <recipe> [--account NAME [--lot LOT]] [--log] [--graph]` |
+| two or more scenarios side by side: run versions, what differs, year-end net worth, break-even, guard rails, strategies, spending, Social Security, tax, one account or lot (`scenario_compare.ipynb`) | `analysis sim compare [BASELINE] [VARIANT ...] [--section SECTION] [--account NAME [--lot LOT]] [--graph]` |
+| an ensemble's members against its guard rails: share past, ever past, RMS overshoot (`ensemble.ipynb`) | `analysis sim ensemble guard-rails <recipe> [--rail NAME] [--graph]` |
+| an ensemble's spending against the plan across members (`ensemble.ipynb`) | `analysis sim ensemble spending <recipe> [--category NAME] [--graph]` |
+| how far an ensemble's portfolios stray from a target set (`ensemble.ipynb`) | `analysis sim ensemble drift <recipe> [--targets SET] [--asset-class CLASS] [--graph]` |
+| two ensembles compared on risk: percentile, paired and tail-mean deltas, and each guard rail's change | `analysis sim ensemble compare <baseline> <variant> [--account NAME [--lot LOT]] [--log] [--graph]` |
 | a baseline ensemble against several others in one table, net worth and guard rails (`ensemble.ipynb`) | `analysis sim ensemble compare <baseline> <variant> <variant> ...` |
-| which varying rows matter, and when (`sensitivity.ipynb`) | `analysis sim ensemble sensitivity <recipe> [--row ROW] [--chart]` |
-| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv-file FILE] [--chart]` |
+| which varying rows matter, and when (`sensitivity.ipynb`) | `analysis sim ensemble sensitivity <recipe> [--row ROW] [--graph]` |
+| an ensemble batch's draws against their distributions and correlations (`sensitivity.ipynb`) | `analysis sim ensemble draws <recipe> [--node NODE \| --pair A,B] [--csv-file FILE] [--graph]` |
 
 Views with no terminal equivalent yet, and what the terminal shows that no notebook does yet, are listed in [TODO.md](../TODO.md), which also asks for a periodic review of both.
 

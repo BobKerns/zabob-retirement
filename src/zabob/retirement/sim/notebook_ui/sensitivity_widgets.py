@@ -8,7 +8,7 @@ For a Monte Carlo batch: R^2 by year and each row's rho, SRRC or PRCC
 with its 95% interval.
 
 Each chart is a ``*_view`` function in ``zabob.retirement.sim.sensitivity_charts``,
-shared with ``sim ensemble sensitivity --chart``; ``sensitivity_widget`` wires
+shared with ``sim ensemble sensitivity --graph``; ``sensitivity_widget`` wires
 them to shared pickers. A picker shown next to more than one chart is one
 widget displayed twice, so the views stay in sync.
 """

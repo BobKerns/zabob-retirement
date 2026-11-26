@@ -183,6 +183,25 @@ def test_person_show_writes_the_graph_file(test_data_dir: Path, tmp_path: Path) 
     assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+@pytest.mark.slow
+def test_person_show_chart_comes_alone_unless_table(
+    test_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #779: --graph draws the chart instead of the tables, as on every
+    other command; --table prints them too, after it. --chart-file is
+    --graph-file."""
+    monkeypatch.setattr("zabob.retirement.sim.ensemble_plots.figure_bytes",
+                        lambda fig, fmt, dpi=None: b"chart")
+
+    alone = _sim(test_data_dir, "--chart-file", str(tmp_path / "alone.png"))
+    both = _sim(test_data_dir, "--graph-file", str(tmp_path / "both.png"), "--table")
+
+    assert alone.exit_code == 0 and both.exit_code == 0, alone.output + both.output
+    assert (tmp_path / "alone.png").read_bytes() == b"chart"
+    assert "age at death by percentile" not in alone.output
+    assert "age at death by percentile" in both.output
+
+
 def test_a_sized_figure_fills_the_size_but_keeps_rows_readable(
     lifespans: Callable[..., list[PersonLifespan]],
 ) -> None:

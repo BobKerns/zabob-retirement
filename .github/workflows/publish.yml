@@ -1,4 +1,4 @@
-# Publish zabob-retirement and zabob-retire to PyPI (#662), with trusted
+# Publish zabob-retirement to PyPI (#662), with trusted
 # publishing: PyPI trusts this workflow, by name, in the environments below,
 # so no token is stored anywhere.
 #
@@ -7,7 +7,7 @@
 # - PyPI (environment pypi): a published GitHub release, only.
 #
 # Nothing runs on ordinary pushes, to spare Actions minutes. A version can be
-# uploaded once per index, ever: bump pyproject.toml (both packages) first.
+# uploaded once per index, ever: bump pyproject.toml first.
 name: Publish
 
 on:
@@ -40,28 +40,22 @@ jobs:
           # Pinned, as in gates.yml.
           version: "0.12.23"
 
-      - name: Check the versions agree
+      - name: Check the tag matches the version
         env:
           # Only the ref name comes from the event; never its text.
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           version="$(uv version --short)"
-          retire="$(uv version --short --directory packages/zabob-retire)"
-          [ "$retire" = "$version" ] || { echo "::error::zabob-retire is $retire, zabob-retirement is $version"; exit 1; }
-          grep -qxF "dependencies = [\"zabob-retirement==$version\"]" packages/zabob-retire/pyproject.toml || \
-              { echo "::error::zabob-retire doesn't pin zabob-retirement==$version"; exit 1; }
           if [ "$REF_TYPE" = tag ] && [ "$REF_NAME" != "v$version" ]; then
               echo "::error::tag $REF_NAME doesn't match version $version (expected v$version)"
               exit 1
           fi
           echo "Publishing $version"
 
-      - name: Build both packages
+      - name: Build
         # The wheel is built from the sdist, as a user building from it would.
-        run: |
-          uv build --out-dir dist
-          uv build --out-dir dist packages/zabob-retire
+        run: uv build --out-dir dist
 
       - name: Check the wheel installs and runs with no checkout
         run: |
@@ -96,30 +90,12 @@ jobs:
           name: dist
           path: dist/
 
-      # zabob-retirement goes up first, on its own: zabob-retire depends on
-      # it, and a pending trusted publisher can create only one project
-      # (first upload: see docs/releasing.md, #699).
-      # (zabob_retire-* doesn't match zabob_retirement-*.)
-      - name: Split the two packages
-        run: |
-          mkdir -p dist-retirement dist-retire
-          mv dist/zabob_retirement-* dist-retirement/
-          mv dist/zabob_retire-* dist-retire/
-
-      - name: Upload zabob-retirement
+      - name: Upload
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
         with:
-          packages-dir: dist-retirement/
           repository-url: https://test.pypi.org/legacy/
           # A release's tag push and the manual run before it can carry
           # one version twice; TestPyPI keeps the first.
-          skip-existing: true
-
-      - name: Upload zabob-retire
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
-        with:
-          packages-dir: dist-retire/
-          repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
   pypi:
@@ -138,21 +114,5 @@ jobs:
           name: dist
           path: dist/
 
-      # zabob-retirement first, as for TestPyPI.
-      - name: Split the two packages
-        run: |
-          mkdir -p dist-retirement dist-retire
-          mv dist/zabob_retirement-* dist-retirement/
-          mv dist/zabob_retire-* dist-retire/
-
-      - name: Upload zabob-retirement
+      - name: Upload
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
-        with:
-          packages-dir: dist-retirement/
-          # A re-run after zabob-retire failed finds this one already there.
-          skip-existing: true
-
-      - name: Upload zabob-retire
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
-        with:
-          packages-dir: dist-retire/

@@ -332,3 +332,46 @@ def test_bisect_skips_a_merge_where_the_test_is_missing(bisect: ModuleType, tmp_
     (tmp_path / "tests" / "test_x.py").write_text("def test_old(case):\n    pass\n\n\nclass TestThing(Base):\n"
                                                   "    def test_old(self):\n        pass\n", encoding="utf-8")
     assert bisect.present(test, tmp_path) is present
+
+
+def test_label_changes_follow_what_the_promotion_closes(promote: ModuleType) -> None:
+    # 5 is new on dev, 6 already labeled, 7 closed by hand, 8 reverted off dev.
+    assert promote.label_changes({5, 6, 7}, {6, 8}, {7}) == ([5], [8])
+    # Once the promotion merges, none is wanted.
+    assert promote.label_changes(set(), {5, 6}, set()) == ([], [5, 6])
+
+
+@pytest.mark.parametrize(("body", "writes"), [
+    # #12 needs the label, #13 is a pull request, #9 is reverted off dev.
+    ("Fixes #11\nFixes #12\nFixes #13\n", [
+        ("POST", "repos/{owner}/{repo}/labels"),
+        ("POST", "repos/{owner}/{repo}/issues/12/labels"),
+        ("DELETE", "repos/{owner}/{repo}/issues/9/labels/on%20dev"),
+    ]),
+    # No promotion open: it just merged.
+    (None, [("DELETE", "repos/{owner}/{repo}/issues/9/labels/on%20dev"),
+            ("DELETE", "repos/{owner}/{repo}/issues/11/labels/on%20dev")]),
+])
+def test_sync_labels_writes_only_the_changes(promote: ModuleType, monkeypatch: pytest.MonkeyPatch,
+                                            body: str | None, writes: list[tuple[str, str]]) -> None:
+    done: list[tuple[str, str]] = []
+    repo = {"full_name": "o/r"}
+
+    def api(path: str, method: str = "GET", fields: dict | None = None) -> object:
+        if method != "GET":
+            done.append((method, path))
+            return None
+        if "/pulls?" in path:
+            return [] if body is None else [{"body": body, "head": {"ref": "dev", "repo": repo},
+                                             "base": {"repo": repo}}]
+        if "/issues?" in path:
+            return [{"number": 9}, {"number": 11}]
+        n = int(path.rsplit("/", 1)[1])
+        return {"state": "open", **({"pull_request": {}} if n == 13 else {})}
+
+    monkeypatch.setattr(promote, "_api", api)
+    assert promote._sync_labels(dry_run=False) == 0
+    assert done == writes
+    done.clear()
+    assert promote._sync_labels(dry_run=True) == 0
+    assert done == []

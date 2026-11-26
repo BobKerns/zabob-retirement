@@ -14,6 +14,7 @@ from click.testing import CliRunner, Result
 from zabob.retirement import checkout
 from zabob.retirement.cli import main
 from zabob.retirement.sim import builder, data_repo
+from zabob.retirement.sim.loader import read_current_scenario
 
 
 @pytest.fixture(autouse=True)
@@ -123,7 +124,7 @@ def test_init_copies_what_the_household_edits_and_reads_the_rest_from_templates(
     # activate-analysis needn't ask for the code repo or the user.
     assert (sim / ".analysis").read_text(encoding="utf-8") == f"{code_repo}\n"
     assert (sim / ".analysis_user").read_text(encoding="utf-8") == "alice\n"
-    assert (sim / ".current_scenario").read_text(encoding="utf-8") == "base\n"
+    assert read_current_scenario(sim) == "base"
 
 
 def test_init_commits_everything_but_the_per_machine_files(tmp_path: Path) -> None:
@@ -288,7 +289,7 @@ def test_init_with_no_dir_refuses_a_data_private_that_is_there(
     assert result.exit_code != 0
     assert "code/data/private is already there" in result.output
     assert ("leading to elsewhere" in result.output) == linked
-    assert "To use it: sim use code/data/private." in result.output
+    assert "To use it: sim switch --data code/data/private." in result.output
     assert not (private / "sim").exists()
 
 
@@ -422,10 +423,11 @@ def test_init_shows_paths_as_typed(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     assert here.exit_code == 0 and there.exit_code == 0, here.output + there.output
     assert "created a data repo in retirement; its data dir is retirement/sim" in here.output
-    assert "made retirement your default data repo" in here.output
+    assert "made retirement your data repo" in here.output
     assert "`source retirement/sim/activate-analysis` in bash or zsh" in here.output
     assert "created a data repo in ~/other; its data dir is ~/other/sim" in there.output
-    assert "left your default data repo as retirement (--no-builder); `sim use ~/other` switches" in there.output
+    assert ("left your data repo as retirement (--no-builder); `sim switch --data ~/other` switches to this one"
+            in there.output)
     assert str(tmp_path) not in here.output + there.output
 
 

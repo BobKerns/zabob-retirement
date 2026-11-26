@@ -150,10 +150,15 @@ repo, or after deleting it) the command asks you to name one.
 To look at a scenario without making it current (in a script, or for an AI
 assistant answering questions for you), set `ANALYSIS_KEEP_SCENARIO=1`:
 commands then use the scenario they name and leave your current one as it is.
-`sim switch` prints your current scenario, and `sim switch <name>` makes
-`<name>` current, printing the one it replaces. The shell
-prompt that `activate-analysis` sets shows it, as
-`[analysis:<data repo>:<you>:<scenario>]`.
+`sim switch` shows who you are, your data repo and your current scenario,
+and `sim switch <name>` makes `<name>` current, naming the one it replaces.
+The current scenario is yours alone, one for each data repo you use, so
+someone else using the same data repo keeps their own. `sim login [name]`
+says who you are (by default your login name); it is the name put on what you
+make and change, not one of the household's people. `sim switch --data DIR`
+moves you to another data repo, and so does running a `sim` command inside
+one, saying so. The shell prompt that `activate-analysis` sets shows all
+three, as `[analysis:<data repo>:<you>:<scenario>]`.
 
 To rename a scenario (or an ensemble; the two commands are the same):
 
@@ -364,7 +369,7 @@ met a word gets an answer about how it's used here.
 | <a id="g-correlation"></a>**Correlation (ρ)** | A number from −1 to 1 for how strongly two quantities move together: 1 in lockstep, 0 no tendency, −1 opposite. ρ² is roughly the share of one's variation the other accounts for. | [OpenStax §13.1](https://openstax.org/books/introductory-business-statistics-2e/pages/13-1-the-correlation-coefficient-r) |
 | <a id="g-persistence"></a>**Persistence, autocorrelation** | The correlation between a quantity and its own value some time later, usually the next year. Near 1, this year's value carries over (interest rates); near 0, each year is a fresh draw (stock returns). | [A century of rates](guides/century-of-rates.md#how-much-does-this-year-predict-next-year) |
 | <a id="g-mean-reversion"></a>**Mean reversion** | A tendency for an unusually high or low value to be followed by one closer to the long-run average. An inflation spike is usually followed by a smaller one, then by ordinary years. | [A century of rates](guides/century-of-rates.md#how-much-does-this-year-predict-next-year) |
-| <a id="g-shock"></a>**Shock, shock SD** | The part of one year's value that the past doesn't predict: the surprise. A process row (`vary_process ar1`) builds its yearly path from the level, the share of last year's gap from it that carries over (persistence), and a new random shock each year. The shock SD (`vary_shock_sd`, and Shock SD in `analysis historical`) is the typical size of one year's shock, in growth terms, as a percent. It is smaller than the single-year SD whenever persistence carries part of the spread from year to year. Rows under one factor get correlated shocks each year; in a tree with tail dependence a whole year's shocks can be extreme together. Also called an innovation. | [A rate that moves every year](guides/historical-calibration.md#a-rate-that-moves-every-year) |
+| <a id="g-shock"></a>**Shock, shock SD** | The part of one year's value that the past doesn't predict: the surprise. A process row (`vary_process ar1`) builds its yearly path from the level, the share of last year's gap from it that carries over (persistence), and a new random shock each year. The shock SD (`vary_shock_sd`, and Shock SD in `sim historical`) is the typical size of one year's shock, in growth terms, as a percent. It is smaller than the single-year SD whenever persistence carries part of the spread from year to year. Rows under one factor get correlated shocks each year; in a tree with tail dependence a whole year's shocks can be extreme together. Also called an innovation. | [A rate that moves every year](guides/historical-calibration.md#a-rate-that-moves-every-year) |
 | <a id="g-rank-correlation"></a>**Rank correlation** | Correlation computed on the values' order rather than the values themselves, so it's unchanged by stretching or reshaping either quantity's range. | [Kendall's τ](https://www.socscistatistics.com/tutorials/kendall-tau/) |
 | <a id="g-kendall-tau"></a>**Kendall's τ** | A rank correlation. Take every pair of members: the pair agrees if both rows put the two members in the same order, and disagrees otherwise. τ is the share that agree minus the share that disagree. For the simulator's copulas τ = (2/π)·asin(ρ), so the correlation check reads ρ back from τ. | [Tutorial](https://www.socscistatistics.com/tutorials/kendall-tau/) |
 | <a id="g-r2"></a>**R²** | The share of the outcome's variation that a regression on the inputs explains, from 0 to 1. | [OpenStax §12.3](https://openstax.org/books/introductory-statistics-2e/pages/12-3-the-regression-equation) |
@@ -850,8 +855,10 @@ A chain drawn from (a `from_account`, a `refill_chain`) goes in
 `sim chain show` draws them as trees; `--graph` draws one chain's flowchart in
 the terminal, and `--mermaid` prints the flowchart's Mermaid source for a
 README. To show the chart in place, `--graph` needs a terminal that shows
-images; iTerm2, kitty, Ghostty, WezTerm or VS Code's integrated terminal are
-recommended. Anywhere else it writes the chart to a PNG and prints its path
+images; iTerm2, kitty, Ghostty, WezTerm, VS Code's integrated terminal or
+Windows Terminal 1.22 or later are recommended. Anywhere else it writes the
+chart to a PNG, prints its path and, when the session is local, opens it in
+your image viewer
 ([Setup](SETUP.md#drawing-chain-flowcharts-in-the-terminal) says why and how).
 `sim chain add` with no arguments builds a chain by asking what it is for;
 `sim chain step add|edit|move|rm`, `rename` and `delete` change one.
@@ -1021,7 +1028,8 @@ percentile, taking the lifespans as independent, since a plan has to last
 until then. `--graph` (or `--graph-file lifespans.png`) draws each person's
 chance of dying at each age and of having died by it, shaded like the
 ensemble fan chart, and the chance that someone in the household is still
-alive each year. In a terminal that reports its size, `--graph` fills its
+alive each year, instead of the tables (`--table` for both, the chart
+first). In a terminal that reports its size, `--graph` fills its
 width and height, less three lines for the prompt. `notebooks/lifespan.ipynb`
 shows the same chart, shrunk to fit the window.
 
@@ -2347,7 +2355,7 @@ total tax by year, the `total_tax` `sim report tax` prints, with each run's
 lifetime tax, Social Security and final net worth (what a Roth conversion
 plan costs in tax, and what it buys). `--account NAME`
 adds that account's balance, `--section` prints only the parts you name, and
-`--chart` draws net worth (or the account) over time in the terminal instead of
+`--graph` draws net worth (or the account) over time in the terminal instead of
 the tables (`--table` too for both); with `--section social-security` or
 `--section tax`, it draws that section's chart. Leave
 out BASELINE to start from the current scenario.
@@ -2366,9 +2374,23 @@ None of them need you to write any code.
 | `events.ipynb` | Every dollar movement in a run, filterable by reason (which rule fired, a refill/overflow, a catch-up fact), tax character, account, and date range, with a running balance for one account and each refill linked to the debit that triggered it — good for auditing "why did this happen." `sim items` shows the same table, with the same filters, at the command line. |
 | `ensemble.ipynb` | For an ensemble recipe (Part 4.10): net worth's mean/median over quintile bands shaded out to the 5th–95th percentiles, plus a year-end table of mean/median/SD and the 5th, 20th, ... 95th percentiles, and the share of members past each guard rail. |
 
-Open one with `analysis jupyter` (or the **Jupyter** VS Code task, below), or
-in VS Code directly if it runs well enough there for your machine
+Open them with `sim jupyter start` (or the **Jupyter** VS Code task, below),
+or in VS Code directly if it runs well enough there for your machine
 ([notebooks/README.md](../notebooks/README.md) has notes on this).
+`sim jupyter start` runs JupyterLab in the background and opens it in your
+browser; if it is already running, it opens that one again. Name a notebook
+to open it directly (`sim jupyter start net_worth`; TAB completes the
+names). `--port N` serves on port N, or fails if it is taken; by default it
+uses 8888, or the next free port. `--no-browser` prints the address instead, and `--foreground` keeps
+JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
+it is running and its address, and `sim jupyter stop` stops it and its
+notebooks' kernels: save your notebooks first.
+
+For the rest of the household, `sim jupyter hub` runs a JupyterHub: each
+person logs in with their own account on the machine and gets their own
+JupyterLab, on a data repo they share or one of their own
+(`sim jupyter user add`). [Share with your household](guides/jupyterhub.md)
+sets it up.
 
 ### The same views from the terminal
 
@@ -2381,7 +2403,7 @@ machine too small for a notebook comfortably.
 | accounts and their opening balances | `sim account list` |
 | the lots in one account | `sim account holdings <account>` (balances from a run), `sim account lot list <account>` (as entered) |
 | the accounts holding a symbol | `sim account holders <symbol>` |
-| the portfolio by asset class | `sim allocation [--chart]` |
+| the portfolio by asset class | `sim allocation [--graph]` |
 | scheduled transactions | `sim scheduled list` |
 | one-time transfers | `sim transfer list` |
 | a scenario's description, lineage, dates, seed, ensemble size, reserve and latest run | `sim scenario show [scenario]` |
@@ -2392,17 +2414,17 @@ machine too small for a notebook comfortably.
 | itemizations and their totals | `sim itemization list`, `sim itemization show <name>` |
 | itemized deductions, by tax year | `sim deduction list` (`--state` for the state's) |
 | a run's year-end net worth, its lots, its load warnings and its negative-balance warnings | `sim explain [scenario]` |
-| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--chart]` |
-| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--chart]` |
-| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--chart]` |
-| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--chart]` |
-| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--chart]` |
-| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--chart]` |
+| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--graph]` |
+| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--graph]` |
+| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--graph]` |
+| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--graph]` |
+| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--graph]` |
+| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--graph]` |
 | a scenario's guard rails | `sim guard-rail list` |
-| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--chart]` |
-| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--chart] [--mermaid]` |
+| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--graph]` |
+| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--graph] [--mermaid]` |
 
 The result views read the scenario's latest run (or `--runfile`) and show
 CPI-constant (today's) dollars unless you pass `--dollars nominal`.
@@ -2414,20 +2436,22 @@ the whole run, such as `sim compare`'s break-even, a guard rail's summary or
 cumulative margin, or an ensemble's share ever below the reserve, still
 covers the whole run. `sim account history` takes a month or a bare year.
 
-`--chart` shows the notebook's chart of the view instead of its table: drawn
-in the terminal when it shows images (iTerm2, kitty, Ghostty and others),
-else written to a temporary PNG whose name it prints. `--chart-file NAME.png`
+`--graph` shows the notebook's chart of the view instead of its table: drawn
+in the terminal when it shows images (iTerm2, kitty, Ghostty, Windows
+Terminal and others), else written to a temporary PNG whose name it prints,
+and opened in your image viewer when the session is local. `--graph-file NAME.png`
 (or `.svg`) writes it to that file instead. `--table` with either prints the
-table too, after the chart. The chart follows the command's
+table too, after the chart. `--chart` and `--chart-file` are the same
+options under other names, on every command that draws. The chart follows the command's
 options: `--dollars`, `--pre-tax`, `--by`, `--year`, `--lot`, `--exclude` and
-the rest. `sim networth --chart` draws every month, after-tax net worth with
+the rest. `sim networth --graph` draws every month, after-tax net worth with
 the pre-tax total dashed above it, so the gap is the tax still owed.
-`sim report income --chart` stacks the income by group above economic income
+`sim report income --graph` stacks the income by group above economic income
 carried down to the change in net worth; with `--year`, it draws a bar per
-group. `sim report tax --chart` stacks federal, state and any local tax with the
+group. `sim report tax --graph` stacks federal, state and any local tax with the
 effective rate on its own axis (with `--reconciliation`, each April's balance
-due and refund). `sim report spending --chart` draws delivered spending as a
-bar per year with the plan as a dashed line over them. `sim allocation --chart` draws a pie of the asset classes, a
+due and refund). `sim report spending --graph` draws delivered spending as a
+bar per year with the plan as a dashed line over them. `sim allocation --graph` draws a pie of the asset classes, a
 bar per class split by the group with `--by`, and a line per class with
 `--drift`.
 
@@ -2445,7 +2469,7 @@ you wrote it there. JSON also says what the table's heading says (which
 dollars, which run), and a command that prints several tables, such as
 `sim compare`, names each one; CSV holds one table, a command's first unless
 `--section` picks another. Anything else the command would say goes to stderr,
-so the output is only the data. Neither goes with `--chart`.
+so the output is only the data. Neither goes with `--graph`.
 
 `sim report income` tells the whole story of each year. Its total,
 `economic_income`, is income plus paper gains, net of losses: what the year
@@ -2477,7 +2501,7 @@ notebook views don't have a terminal command yet.
 If your workspace has these set up (Command Palette → "Tasks: Run Task"),
 three common jobs are one click instead of a typed command:
 
-- **Jupyter** — opens JupyterLab (same as `analysis jupyter`).
+- **Jupyter** — opens JupyterLab (same as `sim jupyter start`).
 - **Fetch Prices** — runs `sim prices fetch` (Part 4.2).
 - **Run All Scenarios** — runs every scenario in the data repo (`sim all`).
 
