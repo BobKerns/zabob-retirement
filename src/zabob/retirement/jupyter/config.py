@@ -3,7 +3,7 @@
 ``.mcp.json`` is gitignored and per-machine (see ``.gitignore`` and
 ``docs/SETUP.md``); the shared, committed MCP config lives in
 ``.github/mcp.json``. This module owns only the ``jupyter`` server entry, so
-that ``analysis jupyter`` and the MCP server always agree on the same token
+that ``sim jupyter start`` and the MCP server always agree on the same token
 and port.
 """
 
@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
 MCP_CONFIG_FILENAME = ".mcp.json"
 DEFAULT_JUPYTER_URL = "http://localhost:8888"
@@ -40,9 +39,13 @@ def find_repo_root(start: Path | None = None) -> Path:
     """Find the enclosing git repository root, falling back to ``start``.
 
     ``start`` defaults to the current directory. Falling back (rather than
-    raising) lets ``analysis jupyter`` still work outside a git checkout.
+    raising) lets ``sim jupyter start`` still work outside a git checkout.
     """
     search_from = start or Path.cwd()
+    # Imported here: GitPython is slow to import, and every `sim` command
+    # (TAB completion too) imports this module.
+    from git import InvalidGitRepositoryError, NoSuchPathError, Repo
+
     try:
         repo = Repo(search_from, search_parent_directories=True)
     except (InvalidGitRepositoryError, NoSuchPathError):

@@ -3189,3 +3189,18 @@ def write_old_import_map(test_data_dir: Path) -> Callable[[str, str], Path]:
         return path
 
     return write
+
+
+@pytest.fixture
+def notebooks_root(tmp_path: Path) -> Generator[Path]:
+    """A folder with a notebooks/ holding one notebook, ``net_worth.ipynb``,
+    which `sim jupyter` takes for the checkout's or the data repo's (#762).
+    Function-scoped: the commands write .mcp.json and state/ into it."""
+    from unittest.mock import patch
+
+    from zabob.retirement.jupyter import server
+
+    (tmp_path / "notebooks").mkdir()
+    (tmp_path / "notebooks" / "net_worth.ipynb").write_text("{}", encoding="utf-8")
+    with patch.object(server, "root", return_value=tmp_path):
+        yield tmp_path

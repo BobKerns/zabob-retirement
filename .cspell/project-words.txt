@@ -415,6 +415,7 @@ SECLIST
 SECLISTMSGSRSV
 SECNAME
 semideviation
+serverapp
 servname
 setopt
 setp

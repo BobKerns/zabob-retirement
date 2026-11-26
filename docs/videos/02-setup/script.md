@@ -23,7 +23,7 @@ contents = [
   "What's inside it",
   "Your data, from any terminal, and the current scenario (sim switch)",
   "A plan of your own (sim scenario create)",
-  "The notebooks (analysis jupyter)",
+  "The notebooks (sim jupyter start)",
   "Saving your work, so every run can be repeated (sim run, sim commit)",
   "Upgrading (uv tool upgrade)",
 ]
@@ -281,7 +281,7 @@ does naming a scenario on any other command.
 template = "card"
 heading = "The notebooks"
 body = [
-  "In a terminal: analysis jupyter",
+  "In a terminal: sim jupyter start",
   "They're in your data folder, in notebooks",
   "Charts and tables, no code to write",
 ]
@@ -291,8 +291,9 @@ speaker = "bill"
 Besides the terminal, the simulator comes with Jupyter notebooks: pages of
 charts and tables that you explore with menus and sliders, without writing
 any code. Sim init put them in your data folder. To open them, type
-analysis jupyter in a terminal. JupyterLab opens in your web
-browser, with the notebooks on the left. Video four goes through them.
+sim jupyter start in a terminal. JupyterLab opens in your web
+browser, with the notebooks on the left, and sim jupyter stop closes it
+when you're done. Video four goes through them.
 
 ## Scene `commit`: Saving your work
 
