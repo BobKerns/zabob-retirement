@@ -5,9 +5,10 @@
 # the next publish finishes (#695).
 
 [en]
-video = "wCwDwNKRQU8"
-uploaded = 2026-11-23T19:51:17Z
-snippet = "bfe216e75dfec55b"
+video = "26xt4l_Q6wA"
+uploaded = 2026-11-26T21:11:56Z
+snippet = "57a0272c81658575"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 18.08],
   ["contents", 25.39],
@@ -15,12 +16,12 @@ scenes = [
   ["export", 29.18],
   ["sources", 26.17],
   ["holdings", 87.74],
-  ["positions", 57.36],
+  ["positions", 57.28],
   ["roth", 65.68],
   ["again", 46.92],
   ["sold", 33.67],
   ["categories", 23.73],
-  ["estimates", 18.00],
+  ["estimates", 17.96],
   ["transactions", 52.84],
   ["saved", 27.38],
   ["others", 30.91],
@@ -28,24 +29,24 @@ scenes = [
 ]
 
 [ja]
-video = "Dby3vYmfFPA"
-uploaded = 2026-11-14T08:54:06Z
-snippet = "1769b36fdb2ef644"
+video = "WGHCHMUGBxg"
+uploaded = 2026-11-25T11:12:05Z
+snippet = "753ce4c256a4134d"
 scenes = [
-  ["title", 21.52],
-  ["contents", 27.26],
-  ["idea", 24.75],
-  ["export", 32.14],
-  ["sources", 29.05],
-  ["holdings", 90.07],
-  ["positions", 62.87],
-  ["roth", 77.28],
-  ["again", 51.30],
-  ["sold", 39.65],
-  ["categories", 24.29],
-  ["estimates", 20.62],
-  ["transactions", 52.95],
-  ["saved", 33.00],
-  ["others", 35.69],
-  ["end", 6.88],
+  ["title", 21.33],
+  ["contents", 27.86],
+  ["idea", 26.14],
+  ["export", 33.17],
+  ["sources", 29.76],
+  ["holdings", 102.21],
+  ["positions", 64.94],
+  ["roth", 78.92],
+  ["again", 53.03],
+  ["sold", 41.57],
+  ["categories", 25.66],
+  ["estimates", 21.26],
+  ["transactions", 54.21],
+  ["saved", 34.88],
+  ["others", 37.31],
+  ["end", 6.99],
 ]

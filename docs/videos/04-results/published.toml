@@ -5,9 +5,9 @@
 # the next publish finishes (#695).
 
 [en]
-video = "epiZIjACJHY"
-uploaded = 2026-11-23T15:28:17Z
-snippet = "45a8291d2285ec38"
+video = "APa-VONBR7M"
+uploaded = 2026-11-26T16:54:35Z
+snippet = "3f29338a692bc51f"
 scenes = [
   ["title", 21.52],
   ["contents", 34.35],
@@ -21,7 +21,7 @@ scenes = [
   ["expenses", 33.97],
   ["tax", 36.78],
   ["notebooks-card", 18.63],
-  ["nb-networth", 27.47],
+  ["nb-networth", 27.97],
   ["nb-income-tax", 30.36],
   ["nb-accounts", 24.13],
   ["nb-events", 29.39],
@@ -31,27 +31,27 @@ scenes = [
 ]
 
 [ja]
-video = "7ZPuH_JVjPE"
-uploaded = 2026-11-23T12:11:42Z
-snippet = "323a139556f7bb4e"
+video = "aapDW850dTU"
+uploaded = 2026-11-26T16:54:59Z
+snippet = "7e698b072669d5b7"
 scenes = [
-  ["title", 26.50],
-  ["contents", 36.39],
-  ["networth-graph", 35.87],
-  ["after-tax", 39.23],
-  ["networth", 45.29],
-  ["runs", 43.40],
-  ["explain", 48.21],
-  ["history", 38.45],
-  ["income", 43.35],
-  ["expenses", 36.27],
-  ["tax", 39.75],
-  ["notebooks-card", 23.60],
-  ["nb-networth", 27.80],
-  ["nb-income-tax", 31.92],
+  ["title", 27.89],
+  ["contents", 37.80],
+  ["networth-graph", 36.59],
+  ["after-tax", 41.39],
+  ["networth", 46.77],
+  ["runs", 45.38],
+  ["explain", 49.07],
+  ["history", 39.97],
+  ["income", 44.21],
+  ["expenses", 37.77],
+  ["tax", 41.50],
+  ["notebooks-card", 24.52],
+  ["nb-networth", 28.77],
+  ["nb-income-tax", 33.46],
   ["nb-accounts", 24.13],
-  ["nb-events", 36.27],
-  ["nb-overview", 19.78],
-  ["ai", 22.01],
-  ["end", 8.55],
+  ["nb-events", 37.49],
+  ["nb-overview", 20.61],
+  ["ai", 22.39],
+  ["end", 8.89],
 ]

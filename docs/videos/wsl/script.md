@@ -1,6 +1,6 @@
 +++
 series = "Planning with the simulator"
-episode = "Video 2a"
+episode = "For Windows"
 title = "Windows: getting WSL ready"
 subtitle = "A Linux terminal on Windows, for the simulator"
 data = "prototype_data"
@@ -8,9 +8,10 @@ data = "prototype_data"
 [youtube]
 title = "WSL for Windows"
 summary = """
-For Windows only, and optional: the simulator now runs in PowerShell too, \
-so video 2 works without this. Alice turns on WSL, the Linux built into \
-Windows, for working from a clone of the code. Setup guide: \
+For Windows only, and optional: the simulator installs on Windows itself, \
+in PowerShell, as video 2 shows. WSL, the Linux built into Windows, is for \
+the one thing that needs Linux, the shared Jupyter hub, and for working \
+from a clone of the code. Alice turns it on. Setup guide: \
 https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md#windows-wsl"""
 contents = [
   "Why WSL",
@@ -21,15 +22,13 @@ contents = [
   "VS Code with the WSL extension, and charts in its terminal",
 ]
 tags = ["WSL", "Windows"]
-# A side trip for Windows viewers, out of the course's flow since the
-# simulator runs on Windows itself (#687): it leads to video 2, but nothing
-# leads to it.
-previous = ""
+# An extra outside the course (#803): its folder has no number, so no
+# course video leads to it. It leads on to video 2.
 next = "02-setup"
 +++
 
-A companion to video 2 (issue #389, part of #366), for Windows viewers only:
-turning on WSL, making the Linux user, finding the terminal and the files
+An extra outside the course (issues #389 and #803), for Windows viewers who
+want WSL: who needs it, turning it on, making the Linux user, finding the terminal and the files
 again, and VS Code. It ends where video 2's install scene begins, so Mac and
 Linux viewers never sit through it.
 
@@ -43,33 +42,35 @@ a real tape, since the Ubuntu terminal is a Linux terminal.
 
 ```slide
 template = "title"
-notice = "Not on Windows? Skip ahead:\npress Next ⏭ for video 2."
+notice = "Most people don't need WSL:\nvideo 2 installs on Windows itself."
 ```
 
-Planning with the simulator. Video two A: getting Windows ready.
+Planning with the simulator, for Windows: getting WSL ready.
 
-This one is only for Windows. On a Mac or on Linux, press Next in the
-player, and go on to video two.
+This one is only for Windows, and most Windows users don't need it. The
+simulator installs on Windows itself, as video two shows.
 
-## Scene `skip`: Windows only
+## Scene `skip`: Do you need WSL?
 
 ```slide
 template = "card"
-heading = "For Windows only"
+heading = "Do you need WSL?"
 body = [
-  "On a Mac or Linux? Skip ahead to video 2, setup and install",
-  "Press Next ⏭ in the player: the course keeps your place",
-  "On Windows? Stay for the terminal video 2 starts from",
+  "The simulator runs on Windows itself: video 2 installs it in PowerShell",
+  "One thing needs Linux: the shared Jupyter hub (sim jupyter hub)",
+  "WSL also suits working from a clone of the code",
 ]
 speaker = "alice"
 ```
 
-If you're on a Mac or on Linux, you don't need this one: skip ahead to
-video two, setup and install. Press Next in the player, and the course
-keeps your place. On Windows, stay with us. The simulator runs on Linux and
-on a Mac. Windows can run Linux too, built in, with a part of Windows called
-WSL. In a few minutes, Alice turns it on, and gets the terminal that video
-two starts from.
+Do you need this at all? Probably not. The simulator runs on Windows
+itself: video two installs it in PowerShell, and everything in the course
+works there. One thing needs Linux: the shared Jupyter hub, which lets
+everyone in the household open the notebooks from their own browser. It
+logs each person in, and that takes Linux. WSL is also a comfortable home
+for working from a clone of the code. If either is you, stay with us. WSL
+is Linux, built into Windows. In a few minutes, Alice turns it on, and gets
+a Linux terminal to install the simulator in.
 
 ## Scene `why`: Why WSL
 
@@ -274,7 +275,7 @@ Type "curl -LsSf https://astral.sh/uv/install.sh | sh"
 Sleep 12s
 ```
 
-That's all Windows needs. From here on, everything happens in the Ubuntu
+That's all WSL needs. From here on, everything happens in the Ubuntu
 terminal, and works just as on a Mac or Linux computer. Video two starts
 right here: open Ubuntu, and paste the first line from the setup guide, which
 installs {uv|U V}. In Windows Terminal, Control V pastes.

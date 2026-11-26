@@ -5,25 +5,26 @@
 # the next publish finishes (#695).
 
 [en]
-video = "uy_-e2nUrIE"
-uploaded = 2026-11-24T19:11:46Z
-snippet = "4c221cdc47e9fcf4"
+video = "IhaLt50RRjo"
+uploaded = 2026-11-26T19:47:31Z
+snippet = "65d7791e4fc7c77e"
+pending = ["captions", "playlist"]
 scenes = [
   ["title", 17.12],
   ["contents", 15.66],
   ["strategy", 25.34],
   ["mix", 45.26],
   ["classes", 32.41],
-  ["targets", 73.88],
+  ["targets", 74.44],
   ["add", 34.16],
-  ["invest", 57.20],
-  ["log", 56.16],
+  ["invest", 57.24],
+  ["log", 56.24],
   ["nb-drift", 16.93],
-  ["off", 76.16],
+  ["off", 75.44],
   ["why", 18.32],
-  ["mc", 44.08],
+  ["mc", 45.24],
   ["mc-compare", 56.66],
-  ["nb-compare", 16.93],
+  ["nb-compare", 17.07],
   ["ai", 24.48],
   ["end", 8.63],
 ]
@@ -31,7 +32,7 @@ scenes = [
 [ja]
 video = "BgpUJpEFW2o"
 uploaded = 2026-11-24T19:12:06Z
-snippet = "c8581c1e0f51247b"
+snippet = "2166483ff2a9b41a"
 scenes = [
   ["title", 18.08],
   ["contents", 19.91],

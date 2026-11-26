@@ -66,13 +66,6 @@ To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
 
-Upgrading past 1.0.0b1, the environment variables are `ZABOB_*` instead of
-`ANALYSIS_*`, and the data repo's `activate-analysis` is
-`activate-retirement` ([#782](https://github.com/BobKerns/zabob-retirement/issues/782)).
-A command run with an old name set stops and says what to do: in a shell
-that sourced the old script, it gives the two commands that replace it.
-Rename any of these variables you set yourself.
-
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
 
@@ -139,9 +132,10 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 
 ### Windows: WSL
 
-For the one-line install below, or to work from a clone of the code, use
-WSL, the Windows Subsystem for Linux, which runs Ubuntu inside Windows 11, or
-Windows 10 version 2004 or later. The video
+For the one-line install below, the shared
+[Jupyter hub](guides/jupyterhub.md#on-windows-inside-wsl), or to work from a
+clone of the code, use WSL, the Windows Subsystem for Linux, which runs
+Ubuntu inside Windows 11, or Windows 10 version 2004 or later. The video
 [WSL for Windows](https://youtu.be/yHr90VdoHGQ) walks through this
 ([日本語](https://youtu.be/zeTFTujsWwI)).
 
