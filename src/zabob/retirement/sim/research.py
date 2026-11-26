@@ -715,11 +715,14 @@ def nothing_written(denied: tuple[str, ...] = ()) -> str:
 
 
 def _denials(result: dict[str, Any]) -> tuple[str, ...]:
+    # Whole, unlike describe_event's progress lines: a long Windows temp path
+    # cut at 90 characters would lose the file name, the part that matters.
     out = []
     for denial in result.get("permission_denials") or []:
         if isinstance(denial, dict):
-            out.extend(describe_event({"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "name": denial.get("tool_name"), "input": denial.get("tool_input")}]}}))
+            args = denial.get("tool_input") or {}
+            detail = args.get("file_path") or args.get("command") or args.get("url") or ""
+            out.append(f"{denial.get('tool_name', '?')} {' '.join(str(detail).split())}".rstrip())
     return tuple(out)
 
 

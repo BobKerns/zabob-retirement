@@ -503,10 +503,12 @@ def test_a_run_whose_writes_were_refused_says_so(
     """#800: on Windows a mis-spelled Edit rule refused every write; the
     error now names what Claude Code refused."""
     monkeypatch.setenv("FAKE_CLAUDE_BUNDLE", "")
-    monkeypatch.setenv("FAKE_CLAUDE_DENIED", "C:/Users/Alice/work/ABCDX-tear-sheet.md")
+    # Long enough that a progress line would cut off the file name.
+    refused = "C:/Users/Alice Example/AppData/Local/Temp/research-ABCDX-abcd1234/work/ABCDX-allocation-export.csv"
+    monkeypatch.setenv("FAKE_CLAUDE_DENIED", refused)
     result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
     assert result.exit_code != 0
-    assert "Claude Code refused Write C:/Users/Alice/work/ABCDX-tear-sheet.md" in result.output
+    assert f"Claude Code refused Write {refused}" in " ".join(result.output.split())
     assert "--plugin-dir" not in result.output
 
 
