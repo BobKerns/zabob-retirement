@@ -96,9 +96,12 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 - There is no TAB completion of names, since `activate-analysis` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
-- Windows Terminal doesn't take the image protocols `--graph`
-  use, so it saves the chart as a PNG and prints its path. VS Code's
-  terminal shows them (below).
+- `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
+  later (its Settings, **About**, gives the version; the Microsoft Store
+  updates it). In an older one, or the plain console window, it saves the
+  chart as a PNG, prints its path and opens it in your image viewer. If a
+  current Windows Terminal saves a PNG anyway, set
+  `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
 ### Windows: WSL
 
@@ -134,8 +137,7 @@ For a terminal that shows `--graph` charts, install
 extension, and open a folder from Ubuntu with `code .` (in a clone of the
 code, `code` and its folder).
 Turn on **Terminal › Integrated: Enable Images** in its settings. Windows
-Terminal doesn't take the image protocols `--graph` uses, so there it saves
-the chart as a PNG and prints its path (see
+Terminal 1.22 or later shows them too (see
 [Drawing chain flowcharts](#drawing-chain-flowcharts-in-the-terminal)).
 `sim jupyter start` works too: if no browser opens, Ctrl+click the link it
 prints.
@@ -382,6 +384,7 @@ flowchart work offline, and the chart never leaves your machine.
 - [Ghostty](https://ghostty.org) (macOS, Linux)
 - [WezTerm](https://wezterm.org) (macOS, Linux, Windows)
 - VS Code's integrated terminal, with `terminal.integrated.enableImages` on
+- Windows Terminal 1.22 or later (Windows; the Microsoft Store keeps it current)
 
 On an iPad, connecting over SSH to the machine that runs the code, use
 [gterm](https://apps.apple.com/us/app/gterm-ghostty-ssh/id6774837597) from the
@@ -393,10 +396,14 @@ try gave a blank screen, another hung.
 
 iTerm2 gets its own image protocol. Elsewhere `--graph` asks the terminal
 whether it takes the kitty graphics protocol, and falls back to iTerm2's
-protocol for older VS Code and WezTerm. In any other terminal, including macOS
-Terminal and inside tmux, it writes the chart to a PNG file and prints its
-path. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
-`kitty`, `iterm` or `none`.
+protocol for older VS Code and WezTerm, then to Sixel, the one Windows
+Terminal takes (and foot, xterm and others that say they do). Sixel images
+have at most 256 colors, which a chart barely notices. In any other terminal,
+including macOS Terminal and inside tmux, it writes the chart to a PNG file,
+prints its path, and opens it in your image viewer, unless you're connected
+over SSH. If it guesses your terminal wrong, set `ANALYSIS_IMAGE_PROTOCOL` to
+`kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
+open it even over SSH.
 
 ## Jupyter and filesystem MCP servers
 

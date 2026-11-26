@@ -140,8 +140,8 @@ jobs:
       - name: The portable pieces
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-        # Locks, process trees and console encodings, which only Windows can
-        # show work on Windows.
+        # Locks, process trees, console encodings and terminal images, which only
+        # Windows can show work on Windows.
         run: |
-          & $env:PROGRAM_PYTHON -m pytest -q -p no:cacheprovider -o pythonpath= tests/test_oscompat.py
+          & $env:PROGRAM_PYTHON -m pytest -q -p no:cacheprovider -o pythonpath= tests/test_oscompat.py tests/test_sixel.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

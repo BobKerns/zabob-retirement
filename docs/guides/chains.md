@@ -42,7 +42,9 @@ everything. A box with a dashed outline is where the chart stopped short of
 what it leads to.
 
 `--graph` needs a terminal that shows images, such as iTerm2, kitty, Ghostty,
-WezTerm or VS Code's; anywhere else it writes a PNG and prints its path. See
+WezTerm, VS Code's or Windows Terminal 1.22 or later; anywhere else it writes
+a PNG, prints its path and, when the session is local, opens it in your
+image viewer. See
 [Setup](../SETUP.md#drawing-chain-flowcharts-in-the-terminal).
 
 The [scenario overview notebook](../../notebooks/scenario_overview.ipynb)
