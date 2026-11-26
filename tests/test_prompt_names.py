@@ -453,7 +453,7 @@ def test_a_second_ensemble_is_asked_for_even_when_one_is_current(tmp_path: Path)
 def test_an_ensemble_is_asked_for_without_a_data_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ANALYSIS_DATA_DIR", raising=False)
+    monkeypatch.delenv("ZABOB_DATA_DIR", raising=False)
     runs = tmp_path / "runs"
     _mc_runs(runs, "mc_one")
     result = _ask_ensemble(runs, None, input="mc_one\n")

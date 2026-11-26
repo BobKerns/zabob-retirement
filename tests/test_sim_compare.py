@@ -215,7 +215,7 @@ def test_account_completion_offers_every_compared_scenarios_accounts(
     derive_scenario("extra", "retire_alice", {
         "accounts.csv": (test_data_dir / "scenarios" / "retire_alice" / "accounts.csv")
         .read_text(encoding="utf-8").splitlines()[0] + "\nAsset_Extra_Only,asset,cash,joint,taxable,,,,,{},\n"})
-    monkeypatch.setenv("ANALYSIS_DATA_DIR", str(test_data_dir))
+    monkeypatch.setenv("ZABOB_DATA_DIR", str(test_data_dir))
     from zabob.retirement.sim.cli import compare_command as command
 
     ctx = command.make_context("compare", ["retire_alice", "extra"], resilient_parsing=True)

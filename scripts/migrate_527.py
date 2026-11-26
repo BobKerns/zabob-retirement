@@ -23,7 +23,7 @@ Exports themselves (``quicken/Transaction Export.csv``) stay where they are.
 
 Usage: scripts/migrate_527.py [DATA_DIR] [--write]
 
-DATA_DIR defaults to $ANALYSIS_DATA_DIR. Without --write it only reports what
+DATA_DIR defaults to $ZABOB_DATA_DIR. Without --write it only reports what
 it would change. With it, the new files are written and the old ones
 removed. Delete this script once every data repo is migrated.
 """
@@ -152,11 +152,11 @@ def apply(plan: Plan) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("data_dir", nargs="?", default=os.environ.get("ANALYSIS_DATA_DIR"))
+    parser.add_argument("data_dir", nargs="?", default=os.environ.get("ZABOB_DATA_DIR"))
     parser.add_argument("--write", action="store_true", help="write the changes (default: report only)")
     args = parser.parse_args(argv)
     if not args.data_dir:
-        parser.error("DATA_DIR not given and ANALYSIS_DATA_DIR not set")
+        parser.error("DATA_DIR not given and ZABOB_DATA_DIR not set")
     data_dir = Path(args.data_dir).resolve()
     if not (data_dir / "scenarios").is_dir():
         parser.error(f"{data_dir} has no scenarios/ folder")

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import utf8_stdio
 from zabob.retirement.amazon.categorizer import categorize_amazon_csv
 from zabob.retirement.log import configure_logging
@@ -364,6 +365,7 @@ def _choose_source_category(categories: list[str], prompt_label: str) -> str | N
 def amazon_group_command() -> None:
     """Amazon expense categorization tools."""
     utf8_stdio()
+    check_old_env_names()
 
 
 amazon_group_command.add_command(amazon_categorize_command)

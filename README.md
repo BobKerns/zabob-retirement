@@ -261,9 +261,9 @@ series, tags, symbols and itemizations. Names come from the scenario named on
 the line (`--scenario`, or the command's scenario argument), else the current
 scenario, and include what it inherits. A lot completes from the account
 before it (`--to-lot` from TO_ACCOUNT). The data repo is `--data-dir`,
-`$ANALYSIS_DATA_DIR` (which the data repo's `activate-analysis` sets), or
+`$ZABOB_DATA_DIR` (which the data repo's `activate-retirement` sets), or
 the data repo `sim switch` shows. TAB completion needs bash or zsh with
-`activate-analysis` sourced.
+`activate-retirement` sourced.
 
 A command run without a name it needs asks for it, listing the choices,
 with the same completion at the prompt.
@@ -366,7 +366,7 @@ longer produces, is listed as `kept`: it stays in force until it is ended
 there with `sim scheduled delete`.
 
 The export to read is an argument (`sim import transactions export.csv`).
-With none, and `ANALYSIS_DATA_DIR` pointing to the simulator data directory,
+With none, and `ZABOB_DATA_DIR` pointing to the simulator data directory,
 the command reads `../quicken/Transaction Export.csv` and the Amazon state in
 `../state/`, both at the data repo's top level.
 

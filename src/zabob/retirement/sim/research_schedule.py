@@ -37,7 +37,7 @@ researches one symbol a day itself (Bob, #640):
   If ``main`` changed meanwhile and won't merge into the branch (both added
   weights), the writes are redone from the committed bundles on the new
   ``main``: no second research run.
-- Never under ``ANALYSIS_RESEARCH=off`` (the tests set it) or ``sim builder
+- Never under ``ZABOB_RESEARCH=off`` (the tests set it) or ``sim builder
   install --no-research``, nor without a builder config.
 
 The state shared by the data repo's worktrees is in git's common directory:
@@ -70,7 +70,7 @@ __all__ = [
 RESEARCH_BRANCH = "builder/research"
 _RESEARCH_REF = f"refs/heads/{RESEARCH_BRANCH}"
 _MAIN_REF = f"refs/heads/{price_schedule.DATA_BRANCH}"
-SWITCH_ENV = "ANALYSIS_RESEARCH"
+SWITCH_ENV = "ZABOB_RESEARCH"
 # Bob: 06:07 New York, the hourly timer's :07 after a nightly network restart.
 START = time(6, 7)
 MARKET = price_schedule.MARKET
@@ -90,7 +90,7 @@ class ResearchScheduleError(Exception):
 
 
 def switched_off() -> bool:
-    """``ANALYSIS_RESEARCH=off`` (or 0/no/false): no scheduled research."""
+    """``ZABOB_RESEARCH=off`` (or 0/no/false): no scheduled research."""
     return os.environ.get(SWITCH_ENV, "").strip().lower() in {"off", "0", "no", "false"}
 
 

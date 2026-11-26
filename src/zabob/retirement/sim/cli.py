@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple, NoReturn
 import click
 import pandas as pd
 
+from zabob.retirement.env_names import check_old_env_names
 from zabob.retirement.oscompat import WINDOWS, is_link, link_dir, login_name, utf8_stdio
 from zabob.retirement.user_config import data_dir_setting
 from zabob.retirement.historical.cli import historical_command
@@ -341,6 +342,7 @@ class _SimGroup(click.Group):
 def sim_group_command(ctx: click.Context) -> None:
     """Zabob Retirement: a scenario-based retirement simulator."""
     utf8_stdio()
+    check_old_env_names()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
     if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init"):
@@ -357,16 +359,16 @@ def _follow_working_folder(args: list[str]) -> None:
     """Record the data repo the working folder is in as the current one,
     saying so, when it isn't already (#773): a command run there uses it, and
     so do the ones after it, wherever they're run. --data-dir and
-    $ANALYSIS_DATA_DIR are for scripts and one shell, so neither is recorded,
+    $ZABOB_DATA_DIR are for scripts and one shell, so neither is recorded,
     and with either the working folder doesn't count; nor is anything
-    recorded for a lookup ($ANALYSIS_KEEP_SCENARIO). A code checkout's
+    recorded for a lookup ($ZABOB_KEEP_SCENARIO). A code checkout's
     data/private is used there but not recorded: in a worktree it is often
     template data, gone with the worktree. Notebooks use it without recording
     it (``user_config.data_dir_setting``)."""
     from zabob.retirement import user_config
 
     # `sim switch --data` records the one it names instead.
-    if os.environ.get("ANALYSIS_DATA_DIR") or os.environ.get(KEEP_SCENARIO_ENV) or any(
+    if os.environ.get("ZABOB_DATA_DIR") or os.environ.get(KEEP_SCENARIO_ENV) or any(
             arg in ("--data-dir", "--data") or arg.startswith(("--data-dir=", "--data=")) for arg in args):
         return
     if os.environ.get(BUILDER_CHILD_ENV) or (here := user_config.local_data_dir()) is None:
@@ -2260,7 +2262,7 @@ def _graph_options(
         flag, "--chart", "as_graph", is_flag=True,
         help=capital(f"draw {drawn} in the terminal (kitty, iTerm2 or Sixel image protocol){how}, "
                      "or write a PNG file when the terminal can't show images, and open it in the "
-                     "image viewer when the session is local (ANALYSIS_IMAGE_PROTOCOL=file to only "
+                     "image viewer when the session is local (ZABOB_IMAGE_PROTOCOL=file to only "
                      f"write it){instead}."),
     )
     graph_file = click.option(
@@ -5698,7 +5700,7 @@ def commit_command(
               help="Leave the new files uncommitted (and DIR not a git repository).")
 @click.option("--no-builder", is_flag=True,
               help="Don't turn on background builds (for scripts and tests); "
-                   "ANALYSIS_NO_BUILDER=1 does the same.")
+                   "ZABOB_NO_BUILDER=1 does the same.")
 @click.option("--example", is_flag=True,
               help="Make a data repo of the prototype household, Alice and Bill, to try things on, "
                    "instead of your own.")
@@ -5721,7 +5723,7 @@ def init_command(
     paired with the code beside it.
 
     The data repo gets sim/ with persons.csv, the other shared CSVs,
-    activate-analysis, .retention.yaml and scenarios/base, made current,
+    activate-retirement, .retention.yaml and scenarios/base, made current,
     from the code repository's templates/. The template scenarios (t_*) and
     tax-law aux tables aren't copied: they're read from templates/ itself,
     so they stay current as the code changes. It is made a git repository
@@ -5730,7 +5732,7 @@ def init_command(
     Then it turns on background builds (ADR-004 §12), as `sim builder
     install` does, installing the data repo's git hooks. --no-builder
     installs no hooks and links no DIR to data/private, for scripts and
-    tests; so does ANALYSIS_NO_BUILDER set in the environment, as for
+    tests; so does ZABOB_NO_BUILDER set in the environment, as for
     setup.sh. With no DIR the data repo is still made at data/private,
     which is where one was asked for.
     --no-commit skips the builder, which needs a git repository.
@@ -5755,9 +5757,9 @@ def init_command(
     # not link or hook anything in the checkout it records from. (With no
     # DIR the data repo is the checkout's data/private whatever this says:
     # code and data are one to one, and that is where it was asked for.)
-    no_builder = no_builder or bool(os.environ.get("ANALYSIS_NO_BUILDER"))
+    no_builder = no_builder or bool(os.environ.get("ZABOB_NO_BUILDER"))
     # The checkout this is run in is the one the data repo is for (#654):
-    # activate-analysis activates the code its data repo was made by, so a
+    # activate-retirement activates the code its data repo was made by, so a
     # `sim` from another worktree's venv would pair it with the wrong code.
     code = data_repo.CODE_REPO_DIR
     here = checkout_of(Path.cwd())
@@ -5809,8 +5811,8 @@ def init_command(
                 f"{_shown(code / 'scripts' / 'link-data.sh')} {root}", err=True)
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    activate = _shown(private / "sim" / "activate-analysis", resolve=False) if linked \
-        else _shown(sim / "activate-analysis")
+    activate = _shown(private / "sim" / "activate-retirement", resolve=False) if linked \
+        else _shown(sim / "activate-retirement")
     _next_steps(sim, activate, no_builder=no_builder)
 
 
@@ -5828,7 +5830,7 @@ def _init_installed(
     click.echo(f"copied the notebooks to {_shown(root / 'notebooks')}; open them with: sim jupyter start")
     if not no_builder and not no_commit and not failed:
         _init_builder(sim)
-    _next_steps(sim, _shown(sim / "activate-analysis"), no_builder=no_builder)
+    _next_steps(sim, _shown(sim / "activate-retirement"), no_builder=no_builder)
 
 
 def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
@@ -5862,7 +5864,7 @@ def _shown_repo(data_dir: Path) -> str:
 
 def _remember_default(data_dir: Path) -> None:
     """Make ``data_dir`` the user's default data repo and say so, warning
-    when this shell's $ANALYSIS_DATA_DIR still names another."""
+    when this shell's $ZABOB_DATA_DIR still names another."""
     from zabob.retirement import user_config
 
     was = user_config.default_data_dir()
@@ -5873,10 +5875,10 @@ def _remember_default(data_dir: Path) -> None:
     else:
         click.echo(f"made {_shown_repo(data_dir)} your data repo: the sim commands use it "
                    "from any folder (`sim switch --data DIR` switches)")
-    env = os.environ.get("ANALYSIS_DATA_DIR")
+    env = os.environ.get("ZABOB_DATA_DIR")
     if env and Path(env).resolve() != data_dir.resolve():
-        click.echo(f"  warning: this shell's ANALYSIS_DATA_DIR names {_shown(Path(env))}, which comes "
-                   "first; `deactivate-analysis` or a new shell uses the default", err=True)
+        click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                   "first; `deactivate-retirement` or a new shell uses the default", err=True)
 
 
 def _create_data_repo(
@@ -5964,7 +5966,7 @@ sim_group_command.add_command(jupyter_group)
 
 # Set for the `sim init` that one run from another checkout's venv starts,
 # so that a checkout whose `sim` is somehow another's can't start a third.
-_INIT_AGAIN = "ANALYSIS_INIT_AGAIN"
+_INIT_AGAIN = "ZABOB_INIT_AGAIN"
 
 
 def _init_in_checkout(this: Path, checkout: Path, args: list[str]) -> NoReturn:
@@ -6036,17 +6038,17 @@ def _switch(login: str | None, data: Path | None, scenario: str | None, data_dir
             user_config.set_default_data_dir(data_dir)
             click.echo(f"Data repo is now {_shown_repo(data_dir)}"
                        + (f" (was {_shown_repo(was)})" if was is not None else ""))
-        env = os.environ.get("ANALYSIS_DATA_DIR")
+        env = os.environ.get("ZABOB_DATA_DIR")
         if env and Path(env).resolve() != data_dir.resolve():
-            click.echo(f"  warning: this shell's ANALYSIS_DATA_DIR names {_shown(Path(env))}, which comes "
-                       "first; `deactivate-analysis` or a new shell uses this one", err=True)
+            click.echo(f"  warning: this shell's ZABOB_DATA_DIR names {_shown(Path(env))}, which comes "
+                       "first; `deactivate-retirement` or a new shell uses this one", err=True)
     if login is not None:
         was_user = user_config.user_name()
         if login != was_user:
             user_config.set_user(login)
             click.echo(f"Logged in as {login}" + (f" (was {was_user})" if was_user else ""))
-        if (env_user := os.environ.get("ANALYSIS_USER")) and env_user != login:
-            click.echo(f"  warning: this shell's ANALYSIS_USER, {env_user}, comes first", err=True)
+        if (env_user := os.environ.get("ZABOB_USER")) and env_user != login:
+            click.echo(f"  warning: this shell's ZABOB_USER, {env_user}, comes first", err=True)
     setting = str(data_dir) if data_dir is not None else data_dir_setting()
     data_dir_p = Path(setting).resolve() if setting else None
     if scenario is not None:
@@ -22766,9 +22768,9 @@ def builder_group() -> None:
     named another). It also fetches prices after each weekday's close, on a
     branch merged into the data repo's main when that is checked out and
     clean. It rolls marked scenarios forward at night, and each morning
-    researches the symbol whose research is oldest. ANALYSIS_BUILDER=off
-    turns it off; ANALYSIS_PRICE_FETCH=off, ANALYSIS_ROLL=off and
-    ANALYSIS_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
+    researches the symbol whose research is oldest. ZABOB_BUILDER=off
+    turns it off; ZABOB_PRICE_FETCH=off, ZABOB_ROLL=off and
+    ZABOB_RESEARCH=off (or ``install --no-prices``, ``--no-roll``,
     ``--no-research``) turn off only those.
     """
 
@@ -22841,7 +22843,7 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
         raise click.ClickException(f"not a workspace pair: {exc}") from None
     for line in done:
         click.echo(line)
-    # By the recorded choice alone: ANALYSIS_PRICE_FETCH=off is for one shell
+    # By the recorded choice alone: ZABOB_PRICE_FETCH=off is for one shell
     # (an agent's, a test's), so install_timer then leaves the timer as it is.
     config = builder.read_config(builder.BuilderPaths.for_data(resolved)) or {}
     if config.get("prices", True) or config.get("roll", True) or config.get("research", True):
@@ -23153,7 +23155,7 @@ def builder_status(data_dir: Path | None) -> None:
         return
     switched_off = builder.switched_off()
     if switched_off:
-        output.note("background builds are off here (ANALYSIS_BUILDER=off)")
+        output.note("background builds are off here (ZABOB_BUILDER=off)")
     config = builder.read_config(paths) or {}
     from zabob.retirement.resources import home_checkout
 

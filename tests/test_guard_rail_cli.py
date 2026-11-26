@@ -123,7 +123,7 @@ def test_explain_lists_each_stretch_past_a_rail(retire_alice_run_file: Path, dat
 
 def test_explain_without_a_data_repo_leaves_the_rails_out(retire_alice_run_file: Path) -> None:
     result = CliRunner().invoke(main, ["sim", "explain", "--runfile", str(retire_alice_run_file)],
-                                env={"ANALYSIS_DATA_DIR": None})
+                                env={"ZABOB_DATA_DIR": None})
 
     assert result.exit_code == 0, result.output
     assert "guard rails" not in result.output

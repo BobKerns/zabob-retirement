@@ -126,7 +126,7 @@ own, to see what a change in the law would do.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -163,7 +163,7 @@ effective rate as a line.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -212,7 +212,7 @@ free, and has no required distributions.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/convert && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -264,7 +264,7 @@ it.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/irmaa-demo && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -322,7 +322,7 @@ supplies the tiers, growing with inflation.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/irmaa-demo && cd ~/zabob-retirement/sim && sim switch convert > /dev/null 2>&1; clear"
 Enter
@@ -391,7 +391,7 @@ money would be later.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/medical && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter

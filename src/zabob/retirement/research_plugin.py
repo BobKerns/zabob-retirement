@@ -2,7 +2,7 @@
 
 ``plugins/finance-research/`` in this repo is the neutral plugin: English
 only, no tax state. A household's choices live in the data repo, in
-``$ANALYSIS_DATA_DIR/research.yaml``::
+``$ZABOB_DATA_DIR/research.yaml``::
 
     languages: [en, ja]   # tab languages; en first, each other adds a copy of every tab
     tax_state: CA         # two-letter state code; leave out for none

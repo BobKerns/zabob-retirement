@@ -22,7 +22,7 @@
 # input, so questions are read from /dev/tty, never from stdin.
 set -eu
 
-REPO_URL=${ANALYSIS_REPO_URL:-https://github.com/BobKerns/zabob-retirement.git}
+REPO_URL=${ZABOB_REPO_URL:-https://github.com/BobKerns/zabob-retirement.git}
 
 say() { printf '%s\n' "$*"; }
 die() {
@@ -189,7 +189,7 @@ main() {
     say ""
     say "Installed. Open a new terminal window, then:"
     # Through the checkout's link, so the code activated is this checkout's.
-    say "    source $code/data/private/sim/activate-analysis"
+    say "    source $code/data/private/sim/activate-retirement"
     say "    sim run"
     say "To update later, run the same install line again."
 }

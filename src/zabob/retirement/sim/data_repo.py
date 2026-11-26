@@ -5,7 +5,7 @@
 The template scenarios (``t_*``) and the aux tables aren't copied: the loader
 reads them from ``templates/`` itself (ADR-003 §4.5a, #317), so a copy would
 only hide their later updates. What is copied is what a household edits:
-``persons.csv``, the shared CSVs, ``activate-analysis`` and ``scenarios/base``.
+``persons.csv``, the shared CSVs, ``activate-retirement`` and ``scenarios/base``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ CODE_REPO_DIR: Path | None = CHECKOUT_DIR
 START_SCENARIO = "base"
 
 # Per-machine files under sim/, kept out of the data repo's history as
-# activate-analysis and link-data.sh keep them out.
+# activate-retirement and link-data.sh keep them out.
 _IGNORED = (".analysis", ".current_scenario", ".analysis_user", RETENTION_FILENAME)
 
 # templates/ paths not copied: the code repository's own documentation of
@@ -163,10 +163,10 @@ def _refuse_existing(root: Path) -> None:
 
 def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: bool) -> str | None:
     """What every new data repo gets beside its CSVs: the files kept out of
-    git, the pointers activate-analysis reads, and the first commit."""
+    git, the pointers activate-retirement reads, and the first commit."""
     sim = root / "sim"
     (sim / ".gitignore").write_text("".join(f"{name}\n" for name in _IGNORED), encoding="utf-8")
-    # activate-analysis finds the program from .analysis. .analysis_user is
+    # activate-retirement finds the program from .analysis. .analysis_user is
     # the person the repo was made for: git's committer for its commits while
     # nobody has said who they are with `sim login` (#773).
     home = str(CODE_REPO_DIR) if CODE_REPO_DIR is not None else program_home()

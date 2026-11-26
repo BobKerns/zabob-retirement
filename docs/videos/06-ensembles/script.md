@@ -125,7 +125,7 @@ crisis. Each one is just a scenario, so you build on it like any other.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/create && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -150,7 +150,7 @@ is unchanged.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/varying && cd ~/zabob-retirement/sim && clear"
 Enter
@@ -181,7 +181,7 @@ plain forty thousand.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
@@ -220,7 +220,7 @@ their own, among them Alice and Bill's car.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -245,7 +245,7 @@ to that. A future with hot inflation usually pays more on cash, too.
 ```tape
 Set FontSize 24
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
@@ -281,7 +281,7 @@ went negative. In those, the money ran out.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -307,7 +307,7 @@ reaches past ten million, and the bottom comes down close to zero.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter
@@ -355,7 +355,7 @@ them.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/run && cd ~/zabob-retirement/sim && clear"
 Enter
@@ -392,7 +392,7 @@ help is needed.
 
 ```tape
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "cd ~/zabob-retirement/sim && clear"
 Enter

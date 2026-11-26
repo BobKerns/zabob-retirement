@@ -1,0 +1,298 @@
+# Source this from bash or zsh:  source path/to/data_repo/activate-retirement
+# See ADR-004 §4 for full semantics.
+
+if [ -n "${BASH_SOURCE-}" ]; then
+    _RETIREMENT_SELF="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION-}" ]; then
+    # shellcheck disable=SC2296
+    _RETIREMENT_SELF="${(%):-%x}"
+else
+    echo "activate-retirement: source from bash or zsh" >&2
+    # shellcheck disable=SC2317
+    return 1 2>/dev/null || exit 1
+fi
+
+_retirement_fail() {
+    echo "activate-retirement: $*" >&2
+    # shellcheck disable=SC2317
+    return 1 2>/dev/null || exit 1
+}
+
+_retirement_validate_repo_dir() {
+    [ -n "$1" ] || return 1
+    [ -d "$1" ] || return 1
+    [ -f "$1/pyproject.toml" ] || return 1
+    [ -f "$1/src/zabob/retirement/cli.py" ] || return 1
+    [ -f "$1/src/zabob/retirement/amazon/cli.py" ] || return 1
+    [ -f "$1/src/zabob/retirement/sim/cli.py" ] || return 1
+    return 0
+}
+
+_retirement_enable_completion() {
+    # Click completion env var differs by command name.
+    _retirement_shell_mode="$1"
+    eval "$(_ANALYSIS_COMPLETE=${_retirement_shell_mode} analysis)" 2>/dev/null || true
+    eval "$(_AMAZON_COMPLETE=${_retirement_shell_mode} amazon)" 2>/dev/null || true
+    eval "$(_SIM_COMPLETE=${_retirement_shell_mode} sim)" 2>/dev/null || true
+    unset _retirement_shell_mode
+}
+
+export ZABOB_DATA_DIR
+ZABOB_DATA_DIR="$(cd "$(dirname "$_RETIREMENT_SELF")" && pwd)"
+export ZABOB_DATA_REPO_NAME="${ZABOB_DATA_REPO_NAME:-$(basename "$ZABOB_DATA_DIR")}"
+
+_RETIREMENT_POINTER_FILE="$ZABOB_DATA_DIR/.analysis"
+_RETIREMENT_REMEMBERED=""
+if [ -f "$_RETIREMENT_POINTER_FILE" ]; then
+    IFS= read -r _RETIREMENT_REMEMBERED < "$_RETIREMENT_POINTER_FILE"
+fi
+
+# The code checkout this was sourced through (<checkout>/data/private/sim)
+# comes first (#654): several worktrees can link one data repo, and each
+# then gets its own code, whichever was activated last or made the data
+# repo. Then ZABOB_REPO_DIR, then the checkout remembered in .analysis.
+# The path is taken as it was typed, not from ZABOB_DATA_DIR: where the
+# shell follows links on cd (zsh's CHASE_LINKS, bash's set -P) that one is
+# the data repo's own folder, with no checkout around it.
+_RETIREMENT_REPO_CANDIDATE=""
+_RETIREMENT_THROUGH=""
+_RETIREMENT_TYPED="$(dirname "$_RETIREMENT_SELF")"
+case "$_RETIREMENT_TYPED" in
+    /*) ;;
+    *) _RETIREMENT_TYPED="$PWD/$_RETIREMENT_TYPED" ;;
+esac
+for _retirement_spelled in "$_RETIREMENT_TYPED" "$ZABOB_DATA_DIR"; do
+    case "$_retirement_spelled" in
+        */data/private/sim)
+            if _retirement_validate_repo_dir "${_retirement_spelled%/data/private/sim}"; then
+                _RETIREMENT_THROUGH="$(cd "${_retirement_spelled%/data/private/sim}" && pwd)"
+                _RETIREMENT_REPO_CANDIDATE="$_RETIREMENT_THROUGH"
+                break
+            fi
+            ;;
+    esac
+done
+unset _retirement_spelled _RETIREMENT_TYPED
+if [ -z "$_RETIREMENT_REPO_CANDIDATE" ]; then
+    _RETIREMENT_REPO_CANDIDATE="${ZABOB_REPO_DIR-}"
+fi
+if [ -z "$_RETIREMENT_REPO_CANDIDATE" ]; then
+    _RETIREMENT_REPO_CANDIDATE="$_RETIREMENT_REMEMBERED"
+fi
+
+# Nothing names the program (a data repo cloned onto a new machine): the
+# sim on PATH, if any, is it. Beside it, a checkout's .venv/bin or an
+# installed program's own folder (#662); uv links the latter into ~/.local/bin.
+if [ -z "$_RETIREMENT_REPO_CANDIDATE" ] && _retirement_sim="$(command -v sim 2>/dev/null)"; then
+    if [ -L "$_retirement_sim" ]; then
+        _retirement_sim="$(readlink "$_retirement_sim")"
+    fi
+    _retirement_sim="$(cd "$(dirname "$_retirement_sim")" 2>/dev/null && pwd)"
+    if _retirement_validate_repo_dir "${_retirement_sim%/.venv/bin}"; then
+        _RETIREMENT_REPO_CANDIDATE="${_retirement_sim%/.venv/bin}"
+    elif [ -x "$_retirement_sim/python" ]; then
+        _RETIREMENT_REPO_CANDIDATE="installed:$_retirement_sim"
+    fi
+fi
+unset _retirement_sim
+
+# An installed program (`uv tool install zabob-retirement`, #662) is named
+# installed:<its folder>: it has no checkout and no .venv to activate.
+_RETIREMENT_INSTALLED=""
+case "$_RETIREMENT_REPO_CANDIDATE" in
+    installed:*)
+        _RETIREMENT_INSTALLED="${_RETIREMENT_REPO_CANDIDATE#installed:}"
+        [ -x "$_RETIREMENT_INSTALLED/sim" ] || \
+            _retirement_fail "no sim in $_RETIREMENT_INSTALLED: reinstall with 'uv tool install zabob-retirement', or remove $_RETIREMENT_POINTER_FILE"
+        ;;
+esac
+
+if [ -z "$_RETIREMENT_INSTALLED" ] && ! _retirement_validate_repo_dir "$_RETIREMENT_REPO_CANDIDATE"; then
+    echo "activate-retirement: the program's repo path not configured." >&2
+    printf "Enter ZABOB_REPO_DIR: " >&2
+    read -r _RETIREMENT_REPO_CANDIDATE
+fi
+
+if [ -z "$_RETIREMENT_INSTALLED" ] && ! _retirement_validate_repo_dir "$_RETIREMENT_REPO_CANDIDATE"; then
+    _retirement_fail "invalid repo path: '$_RETIREMENT_REPO_CANDIDATE' (expected pyproject.toml and src/zabob/retirement/*/cli.py)"
+fi
+
+export ZABOB_REPO_DIR="$_RETIREMENT_REPO_CANDIDATE"
+
+# The two are compared as the folders they are, not as they are spelled:
+# `sim init` writes the path it finds itself at, this the one it was sourced
+# through, and under a linked folder those differ for one checkout.
+_retirement_same_dir() {
+    [ "$1" = "$2" ] && return 0
+    [ "$(cd "$1" 2>/dev/null && pwd -P)" = "$(cd "$2" 2>/dev/null && pwd -P)" ]
+}
+# .analysis names the one checkout the data repo is paired with: the
+# builder's hooks run that checkout's sim. Another worktree sourcing this
+# through its own data/private uses its own code and leaves the pair alone.
+# The pair is written when .analysis names no checkout, or when this is
+# sourced by the data repo's own path with another checkout named
+# (ZABOB_REPO_DIR, or typed just now).
+_RETIREMENT_KEEP_POINTER=""
+if [ -n "$_RETIREMENT_INSTALLED" ] && [ "$_RETIREMENT_REMEMBERED" = "$ZABOB_REPO_DIR" ]; then
+    _RETIREMENT_KEEP_POINTER=1
+elif [ -n "$_RETIREMENT_REMEMBERED" ] && [ -z "$_RETIREMENT_INSTALLED" ] && ! _retirement_same_dir "$_RETIREMENT_REMEMBERED" "$ZABOB_REPO_DIR"; then
+    # Said, since the wrong checkout's code is otherwise found out much
+    # later, by what it lacks.
+    if [ -n "$_RETIREMENT_THROUGH" ] && _retirement_validate_repo_dir "$_RETIREMENT_REMEMBERED"; then
+        _RETIREMENT_KEEP_POINTER=1
+        echo "activate-retirement: using the code in $ZABOB_REPO_DIR; the data repo stays paired with $_RETIREMENT_REMEMBERED (its background builds run there)" >&2
+    else
+        echo "activate-retirement: using the code in $ZABOB_REPO_DIR (it was $_RETIREMENT_REMEMBERED)" >&2
+    fi
+elif [ -n "$_RETIREMENT_REMEMBERED" ] && [ -z "$_RETIREMENT_INSTALLED" ]; then
+    # The same checkout, however it is spelled: nothing to rewrite.
+    _RETIREMENT_KEEP_POINTER=1
+fi
+unset -f _retirement_same_dir
+# `sim init` copied this file from the code's templates/, where it changes.
+# Which of the two is the newer isn't known here: with several checkouts on
+# one data repo, an older one's would undo what a newer one brought.
+if [ -f "$ZABOB_REPO_DIR/templates/activate-retirement" ] && \
+    ! cmp -s "$_RETIREMENT_SELF" "$ZABOB_REPO_DIR/templates/activate-retirement"; then
+    echo "activate-retirement: this copy differs from $ZABOB_REPO_DIR/templates/activate-retirement." >&2
+    echo "  If that checkout has the newest code of those using this data repo, take its copy:" >&2
+    echo "  cp $ZABOB_REPO_DIR/templates/activate-retirement $ZABOB_DATA_DIR/" >&2
+fi
+
+# Persist pointer and ensure it is ignored by the data repo.
+if [ -z "$_RETIREMENT_KEEP_POINTER" ]; then
+    printf '%s\n' "$ZABOB_REPO_DIR" > "$_RETIREMENT_POINTER_FILE" || \
+        _retirement_fail "unable to write $_RETIREMENT_POINTER_FILE"
+fi
+unset _RETIREMENT_KEEP_POINTER _RETIREMENT_THROUGH
+
+# A line that comments the name out (`# .retention.yaml`) or negates it
+# (`!.retention.yaml`) records a choice to commit that file, such as a shared
+# retention policy, so it counts as present and isn't added back (#712).
+for _retirement_ignored in .analysis .current_scenario .analysis_user .retention.yaml; do
+    if [ ! -f "$ZABOB_DATA_DIR/.gitignore" ]; then
+        printf '%s\n' "$_retirement_ignored" > "$ZABOB_DATA_DIR/.gitignore" || \
+            _retirement_fail "unable to write $ZABOB_DATA_DIR/.gitignore"
+    elif ! grep -qE "^(#[[:space:]]*|!)?/?$(printf '%s' "$_retirement_ignored" | sed 's/\./\\./g')\$" \
+            "$ZABOB_DATA_DIR/.gitignore"; then
+        printf '%s\n' "$_retirement_ignored" >> "$ZABOB_DATA_DIR/.gitignore" || \
+            _retirement_fail "unable to update $ZABOB_DATA_DIR/.gitignore"
+    fi
+done
+unset _retirement_ignored
+
+if [ -n "$_RETIREMENT_INSTALLED" ]; then
+    # Its commands are already on PATH (~/.local/bin), but `python` there
+    # isn't its Python: put its own folder first, as activating a venv would.
+    _RETIREMENT_PYTHON="$_RETIREMENT_INSTALLED/python"
+    case ":$PATH:" in
+        *":$_RETIREMENT_INSTALLED:"*) ;;
+        *)
+            _RETIREMENT_OLD_PATH="$PATH"
+            PATH="$_RETIREMENT_INSTALLED:$PATH"
+            export PATH
+            ;;
+    esac
+else
+    if [ ! -f "$ZABOB_REPO_DIR/.venv/bin/activate" ]; then
+        command -v uv >/dev/null 2>&1 || _retirement_fail "uv not found; install uv to bootstrap .venv"
+        (
+            cd "$ZABOB_REPO_DIR" || exit 1
+            uv sync --group dev
+        ) || _retirement_fail "uv sync failed while creating $ZABOB_REPO_DIR/.venv"
+    fi
+
+    # Activate the project virtual environment.
+    # shellcheck disable=SC1090,SC1091
+    . "$ZABOB_REPO_DIR/.venv/bin/activate" || _retirement_fail "failed to activate .venv"
+    _RETIREMENT_PYTHON=python
+fi
+
+if [ -n "${ZSH_VERSION-}" ]; then
+    _retirement_enable_completion "zsh_source"
+elif [ -n "${BASH_VERSION-}" ]; then
+    _retirement_enable_completion "bash_source"
+fi
+
+# Prompt segment, in the style of oh-my-zsh's git_prompt_info: PS1 holds a
+# literal $(retirement_prompt_info) that is expanded at each prompt, so it is
+# added only once no matter how many times this script is sourced. It reads
+# who you are and your current scenario afresh each time, from your own
+# settings (#773): `sim login` and any sim command naming a scenario change
+# them. With no current scenario the segment leaves it out (#214).
+retirement_prompt_info() {
+    [ -n "${ZABOB_DATA_REPO_NAME-}" ] || return 0
+    case "${XDG_CONFIG_HOME-}" in
+        /*) _retirement_cfg="$XDG_CONFIG_HOME/zabob-retirement" ;;
+        *) _retirement_cfg="$HOME/.config/zabob-retirement" ;;
+    esac
+    _retirement_user="${ZABOB_USER-}"
+    if [ -z "$_retirement_user" ] && [ -r "$_retirement_cfg/user" ]; then
+        IFS= read -r _retirement_user < "$_retirement_cfg/user"
+    fi
+    _retirement_scenario=""
+    _retirement_found=""
+    # zsh's NOMATCH makes an unmatched glob an error: no repos/ yet, no loop.
+    [ -n "${ZSH_VERSION-}" ] && setopt localoptions nullglob
+    [ -d "$_retirement_cfg/repos" ] && for _retirement_loc in "$_retirement_cfg"/repos/*/location; do
+        [ -r "$_retirement_loc" ] || continue
+        IFS= read -r _retirement_where < "$_retirement_loc"
+        if [ "$_retirement_where" = "$ZABOB_DATA_DIR" ] || \
+            [ "$_retirement_where" = "$(cd "$ZABOB_DATA_DIR" 2>/dev/null && pwd -P)" ]; then
+            _retirement_found="${_retirement_loc%/location}/scenario"
+            break
+        fi
+    done
+    if [ -n "$_retirement_found" ] && [ -f "$_retirement_found" ]; then
+        IFS= read -r _retirement_scenario < "$_retirement_found"
+    elif [ -r "${ZABOB_DATA_DIR-}/.current_scenario" ]; then
+        IFS= read -r _retirement_scenario < "$ZABOB_DATA_DIR/.current_scenario"
+    fi
+    printf '[retirement:%s' "$ZABOB_DATA_REPO_NAME"
+    [ -n "$_retirement_user" ] && printf ':%s' "$_retirement_user"
+    [ -n "$_retirement_scenario" ] && printf ':%s' "$_retirement_scenario"
+    printf '] '
+    unset _retirement_cfg _retirement_user _retirement_found _retirement_loc _retirement_where
+    unset _retirement_scenario
+}
+
+if [ -n "${ZSH_VERSION-}" ]; then
+    # Only the first sourcing (before any matching deactivate-retirement)
+    # records the pre-activation state; re-sourcing while already active
+    # must not overwrite it with "already set" from our own setopt below,
+    # or deactivation would leak prompt_subst into the user's shell.
+    if [ -z "${_RETIREMENT_PROMPT_SUBST_WAS_SET+x}" ]; then
+        if [[ -o prompt_subst ]]; then
+            _RETIREMENT_PROMPT_SUBST_WAS_SET=1
+        else
+            _RETIREMENT_PROMPT_SUBST_WAS_SET=0
+        fi
+    fi
+    setopt prompt_subst
+fi
+# shellcheck disable=SC2016
+case "${PS1-}" in
+    *'$(retirement_prompt_info)'*) ;;
+    *) PS1='$(retirement_prompt_info)'"${PS1-}" ;;
+esac
+
+deactivate-retirement() {
+    # shellcheck disable=SC2016
+    PS1="${PS1//'$(retirement_prompt_info)'/}"
+    if typeset -f deactivate >/dev/null 2>&1; then
+        deactivate
+    fi
+    if [ -n "${_RETIREMENT_OLD_PATH+x}" ]; then
+        PATH="$_RETIREMENT_OLD_PATH"
+        export PATH
+    fi
+    if [ -n "${ZSH_VERSION-}" ] && [ "${_RETIREMENT_PROMPT_SUBST_WAS_SET-0}" = "0" ]; then
+        unsetopt prompt_subst
+    fi
+    unset ZABOB_DATA_DIR ZABOB_DATA_REPO_NAME ZABOB_REPO_DIR
+    unset _RETIREMENT_SELF
+    unset _RETIREMENT_POINTER_FILE _RETIREMENT_REPO_CANDIDATE _RETIREMENT_REMEMBERED
+    unset _RETIREMENT_PROMPT_SUBST_WAS_SET _RETIREMENT_INSTALLED _RETIREMENT_PYTHON _RETIREMENT_OLD_PATH
+    unset -f _retirement_fail _retirement_validate_repo_dir _retirement_enable_completion
+    unset -f retirement_prompt_info deactivate-retirement
+}

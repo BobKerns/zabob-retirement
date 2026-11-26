@@ -20,7 +20,7 @@ def _complete(data_dir: Path | None, line: str) -> list[str]:
     cword = len(words) + (1 if line.endswith(" ") else 0)
     env = {"_SIM_COMPLETE": "bash_complete", "COMP_WORDS": f"sim {line}", "COMP_CWORD": str(cword)}
     if data_dir is not None:
-        env["ANALYSIS_DATA_DIR"] = str(data_dir)
+        env["ZABOB_DATA_DIR"] = str(data_dir)
     result = CliRunner().invoke(sim_group_command, [], prog_name="sim", env=env)
     assert result.exit_code == 0, result.output
     return [item.split(",", 1)[1] for item in result.output.splitlines() if item]

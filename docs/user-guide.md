@@ -148,7 +148,7 @@ argument or `--scenario`) makes it current, and the command says so
 first prints `Using scenario <name>`; with no current scenario (a fresh data
 repo, or after deleting it) the command asks you to name one.
 To look at a scenario without making it current (in a script, or for an AI
-assistant answering questions for you), set `ANALYSIS_KEEP_SCENARIO=1`:
+assistant answering questions for you), set `ZABOB_KEEP_SCENARIO=1`:
 commands then use the scenario they name and leave your current one as it is.
 `sim switch` shows who you are, your data repo and your current scenario,
 and `sim switch <name>` makes `<name>` current, naming the one it replaces.
@@ -157,8 +157,8 @@ someone else using the same data repo keeps their own. `sim login [name]`
 says who you are (by default your login name); it is the name put on what you
 make and change, not one of the household's people. `sim switch --data DIR`
 moves you to another data repo, and so does running a `sim` command inside
-one, saying so. The shell prompt that `activate-analysis` sets shows all
-three, as `[analysis:<data repo>:<you>:<scenario>]`.
+one, saying so. The shell prompt that `activate-retirement` sets shows all
+three, as `[retirement:<data repo>:<you>:<scenario>]`.
 
 To rename a scenario (or an ensemble; the two commands are the same):
 

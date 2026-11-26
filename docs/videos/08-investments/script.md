@@ -102,7 +102,7 @@ default.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/holdings && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -133,7 +133,7 @@ have only five thousand.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/symbol && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -159,7 +159,7 @@ research; the guide shows how.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/invest && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -189,7 +189,7 @@ instead.
 ```tape
 Set FontSize 16
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/prices && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -257,7 +257,7 @@ those rates can vary.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -321,7 +321,7 @@ a joint one, or all of it where joint property is community property.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch base > /dev/null 2>&1; clear"
 Enter
@@ -375,7 +375,7 @@ conversion again, from the investment side.
 ```tape
 Set FontSize 20
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch convert > /dev/null 2>&1; clear"
 Enter
@@ -406,7 +406,7 @@ that will never be taxed.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/invest-roth && cd ~/zabob-retirement/sim && sim switch convert > /dev/null 2>&1; clear"
 Enter
@@ -439,7 +439,7 @@ that penalty yet.
 ```tape
 Set FontSize 18
 Hide
-Type "export HOME=$PWD/home && unset ANALYSIS_DATA_DIR && source ~/zabob-retirement/sim/activate-analysis > /dev/null"
+Type "export HOME=$PWD/home && unset ZABOB_DATA_DIR && source ~/zabob-retirement/sim/activate-retirement > /dev/null"
 Enter
 Type "git -C ~/zabob-retirement reset -q --hard stage/done && cd ~/zabob-retirement/sim && sim switch roth-fund > /dev/null 2>&1; clear"
 Enter

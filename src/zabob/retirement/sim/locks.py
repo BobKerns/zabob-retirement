@@ -48,9 +48,9 @@ __all__ = [
 
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H%M%SZ"
 # Set (to 1) in a build the background builder started (sim/builder.py).
-BUILDER_CHILD_ENV = "ANALYSIS_BUILDER_CHILD"
+BUILDER_CHILD_ENV = "ZABOB_BUILDER_CHILD"
 # "off" turns the background builder off: no daemon starts, nothing waits.
-BUILDER_SWITCH_ENV = "ANALYSIS_BUILDER"
+BUILDER_SWITCH_ENV = "ZABOB_BUILDER"
 # A run file's leading `<stamp>[-N]_`, or a batch folder's whole `<stamp>[-N]`.
 _RUN_STAMP = re.compile(r"^(\d{4}-\d\d-\d\dT\d{6}Z)(?:-(\d+))?(?:_|$)")
 # Beside the intent files the lock protects. The dot keeps it apart from
@@ -165,7 +165,7 @@ _held: dict[Path, list[int]] = {}
 
 
 def _holder(intent_dir: Path) -> str:  # noqa: ARG001 - the user is the same in every data repo (#773)
-    """Who holds a lock: ``$ANALYSIS_USER`` or `sim login`'s name, else the
+    """Who holds a lock: ``$ZABOB_USER`` or `sim login`'s name, else the
     login name."""
     return current_user() or login_name()
 

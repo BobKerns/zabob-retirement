@@ -69,7 +69,7 @@ def test_terminal_protocol_asks_the_terminal(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     monkeypatch.delenv("TMUX", raising=False)
-    monkeypatch.delenv("ANALYSIS_IMAGE_PROTOCOL", raising=False)
+    monkeypatch.delenv("ZABOB_IMAGE_PROTOCOL", raising=False)
     if term_program is None:
         monkeypatch.delenv("TERM_PROGRAM", raising=False)
     else:
@@ -82,7 +82,7 @@ def test_terminal_protocol_asks_the_terminal(
 def test_image_protocol_can_be_forced(
     monkeypatch: pytest.MonkeyPatch, forced: str, expected: str | None,
 ) -> None:
-    monkeypatch.setenv("ANALYSIS_IMAGE_PROTOCOL", forced)
+    monkeypatch.setenv("ZABOB_IMAGE_PROTOCOL", forced)
     monkeypatch.setenv("TERM_PROGRAM", "iTerm.app")
     monkeypatch.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b_Gi=31;OK\x1b\\")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
@@ -95,7 +95,7 @@ def test_image_protocol_can_be_forced(
 
 
 def test_no_protocol_inside_tmux_or_when_piped(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANALYSIS_IMAGE_PROTOCOL", raising=False)
+    monkeypatch.delenv("ZABOB_IMAGE_PROTOCOL", raising=False)
     monkeypatch.setattr(chain_graph, "_ask_terminal", lambda query: b"\x1b_Gi=31;OK\x1b\\")
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     assert chain_graph.terminal_protocol() is None

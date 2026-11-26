@@ -26,7 +26,7 @@ table alone) is reported, and nothing is written until it is fixed by hand.
 
 Usage: scripts/migrate_509.py [DATA_DIR] [--write]
 
-DATA_DIR defaults to $ANALYSIS_DATA_DIR. Without --write it only reports what
+DATA_DIR defaults to $ZABOB_DATA_DIR. Without --write it only reports what
 it would change. Every other row and cell is kept as it is. Delete this
 script once every data repo is migrated.
 """
@@ -319,11 +319,11 @@ def apply(result: Plan) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("data_dir", nargs="?", type=Path,
-                        default=os.environ.get("ANALYSIS_DATA_DIR"))
+                        default=os.environ.get("ZABOB_DATA_DIR"))
     parser.add_argument("--write", action="store_true", help="Write the changes.")
     args = parser.parse_args()
     if args.data_dir is None:
-        sys.exit("give DATA_DIR or set $ANALYSIS_DATA_DIR")
+        sys.exit("give DATA_DIR or set $ZABOB_DATA_DIR")
     result = plan(Path(args.data_dir))
     for line in result.report:
         print(line)
