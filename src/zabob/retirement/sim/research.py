@@ -25,6 +25,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -557,12 +558,43 @@ def skill_scripts(plugin_dir: Path, skill: str) -> list[Path]:
     return sorted((plugin_dir / "skills" / skill / "scripts").resolve().glob("*.py"))
 
 
-def script_python() -> str:
-    """The Python a run's skill scripts run under: this one, by absolute
-    path (#795). A bare ``python3`` in Claude Code's shell may be anything,
-    and on Windows often only the Store's alias; the scripts need only the
-    standard library, and one exact binary makes the Bash rule narrower."""
-    return Path(sys.executable).as_posix() if sys.executable else "python3"
+# Characters that make bash split or expand a word. A `~` inside one (an 8.3
+# short name) is left alone, so it needs no quoting.
+_SHELL_SPECIAL = frozenset(" \t\n'\"$`\\&;|<>()*?[]{}!#")
+
+
+def _short_path(path: str) -> str:
+    """Windows's 8.3 name for ``path``, which has no spaces where the volume
+    keeps short names (the system drive does by default); ``path`` itself
+    elsewhere or when there is none."""
+    if not WINDOWS:
+        return path
+    import ctypes
+
+    size = ctypes.windll.kernel32.GetShortPathNameW(path, None, 0)
+    buffer = ctypes.create_unicode_buffer(size)
+    if not size or not ctypes.windll.kernel32.GetShortPathNameW(path, buffer, size):
+        return path
+    return buffer.value
+
+
+def shell_word(path: str | Path) -> str:
+    """``path`` as one word of a bash command, spelled the same in a Bash
+    allow rule and in the prompt, so a run that types it as given matches
+    the rule. A profile folder like ``C:/Users/First Last`` has a space: on
+    Windows its short name has none; otherwise the word is quoted."""
+    word = Path(path).as_posix()
+    if WINDOWS and any(c in _SHELL_SPECIAL for c in word):
+        word = Path(_short_path(str(path))).as_posix()
+    return shlex.quote(word) if any(c in _SHELL_SPECIAL for c in word) else word
+
+
+def script_command(script: Path) -> str:
+    """How a run invokes a skill script: under this Python, by absolute path
+    (#795). A bare ``python3`` in Claude Code's shell may be anything, and on
+    Windows often only the Store's alias; the scripts need only the standard
+    library, and one exact binary makes the Bash rule narrower."""
+    return f"{shell_word(sys.executable or 'python3')} {shell_word(script)}"
 
 
 def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None) -> str:
@@ -573,12 +605,11 @@ def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None
     else:
         which = (f"If it is a fund or ETF, use the {SKILLS['fund']} skill; if it is a company, "
                  f"public or private, use the {SKILLS['company']} skill.")
-    where = "".join(
-        f" The {skill} skill's scripts are in {scripts[0].parent}."
-        for skill in run_skills(kind) if (scripts := skill_scripts(plugin_dir, skill))
-    )
-    if where:
-        where += f" Run each script by its absolute path with {script_python()}."
+    commands = [script_command(script) for skill in run_skills(kind) for script in skill_scripts(plugin_dir, skill)]
+    where = ""
+    if commands:
+        where = (" Run a skill's scripts only as these commands, exactly as written here, followed by "
+                 "their arguments: " + "; ".join(f"`{command}`" for command in commands) + ".")
     return (
         f"Tear sheet on {subject}. {which} There is no docs connector: write the Markdown files "
         "(and, for a fund, the allocation export) into the current folder, as the skill describes. "
@@ -615,7 +646,7 @@ def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, cla
         # An Edit rule covers Write as well; Claude Code ignores a Write(path)
         # rule and warns on stderr, which a failed run would report as its reason.
         _path_rule("Edit", work_dir),
-        *(f"Bash({script_python()} {script.as_posix()} *)" for script in scripts),
+        *(f"Bash({script_command(script)} *)" for script in scripts),
     ]
     return [
         claude, "-p", prompt_for(subject, key, plugin_dir, kind),

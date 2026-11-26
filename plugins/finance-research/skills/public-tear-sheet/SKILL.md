@@ -102,7 +102,7 @@ If a check fails, recompute from raw components. If it still disagrees, show "n/
   - open questions and data gaps.
 
   When cutting the tear sheet to budget, move material to Detail rather than deleting it, unless it's genuinely uninformative. Each page-one section whose evidence lives in Detail ends with a short pointer ("detail: regional comps").
-- **Hold the length budget.** Each audience file gives a word budget for the body, *excluding* the sources list. Count with `python scripts/wordcount.py <file>` (body before the Sources heading, ignoring table syntax and URLs) before finishing, and if you're over, apply the file's cut order, moving what you cut to Detail. A tear sheet that runs to five pages has stopped being one. Depth belongs in the Detail tab, not in longer page-one paragraphs.
+- **Hold the length budget.** Each audience file gives a word budget for the body, *excluding* the sources list. Count with `scripts/wordcount.py <file>` (body before the Sources heading, ignoring table syntax and URLs) before finishing, and if you're over, apply the file's cut order, moving what you cut to Detail. A tear sheet that runs to five pages has stopped being one. Depth belongs in the Detail tab, not in longer page-one paragraphs.
 
 - **Lead with the point.** The doc's first sentence and each section's first sentence state the finding with its number, not "This section covers…".
 - **Rewrite for the audience.** A filing's business description is an input, never output. Investment research wants what's *changing* and who else it affects; IB wants pitchbook prose; corp dev wants an acquirer's lens; sales wants plain language.
