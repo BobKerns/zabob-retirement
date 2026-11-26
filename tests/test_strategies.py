@@ -772,7 +772,7 @@ def test_log_explain_and_drift_read_the_run(
     assert "bond" in result.output and "stock_us" in result.output and "max_abs" in result.output
     chart = strategy_scenarios / "drift.svg"
     result = _cli(strategy_scenarios, "allocation", "--drift", "--runfile", run,
-                  "--chart-file", str(chart))
+                  "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
     assert "<svg" in chart.read_text(encoding="utf-8")  # a line per asset class (#327)
 

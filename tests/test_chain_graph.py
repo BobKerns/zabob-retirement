@@ -125,6 +125,21 @@ def test_graph_options_are_one_of_three(guide_chains: Path, tmp_path: Path) -> N
     assert gif.exit_code == 2 and "must end in .png or .svg" in gif.output
 
 
+def test_chart_is_graph_and_table_adds_the_trees(
+    guide_chains: Path, tmp_path: Path, stub_render: list[tuple[str, str]],
+) -> None:
+    """Issue #779: --chart and --chart-file are --graph and --graph-file under
+    other names; the flowchart comes alone, and --table adds the trees after it."""
+    alone = _sim(guide_chains, "bridge", "--chart-file", str(tmp_path / "alone.svg"))
+    assert alone.exit_code == 0, alone.output
+    assert (tmp_path / "alone.svg").read_bytes() == FAKE_PNG
+    assert "Asset_Savings" not in alone.output
+    both = _sim(guide_chains, "bridge", "--graph-file", str(tmp_path / "both.svg"), "--table")
+    assert both.exit_code == 0, both.output
+    assert "Asset_Savings" in both.output
+    assert len(stub_render) == 2
+
+
 def test_graph_file_writes_the_chart(
     guide_chains: Path, tmp_path: Path, stub_render: list[tuple[str, str]],
 ) -> None:

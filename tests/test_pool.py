@@ -529,7 +529,7 @@ def test_draws_say_when_a_pool_component_holds_only_the_base_case(
     # #330: the chart skips e_a, which drew nothing, and draws e_b's.
     png = tmp_path / "rate.png"
     charted = _sim("ensemble", "draws", pool_scenarios, "--data-dir", str(test_data_dir),
-                   "--node", "checking_rate_vary", "--chart-file", str(png))
+                   "--node", "checking_rate_vary", "--graph-file", str(png))
     assert charted.exit_code == 0, charted.output
     assert png.read_bytes()[:4] == b"\x89PNG"
 

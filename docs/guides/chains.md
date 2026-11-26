@@ -30,6 +30,7 @@ sim chain show Asset_Checking   # just the chains that reach this account
 sim chain show bridge --graph   # one chain's flowchart, drawn in the terminal
 sim chain show bridge --graph --rules    # with the rules that use it
 sim chain show bridge --graph --depth lots  # only as far as the first lot on each path
+sim chain show bridge --graph --table    # the flowchart, then the tree
 sim chain show bridge --mermaid # its Mermaid source, to paste into markdown
 sim chain show bridge --graph-file bridge.svg  # saved as an image (.png or .svg)
 ```

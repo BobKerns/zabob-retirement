@@ -74,18 +74,18 @@ def test_chart_file_draws_instead_of_the_tables(
     oat_batch: Path, runs_dir: Path, tmp_path: Path, args: tuple[str, ...],
 ) -> None:
     chart = tmp_path / "sensitivity.png"
-    result = _sensitivity(runs_dir, *args, "--chart-file", str(chart))
+    result = _sensitivity(runs_dir, *args, "--graph-file", str(chart))
     assert result.exit_code == 0, result.output
     assert chart.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert "retire_alice (" not in result.output  # the tables' header line
-    both = _sensitivity(runs_dir, *args, "--chart-file", str(tmp_path / "s.svg"), "--table")
+    both = _sensitivity(runs_dir, *args, "--graph-file", str(tmp_path / "s.svg"), "--table")
     assert both.exit_code == 0, both.output
     assert f"retire_alice ({oat_batch.name})" in both.output
 
 
 def test_chart_file_on_a_monte_carlo_batch(mc_batch: Path, runs_dir: Path, tmp_path: Path) -> None:
     chart = tmp_path / "correlation.svg"
-    result = _sensitivity(runs_dir, "--chart-file", str(chart), "--table")
+    result = _sensitivity(runs_dir, "--graph-file", str(chart), "--table")
     assert result.exit_code == 0, result.output
     assert chart.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     assert f"correlation retire_alice ({mc_batch.name})" in result.output
@@ -227,8 +227,8 @@ def test_top_without_n_fills_the_terminal_else_draws_the_default() -> None:
 
 
 @pytest.mark.parametrize(("args", "message"), [
-    (("--top", "2"), "--top needs --chart or --chart-file"),
-    (("--row", "gift", "--chart", "--top", "2"), "--row and --attribute show one row"),
+    (("--top", "2"), "--top needs --graph or --graph-file"),
+    (("--row", "gift", "--graph", "--top", "2"), "--row and --attribute show one row"),
 ])
 def test_top_is_refused_where_it_picks_nothing(
     oat_batch: Path, runs_dir: Path, args: tuple[str, ...], message: str,
@@ -254,6 +254,6 @@ def test_chart_file_with_top(
         return figure(*args, **kwargs)
 
     monkeypatch.setattr(sc, "oat_figure", recording)
-    result = _sensitivity(runs_dir, "--chart-file", str(tmp_path / "top.png"), *top)
+    result = _sensitivity(runs_dir, "--graph-file", str(tmp_path / "top.png"), *top)
     assert result.exit_code == 0, result.output
     assert asked == [drawn]

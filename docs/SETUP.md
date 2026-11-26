@@ -96,10 +96,10 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 - There is no TAB completion of names, since `activate-analysis` is for bash
   and zsh. Commands still ask for a name they need, with completion as you
   type.
-- `--graph` and `--chart` draw their charts in Windows Terminal 1.22 or
+- `--graph` (or `--chart`) draws its charts in Windows Terminal 1.22 or
   later (its Settings, **About**, gives the version; the Microsoft Store
-  updates it). In an older one, or the plain console window, they save the
-  chart as a PNG, print its path and open it in your image viewer. If a
+  updates it). In an older one, or the plain console window, it saves the
+  chart as a PNG, prints its path and opens it in your image viewer. If a
   current Windows Terminal saves a PNG anyway, set
   `ANALYSIS_IMAGE_PROTOCOL=sixel` (and tell us, in an issue).
 
@@ -132,7 +132,7 @@ To reach them from Windows, click **Linux** at the bottom of File Explorer's
 left side, or type `\\wsl$\Ubuntu\home\<your Linux name>` in its address
 bar. From Ubuntu, `explorer.exe .` opens the current folder in File Explorer.
 
-For a terminal that shows `--graph` and `--chart` charts, install
+For a terminal that shows `--graph` charts, install
 [VS Code](https://code.visualstudio.com) in Windows, add its **WSL**
 extension, and open a folder from Ubuntu with `code .` (in a clone of the
 code, `code` and its folder).
@@ -394,7 +394,7 @@ other SSH apps, but everything this project needs works. Termius has just
 added the same library, but in testing (October 2026) it did not work yet: one
 try gave a blank screen, another hung.
 
-iTerm2 gets its own image protocol. Elsewhere `--graph` (or `--chart`) asks the terminal
+iTerm2 gets its own image protocol. Elsewhere `--graph` asks the terminal
 whether it takes the kitty graphics protocol, and falls back to iTerm2's
 protocol for older VS Code and WezTerm, then to Sixel, the one Windows
 Terminal takes (and foot, xterm and others that say they do). Sixel images

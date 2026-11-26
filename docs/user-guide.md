@@ -1023,7 +1023,8 @@ percentile, taking the lifespans as independent, since a plan has to last
 until then. `--graph` (or `--graph-file lifespans.png`) draws each person's
 chance of dying at each age and of having died by it, shaded like the
 ensemble fan chart, and the chance that someone in the household is still
-alive each year. In a terminal that reports its size, `--graph` fills its
+alive each year, instead of the tables (`--table` for both, the chart
+first). In a terminal that reports its size, `--graph` fills its
 width and height, less three lines for the prompt. `notebooks/lifespan.ipynb`
 shows the same chart, shrunk to fit the window.
 
@@ -2349,7 +2350,7 @@ total tax by year, the `total_tax` `sim report tax` prints, with each run's
 lifetime tax, Social Security and final net worth (what a Roth conversion
 plan costs in tax, and what it buys). `--account NAME`
 adds that account's balance, `--section` prints only the parts you name, and
-`--chart` draws net worth (or the account) over time in the terminal instead of
+`--graph` draws net worth (or the account) over time in the terminal instead of
 the tables (`--table` too for both); with `--section social-security` or
 `--section tax`, it draws that section's chart. Leave
 out BASELINE to start from the current scenario.
@@ -2391,7 +2392,7 @@ machine too small for a notebook comfortably.
 | accounts and their opening balances | `sim account list` |
 | the lots in one account | `sim account holdings <account>` (balances from a run), `sim account lot list <account>` (as entered) |
 | the accounts holding a symbol | `sim account holders <symbol>` |
-| the portfolio by asset class | `sim allocation [--chart]` |
+| the portfolio by asset class | `sim allocation [--graph]` |
 | scheduled transactions | `sim scheduled list` |
 | one-time transfers | `sim transfer list` |
 | a scenario's description, lineage, dates, seed, ensemble size, reserve and latest run | `sim scenario show [scenario]` |
@@ -2402,17 +2403,17 @@ machine too small for a notebook comfortably.
 | itemizations and their totals | `sim itemization list`, `sim itemization show <name>` |
 | itemized deductions, by tax year | `sim deduction list` (`--state` for the state's) |
 | a run's year-end net worth, its lots, its load warnings and its negative-balance warnings | `sim explain [scenario]` |
-| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--chart]` |
-| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--chart]` |
-| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--chart]` |
-| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--chart]` |
-| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--chart]` |
-| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--chart]` |
-| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--chart]` |
+| net worth by year or month, after tax, CPI-constant or nominal | `sim networth [scenario] [--monthly] [--dollars nominal] [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| one account's or lot's balance over time (a lot adds basis, unrealized gain and quantity) | `sim account history <account> [--lot LOT] [--start MONTH\|YEAR] [--end MONTH\|YEAR] [--yearly] [--graph]` |
+| income or expenses by year, by category, account or tag (income adds cash income and cash flow; by tag, untagged flows are left out unless `--untagged`) | `sim report income`, `sim report expenses [--year YEAR] [--by category\|account\|tag:ROLE] [--untagged] [--start YEAR] [--end YEAR] [--graph]` |
+| economic income (income plus paper gains, net of losses) carried down through tax, spending and inflation to the change in net worth, after tax or pre-tax | `sim report income [--pre-tax] [--start YEAR] [--end YEAR] [--graph]` |
+| realized vs. unrealized gains by year | `sim report gains [--start YEAR] [--end YEAR] [--graph]` |
+| federal and state tax by year, each with its AGI, deduction and taxable income, and the effective rate | `sim report tax [--reconciliation] [--start YEAR] [--end YEAR] [--graph]` |
+| where a run stands against the scenario's guard rails, each year and cumulatively | `sim report guard-rails [--rail NAME] [--carried] [--start YEAR] [--end YEAR] [--graph]` |
+| spending against the plan by year: budgeted, delivered, the share of plan, and what was redirected | `sim report spending [--by category\|account\|tag:ROLE] [--start YEAR] [--end YEAR] [--graph]` |
 | a scenario's guard rails | `sim guard-rail list` |
-| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--chart]` |
-| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--chart] [--mermaid]` |
+| an ensemble's members against its guard rails: the share past each rail, ever past, and the RMS overshoot | `sim ensemble guard-rails [recipe] [--rail NAME] [--graph]` |
+| the latent factors that tie varying rows together, as trees with each link's ρ, and the rows under each factor | `sim ensemble factors [scenario] [--varying] [--graph] [--mermaid]` |
 
 The result views read the scenario's latest run (or `--runfile`) and show
 CPI-constant (today's) dollars unless you pass `--dollars nominal`.
@@ -2424,21 +2425,22 @@ the whole run, such as `sim compare`'s break-even, a guard rail's summary or
 cumulative margin, or an ensemble's share ever below the reserve, still
 covers the whole run. `sim account history` takes a month or a bare year.
 
-`--chart` shows the notebook's chart of the view instead of its table: drawn
+`--graph` shows the notebook's chart of the view instead of its table: drawn
 in the terminal when it shows images (iTerm2, kitty, Ghostty, Windows
 Terminal and others), else written to a temporary PNG whose name it prints,
-and opened in your image viewer when the session is local. `--chart-file NAME.png`
+and opened in your image viewer when the session is local. `--graph-file NAME.png`
 (or `.svg`) writes it to that file instead. `--table` with either prints the
-table too, after the chart. The chart follows the command's
+table too, after the chart. `--chart` and `--chart-file` are the same
+options under other names, on every command that draws. The chart follows the command's
 options: `--dollars`, `--pre-tax`, `--by`, `--year`, `--lot`, `--exclude` and
-the rest. `sim networth --chart` draws every month, after-tax net worth with
+the rest. `sim networth --graph` draws every month, after-tax net worth with
 the pre-tax total dashed above it, so the gap is the tax still owed.
-`sim report income --chart` stacks the income by group above economic income
+`sim report income --graph` stacks the income by group above economic income
 carried down to the change in net worth; with `--year`, it draws a bar per
-group. `sim report tax --chart` stacks federal, state and any local tax with the
+group. `sim report tax --graph` stacks federal, state and any local tax with the
 effective rate on its own axis (with `--reconciliation`, each April's balance
-due and refund). `sim report spending --chart` draws delivered spending as a
-bar per year with the plan as a dashed line over them. `sim allocation --chart` draws a pie of the asset classes, a
+due and refund). `sim report spending --graph` draws delivered spending as a
+bar per year with the plan as a dashed line over them. `sim allocation --graph` draws a pie of the asset classes, a
 bar per class split by the group with `--by`, and a line per class with
 `--drift`.
 
@@ -2456,7 +2458,7 @@ you wrote it there. JSON also says what the table's heading says (which
 dollars, which run), and a command that prints several tables, such as
 `sim compare`, names each one; CSV holds one table, a command's first unless
 `--section` picks another. Anything else the command would say goes to stderr,
-so the output is only the data. Neither goes with `--chart`.
+so the output is only the data. Neither goes with `--graph`.
 
 `sim report income` tells the whole story of each year. Its total,
 `economic_income`, is income plus paper gains, net of losses: what the year

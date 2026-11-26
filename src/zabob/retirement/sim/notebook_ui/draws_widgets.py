@@ -2,7 +2,7 @@
 distributions and correlations they came from, read from its draws.sqlite3.
 
 The node and pair charts are ``draws_charts``' (shared with ``sim ensemble
-draws --chart``, #330); ``draws_widget`` wires them to recipe, batch, node
+draws --graph``, #330); ``draws_widget`` wires them to recipe, batch, node
 and pair pickers, plus a component picker for a pool (ADR-009), whose
 components are checked one at a time.
 """
