@@ -17,7 +17,7 @@ own browser.
 The hub is [JupyterHub](https://jupyterhub.readthedocs.io), run from this
 program's own environment, so every person's JupyterLab and its kernels have
 the same Python and the same `sim` ([#766](https://github.com/BobKerns/zabob-retirement/issues/766)).
-It runs on Linux and macOS. On Windows, run it inside WSL (below).
+It runs on Linux and macOS, and on Windows inside WSL (below); nothing else in the program needs WSL.
 
 ## Shared or own data repo, per person
 
@@ -117,15 +117,18 @@ The hub keeps its settings in `hub/` beside your `config.toml`
 
 ## On Windows: inside WSL
 
+The program itself runs on Windows as it is; only the hub needs more.
 JupyterHub logs people in and starts each one's JupyterLab as them with
-Linux and macOS facilities that Windows lacks, so `sim jupyter hub` doesn't
-run on Windows itself. It runs inside WSL, the Windows Subsystem for Linux:
-install the program there ([Windows: WSL](../SETUP.md#windows-wsl), with its
-video), make each person a login in the WSL distribution (`sudo adduser
-bill`), and follow the steps above. WSL has no systemd by default; turn it on
-with `systemd=true` under `[boot]` in `/etc/wsl.conf` before
-`sim jupyter hub service`. Reaching the hub from other devices goes through
-Windows: WSL forwards `localhost`, and Tailscale on Windows reaches it there.
+Linux and macOS facilities that Windows lacks, so `sim jupyter hub` runs in
+WSL, the Windows Subsystem for Linux, which is a good home for the program
+anyway. Install the program there ([Windows: WSL](../SETUP.md#windows-wsl),
+with its video), make each person a login in the WSL distribution
+(`sudo adduser bill`), and follow the steps above. WSL has no systemd by
+default; turn it on with `systemd=true` under `[boot]` in `/etc/wsl.conf`
+before `sim jupyter hub service`. Reaching the hub from other devices goes
+through Windows: WSL forwards `localhost`, and Tailscale on Windows reaches
+it there. A small Linux machine, such as a Raspberry Pi, is the other easy
+host for a household's hub.
 
 ## Side by side with an editor
 
