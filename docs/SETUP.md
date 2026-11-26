@@ -126,9 +126,6 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
   ([#748](https://github.com/BobKerns/zabob-retirement/issues/748)), which
   runs only while you are logged in; nothing asks for a password or an
   administrator.
-- The builder doesn't research symbols each morning unless you ask for it
-  with `sim builder install --research`, since it hasn't been tried on
-  Windows yet ([#795](https://github.com/BobKerns/zabob-retirement/issues/795)).
 - TAB completion works in PowerShell, both Windows' own and PowerShell 7:
   `sim completion install` adds it to your profile. If it says the execution
   policy is `Restricted`, Windows PowerShell won't read a profile at all

@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -556,6 +557,14 @@ def skill_scripts(plugin_dir: Path, skill: str) -> list[Path]:
     return sorted((plugin_dir / "skills" / skill / "scripts").resolve().glob("*.py"))
 
 
+def script_python() -> str:
+    """The Python a run's skill scripts run under: this one, by absolute
+    path (#795). A bare ``python3`` in Claude Code's shell may be anything,
+    and on Windows often only the Store's alias; the scripts need only the
+    standard library, and one exact binary makes the Bash rule narrower."""
+    return Path(sys.executable).as_posix() if sys.executable else "python3"
+
+
 def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None) -> str:
     """The request for a run on ``subject`` (a ticker or a name), whose files
     must start with ``key`` so the importer finds them."""
@@ -569,7 +578,7 @@ def prompt_for(subject: str, key: str, plugin_dir: Path, kind: str | None = None
         for skill in run_skills(kind) if (scripts := skill_scripts(plugin_dir, skill))
     )
     if where:
-        where += " Run each script by its absolute path with python3."
+        where += f" Run each script by its absolute path with {script_python()}."
     return (
         f"Tear sheet on {subject}. {which} There is no docs connector: write the Markdown files "
         "(and, for a fund, the allocation export) into the current folder, as the skill describes. "
@@ -606,7 +615,7 @@ def claude_command(subject: str, key: str, plugin_dir: Path, work_dir: Path, cla
         # An Edit rule covers Write as well; Claude Code ignores a Write(path)
         # rule and warns on stderr, which a failed run would report as its reason.
         _path_rule("Edit", work_dir),
-        *(f"Bash(python3 {script.as_posix()} *)" for script in scripts),
+        *(f"Bash({script_python()} {script.as_posix()} *)" for script in scripts),
     ]
     return [
         claude, "-p", prompt_for(subject, key, plugin_dir, kind),

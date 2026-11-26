@@ -188,7 +188,8 @@ are ignored, and file tools stay in the run's folder), no MCP servers, and
 `dontAsk`, which refuses anything not on the allow list instead of
 prompting. The list allows web search and fetch, reading the run's folder
 and the plugin, writing only in the run's folder, and running only the
-skill's own scripts, by their path in the plugin.
+skill's own scripts, by their path in the plugin, under the Python `sim`
+itself runs on (not whatever `python3` is on Claude Code's path).
 
 Nothing here holds a key or calls the API itself: every run uses Claude
 Code's own login. Signed in with a claude.ai account, runs count against

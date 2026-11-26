@@ -324,17 +324,18 @@ def test_the_builders_children_take_no_optional_git_locks() -> None:
     assert builder._child_env()["GIT_OPTIONAL_LOCKS"] == "0"
 
 
-def test_on_windows_research_is_off_unless_asked_for(
+def test_on_windows_research_is_on_unless_turned_off(
     pair: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#795: its scripts run as python3, often only the Store's alias there."""
+    """#795: its scripts run under the builder's own Python, so no python3
+    on PATH (on Windows often only the Store's alias) is needed."""
     _code, data_dir = pair
     monkeypatch.setattr(builder, "WINDOWS", True)
     monkeypatch.setattr(builder, "spawn_daemon", lambda *_a: None)
     builder.install(data_dir)
-    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is False
-    builder.install(data_dir, research=True)
     assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is True
+    builder.install(data_dir, research=False)
+    assert (builder.read_config(BuilderPaths.for_data(data_dir)) or {}).get("research") is False
 
 
 @pytest.fixture

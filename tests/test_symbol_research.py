@@ -10,6 +10,7 @@ import re
 
 import csv
 import shutil
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -452,8 +453,11 @@ def test_a_run_renders_the_plugin_runs_claude_and_imports(test_data_dir: Path, f
     # Resolved, as the rules are: on macOS the temporary folder is behind a symlink.
     skills = plugin.resolve() / "skills"
     scripts = [skills / skill / "scripts" for skill in ("fund-tear-sheet", "public-tear-sheet")]
-    assert bash and all(a.startswith(tuple(f"Bash(python3 {s}/" for s in scripts)) and a.endswith(".py *)")
+    # #795: this Python by absolute path, not whatever python3 is on Claude's PATH.
+    python = Path(sys.executable).as_posix()
+    assert bash and all(a.startswith(tuple(f"Bash({python} {s}/" for s in scripts)) and a.endswith(".py *)")
                         for a in bash)
+    assert f"with {python}." in args[1]
     edits = [a for a in allowed if a.startswith(("Edit", "Write"))]
     assert len(edits) == 1 and edits[0].startswith("Edit(//") and edits[0].endswith("/work/**)")
     assert all(str(s) in args[1] for s in scripts)  # the prompt says where the scripts are
