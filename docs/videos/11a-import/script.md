@@ -35,7 +35,7 @@ next = "12-strategy-plugins"
 +++
 
 Video 11a (issue #590, part of #366): importing balances and spending with
-`sim import` (#527). A side trip from video 11, as 2a is from video 2: a
+`sim import` (#527). A side trip from video 11: a
 viewer who types a handful of balances once a year never needs it.
 
 `setup.sh` beside this script builds video 3's base (with Alice's IRA in

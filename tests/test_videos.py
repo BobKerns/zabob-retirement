@@ -67,7 +67,7 @@ def _write(folder: Path, text: str, name: str = "script.md") -> Path:
 @pytest.mark.checkout
 def test_every_repo_video_checks(repo_root: Path) -> None:
     folders = sorted(p for p in (repo_root / "docs" / "videos").iterdir() if (p / "script.md").is_file())
-    assert folders, "the pilot video should exist"
+    assert folders, "docs/videos should have videos"
     assert check(folders) == 0
 
 

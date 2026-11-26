@@ -32,13 +32,16 @@ title_width = 50
 # Every video's tags; a language's and a video's own come after these.
 tags = ["retirement planning", "retirement simulator", "financial planning", "Monte Carlo", "Python"]
 
-# Per language. {number} is the video folder's prefix (03, 02a); {title} is
-# the script's [youtube] title, else its front matter title. In previous and
+# Per language. {number} is the video folder's prefix (03, 11a); {title} is
+# the script's [youtube] title, else its front matter title. A folder with no
+# number (wsl) is an extra outside the course: extra_title names it, and it
+# goes in no playlist. In previous and
 # next, {episode} and {title} are the neighbor's; its link follows once it's
 # up. version_label introduces the link to this language's version from the
 # other languages' descriptions.
 [en]
 title = "Zabob Retirement: {number}—{title}"
+extra_title = "Zabob Retirement: {title}"
 playlist = "Retirement Simulator Guide"
 version_label = "English version"
 in_this_video = "In this video:"
@@ -51,6 +54,7 @@ next = "Next: {episode}, {title}"
 [ja]
 # The English prefix stays, so both languages sort together on the channel.
 title = "Zabob Retirement: {number}—{title}"
+extra_title = "Zabob Retirement: {title}"
 playlist = "Retirement Simulator (日本語)"
 version_label = "日本語版"
 in_this_video = "この回の内容:"

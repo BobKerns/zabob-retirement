@@ -139,9 +139,10 @@ zabob-retirement`, then `sim init`. What differs from a Mac or Linux:
 
 ### Windows: WSL
 
-For the one-line install below, or to work from a clone of the code, use
-WSL, the Windows Subsystem for Linux, which runs Ubuntu inside Windows 11, or
-Windows 10 version 2004 or later. The video
+For the one-line install below, the shared
+[Jupyter hub](guides/jupyterhub.md#on-windows-inside-wsl), or to work from a
+clone of the code, use WSL, the Windows Subsystem for Linux, which runs
+Ubuntu inside Windows 11, or Windows 10 version 2004 or later. The video
 [WSL for Windows](https://youtu.be/yHr90VdoHGQ) walks through this
 ([日本語](https://youtu.be/zeTFTujsWwI)).
 
