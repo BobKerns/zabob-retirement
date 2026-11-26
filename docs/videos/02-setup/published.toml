@@ -5,39 +5,40 @@
 # the next publish finishes (#695).
 
 [en]
-video = "_-NY-h16hsk"
-uploaded = 2026-11-23T14:00:34Z
-snippet = "4bba672e62dd36c3"
+video = "XMJum3pSGJU"
+uploaded = 2026-11-26T15:53:58Z
+snippet = "fb89f5140ff8e6d9"
 scenes = [
   ["title", 19.47],
-  ["uv", 30.35],
+  ["uv", 30.95],
   ["install", 21.54],
   ["terminals", 32.00],
   ["two-folders", 32.07],
-  ["init", 52.49],
+  ["init", 55.09],
   ["inside", 41.23],
-  ["activate", 25.28],
-  ["plan", 25.90],
-  ["notebooks", 27.97],
+  ["current", 48.62],
+  ["plan", 23.98],
+  ["notebooks", 30.06],
   ["commit", 47.05],
   ["upgrade", 23.35],
   ["end", 7.34],
 ]
 
 [ja]
-video = "VSZ0j2qAJuI"
-uploaded = 2026-11-23T14:00:50Z
+video = "J7Vj3jpNiVA"
+uploaded = 2026-11-26T15:54:15Z
+snippet = "fe070593fceb8343"
 scenes = [
   ["title", 22.35],
-  ["uv", 33.69],
+  ["uv", 35.24],
   ["install", 22.99],
   ["terminals", 36.97],
   ["two-folders", 37.04],
-  ["init", 57.41],
+  ["init", 61.12],
   ["inside", 44.27],
-  ["activate", 27.37],
-  ["plan", 29.79],
-  ["notebooks", 30.36],
+  ["current", 60.49],
+  ["plan", 26.60],
+  ["notebooks", 33.00],
   ["commit", 57.30],
   ["upgrade", 30.88],
   ["end", 6.64],

@@ -5,53 +5,53 @@
 # the next publish finishes (#695).
 
 [en]
-video = "fEkZsCNM8YA"
-uploaded = 2026-11-23T15:01:59Z
-snippet = "7835dd02007ea07c"
+video = "n8R2ipxBLVs"
+uploaded = 2026-11-26T16:29:17Z
+snippet = "fa5a39d72f49244d"
 scenes = [
   ["title", 23.30],
   ["contents", 30.58],
-  ["person", 21.60],
+  ["person", 21.11],
   ["kinds", 32.75],
-  ["accounts", 47.52],
+  ["accounts", 47.68],
   ["lots", 62.53],
   ["more-accounts", 34.91],
   ["rules", 29.26],
-  ["scheduled", 54.32],
+  ["scheduled", 49.92],
   ["more-scheduled", 32.82],
   ["first-look", 45.47],
   ["chains-card", 28.34],
-  ["chains", 54.96],
+  ["chains", 49.72],
   ["chains-graph", 29.25],
   ["chains-run", 26.12],
   ["calendar-card", 23.86],
-  ["calendar", 40.68],
+  ["calendar", 41.36],
   ["last-run", 31.21],
   ["end", 8.24],
 ]
 
 [ja]
-video = "66ralFK5Q-E"
-uploaded = 2026-11-03T07:22:09Z
-snippet = "ab051b1bd03f217b"
+video = "LekR-7_OV2k"
+uploaded = 2026-11-26T16:29:39Z
+snippet = "81695496754a2aac"
 scenes = [
-  ["title", 27.23],
-  ["contents", 32.38],
-  ["person", 24.66],
-  ["kinds", 37.00],
-  ["accounts", 54.76],
-  ["lots", 71.60],
-  ["more-accounts", 39.99],
-  ["rules", 35.08],
-  ["scheduled", 49.84],
-  ["more-scheduled", 40.72],
-  ["first-look", 50.75],
-  ["chains-card", 36.33],
-  ["chains", 48.56],
-  ["chains-graph", 36.13],
-  ["chains-run", 29.10],
-  ["calendar-card", 22.54],
-  ["calendar", 44.43],
-  ["last-run", 34.02],
-  ["end", 7.47],
+  ["title", 28.36],
+  ["contents", 34.47],
+  ["person", 25.51],
+  ["kinds", 37.81],
+  ["accounts", 56.39],
+  ["lots", 73.60],
+  ["more-accounts", 41.91],
+  ["rules", 36.62],
+  ["scheduled", 50.12],
+  ["more-scheduled", 41.74],
+  ["first-look", 52.99],
+  ["chains-card", 37.97],
+  ["chains", 49.36],
+  ["chains-graph", 37.20],
+  ["chains-run", 31.19],
+  ["calendar-card", 23.11],
+  ["calendar", 46.56],
+  ["last-run", 35.28],
+  ["end", 7.60],
 ]

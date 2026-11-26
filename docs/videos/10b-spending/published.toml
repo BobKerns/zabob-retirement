@@ -5,21 +5,21 @@
 # the next publish finishes (#695).
 
 [en]
-video = "WJhyMRKMMNc"
-uploaded = 2026-11-24T20:37:11Z
-snippet = "322b95199baa2b6f"
-pending = ["playlist"]
+video = "4EPNYQCx7AQ"
+uploaded = 2026-11-26T20:26:06Z
+snippet = "d16be6251c366627"
+pending = ["thumbnail", "captions", "playlist"]
 scenes = [
   ["title", 15.41],
   ["contents", 16.22],
   ["recap", 27.17],
-  ["travel", 79.44],
-  ["as-written", 40.52],
+  ["travel", 80.16],
+  ["as-written", 43.68],
   ["kinds", 39.73],
-  ["threshold", 74.16],
-  ["guardrail", 87.16],
-  ["ceiling", 61.48],
-  ["vpw", 78.52],
+  ["threshold", 76.16],
+  ["guardrail", 86.52],
+  ["ceiling", 62.00],
+  ["vpw", 77.56],
   ["compare", 44.21],
   ["tradeoff", 24.99],
   ["nb", 16.10],
@@ -28,23 +28,23 @@ scenes = [
 ]
 
 [ja]
-video = "FgyPqniorvk"
-uploaded = 2026-11-11T00:27:25Z
-snippet = "9a34399f58328f30"
+video = "AjozWD9Avj4"
+uploaded = 2026-11-25T10:13:23Z
+snippet = "50484545836a3317"
 scenes = [
-  ["title", 15.44],
-  ["contents", 16.05],
-  ["recap", 28.32],
-  ["travel", 79.68],
-  ["as-written", 40.32],
-  ["kinds", 43.66],
-  ["threshold", 74.24],
-  ["guardrail", 86.44],
-  ["ceiling", 60.76],
-  ["vpw", 76.64],
-  ["compare", 48.38],
-  ["tradeoff", 29.79],
-  ["nb", 20.90],
-  ["ai", 25.76],
-  ["end", 7.87],
+  ["title", 16.18],
+  ["contents", 17.07],
+  ["recap", 30.20],
+  ["travel", 80.76],
+  ["as-written", 42.52],
+  ["kinds", 44.30],
+  ["threshold", 74.76],
+  ["guardrail", 86.84],
+  ["ceiling", 61.36],
+  ["vpw", 77.16],
+  ["compare", 50.02],
+  ["tradeoff", 30.13],
+  ["nb", 21.24],
+  ["ai", 26.89],
+  ["end", 8.04],
 ]

@@ -66,13 +66,6 @@ To upgrade, run `uv tool upgrade zabob-retirement`, then `sim notebooks copy
 repo; without `--replace` it adds only new ones). Runs made with the old
 version become stale and are rebuilt.
 
-Upgrading past 1.0.0b1, the environment variables are `ZABOB_*` instead of
-`ANALYSIS_*`, and the data repo's `activate-analysis` is
-`activate-retirement` ([#782](https://github.com/BobKerns/zabob-retirement/issues/782)).
-A command run with an old name set stops and says what to do: in a shell
-that sourced the old script, it gives the two commands that replace it.
-Rename any of these variables you set yourself.
-
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
 
