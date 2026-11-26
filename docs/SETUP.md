@@ -16,8 +16,8 @@ fetches Python 3.14 if you don't have it:
 uv tool install zabob-retirement
 ```
 
-(`zabob-retire` is the same program under a shorter name.) Then make your
-data repo, the git repository of CSV files that holds your household:
+Then make your data repo, the git repository of CSV files that holds your
+household:
 
 ```sh
 sim init        # in ~/zabob-retirement, asking who you are
