@@ -278,10 +278,10 @@ def proxy_command() -> str | None:
     return shutil.which("configurable-http-proxy")
 
 
-def _is_hub(pid: int) -> bool:
-    """Whether process ``pid`` is JupyterHub, not another that took its
-    number after a reboot left the pid file behind; True when that can't be
-    told."""
+def _is_hub(pid: int, folder: Path | None = None) -> bool:
+    """Whether process ``pid`` is this hub (JupyterHub run on this folder's
+    config), not another that took its number after a reboot left the pid
+    file behind; True when that can't be told."""
     try:
         command = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
     except OSError:
@@ -290,7 +290,7 @@ def _is_hub(pid: int) -> bool:
         if done.returncode:
             return True
         command = done.stdout
-    return "jupyterhub" in command
+    return str(config_file(folder)) in command
 
 
 def hub_pid(folder: Path | None = None) -> int | None:
@@ -299,7 +299,7 @@ def hub_pid(folder: Path | None = None) -> int | None:
         pid = int((run_dir(folder) / "jupyterhub.pid").read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
-    return pid if pid_alive(pid) and _is_hub(pid) else None
+    return pid if pid_alive(pid) and _is_hub(pid, folder) else None
 
 
 def _answers(url: str) -> bool:

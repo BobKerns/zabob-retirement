@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -226,8 +227,13 @@ def test_a_pid_file_naming_another_process_is_no_hub(hub_logins: dict[str, Path]
     """After a reboot, the number in a leftover pid file may be another
     process's: it isn't taken for a running hub."""
     hub.run_dir().mkdir(parents=True, exist_ok=True)
-    (hub.run_dir() / "jupyterhub.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")  # pytest, not a hub
-    assert hub.hub_pid() is None
+    other = subprocess.Popen(["sleep", "30"])  # noqa: S607 - any process that isn't the hub
+    try:
+        (hub.run_dir() / "jupyterhub.pid").write_text(f"{other.pid}\n", encoding="utf-8")
+        assert hub.hub_pid() is None
+    finally:
+        other.kill()
+        other.wait()
 
 
 def test_start_while_running_keeps_the_address_it_runs_at(
