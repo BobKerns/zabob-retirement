@@ -2372,7 +2372,8 @@ or in VS Code directly if it runs well enough there for your machine
 `sim jupyter start` runs JupyterLab in the background and opens it in your
 browser; if it is already running, it opens that one again. Name a notebook
 to open it directly (`sim jupyter start net_worth`; TAB completes the
-names). `--no-browser` prints the address instead, and `--foreground` keeps
+names). `--port N` serves on port N, or fails if it is taken; by default it
+uses 8888, or the next free port. `--no-browser` prints the address instead, and `--foreground` keeps
 JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
 it is running and its address, and `sim jupyter stop` stops it and its
 notebooks' kernels: save your notebooks first.

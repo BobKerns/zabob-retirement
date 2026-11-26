@@ -109,12 +109,15 @@ def serving(notebook_dir: Path) -> Server | None:
     return next((s for s in running() if s.root_dir == target), None)
 
 
-def lab_argv(settings: JupyterMcpSettings, notebook_dir: Path) -> list[str]:
+def lab_argv(settings: JupyterMcpSettings, notebook_dir: Path, port: int | None = None) -> list[str]:
     """JupyterLab's command line, before any extra arguments. Run as this
-    Python's module, so no `jupyter` (or `jupyter.exe`) need be on PATH."""
+    Python's module, so no `jupyter` (or `jupyter.exe`) need be on PATH.
+    A ``port`` asked for is that port or none: Jupyter would otherwise
+    move to the next free one without a word."""
     return [
         sys.executable, "-m", "jupyterlab",
-        f"--port={settings.port}",
+        f"--port={port or settings.port}",
+        *(["--ServerApp.port_retries=0"] if port else []),
         f"--IdentityProvider.token={settings.token}",
         f"--notebook-dir={notebook_dir}",
     ]

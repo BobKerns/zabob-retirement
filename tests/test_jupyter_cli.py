@@ -120,6 +120,19 @@ def test_a_notebook_after_an_option_for_jupyter_is_still_the_notebook(notebooks_
     assert "lab/tree/net_worth.ipynb?token=t0k" in result.output
 
 
+def test_port_serves_on_that_port_or_none(notebooks_root: Path) -> None:
+    with (
+        patch.object(srv, "running", return_value=[]),
+        patch.object(srv, "start", return_value=_server(notebooks_root, port=9999)) as start,
+    ):
+        result = _sim("start", "--no-browser", "--port", "9999")
+
+    assert result.exit_code == 0, result.output
+    argv = start.call_args.args[0]
+    assert "--port=9999" in argv and "--ServerApp.port_retries=0" in argv
+    assert "on port 9999, as asked" in result.output
+
+
 def test_a_port_given_for_jupyter_is_no_busy_port(notebooks_root: Path) -> None:
     with (
         patch.object(srv, "running", return_value=[]),
@@ -201,7 +214,7 @@ def test_start_warns_when_the_port_was_busy(notebooks_root: Path) -> None:
         result = _sim("start", "--no-browser")
 
     assert result.exit_code == 0, result.output
-    assert "took 8889" in result.output
+    assert "on port 8889, since 8888 was busy" in result.output
 
 
 def test_foreground_runs_lab_in_this_terminal(notebooks_root: Path) -> None:
