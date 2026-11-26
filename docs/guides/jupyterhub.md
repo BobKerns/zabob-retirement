@@ -84,8 +84,9 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    starting their JupyterLab as them needs root, so for more than your own
    login the hub runs as a system service. `sim jupyter hub service` prints
    it (a systemd unit on Linux, a launchd daemon on macOS);
-   `sudo sim jupyter hub service --install` writes it, and prints the command
-   that enables and starts it.
+   `sudo "$(command -v sim)" jupyter hub service --install` writes it, and
+   prints the command that enables and starts it. (A plain `sudo sim` usually
+   isn't found: sudo's `PATH` leaves out the folder `sim` is in.)
 
 Each person then opens the hub's address, logs in with their own account on
 the machine, and lands in their data repo's notebooks. The first time, the

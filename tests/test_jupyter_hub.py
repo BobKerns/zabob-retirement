@@ -180,6 +180,40 @@ def test_under_sudo_the_hub_folder_is_the_admins(
     assert hub.hub_dir() == hub_logins["alice"] / ".config" / "zabob-retirement" / "hub"
 
 
+def test_an_ipv6_address_goes_in_brackets() -> None:
+    assert hub.Settings("::1", 8000).url == "http://[::1]:8000/"
+    assert hub.Settings("::1", 8000).bind_url == "http://[::1]:8000/"
+    assert hub.Settings("::", 8000).url == "http://localhost:8000/"
+    assert hub.Settings("::", 8000).bind_url == "http://[::]:8000/"
+    assert hub.Settings("100.64.0.1", 8000).bind_url == "http://100.64.0.1:8000/"
+
+
+def test_a_port_that_is_not_a_number_is_named(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
+    (hub.hub_dir()).mkdir(parents=True, exist_ok=True)
+    (hub.hub_dir() / "hub.toml").write_text('[hub]\nport = "80a"\n', encoding="utf-8")
+    with pytest.raises(hub.HubError, match="port must be a number"):
+        hub.read_settings()
+
+
+def test_a_pid_file_naming_another_process_is_no_hub(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
+    """After a reboot, the number in a leftover pid file may be another
+    process's: it isn't taken for a running hub."""
+    hub.run_dir().mkdir(parents=True, exist_ok=True)
+    (hub.run_dir() / "jupyterhub.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")  # pytest, not a hub
+    assert hub.hub_pid() is None
+
+
+def test_start_while_running_keeps_the_address_it_runs_at(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    monkeypatch.setattr(hub, "hub_pid", lambda folder=None: 4242)
+    monkeypatch.setattr(hub, "proxy_command", lambda: "/usr/bin/true")
+    result = _sim("hub", "start", "--port", "8124")
+    assert result.exit_code == 0, result.output
+    assert "already running (process 4242) at http://127.0.0.1:8000/; stop it first to move it" in result.output
+    assert hub.read_settings().port == hub.DEFAULT_PORT
+
+
 def test_status_with_nothing_running(hub_logins: dict[str, Path]) -> None:
     result = _sim("hub", "status")
     assert result.exit_code == 0, result.output

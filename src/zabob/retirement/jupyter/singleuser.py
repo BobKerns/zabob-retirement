@@ -16,7 +16,7 @@ def _trust(repo: Path) -> None:
     # git refuses a repository another login owns ("dubious ownership")
     # unless the user's own config says it is safe; only global config counts.
     found = subprocess.run(["git", "config", "--global", "--get-all", "safe.directory"],
-                           capture_output=True, text=True, check=False).stdout.split()
+                           capture_output=True, text=True, check=False).stdout.splitlines()
     if str(repo) not in found and "*" not in found:
         subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(repo)], check=False)
 

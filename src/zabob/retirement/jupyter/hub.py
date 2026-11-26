@@ -84,8 +84,19 @@ class Settings:
 
     @property
     def url(self) -> str:
+        """Where a browser on this machine reaches the hub."""
         host = self.ip if self.ip not in ("", "0.0.0.0", "::") else "localhost"  # noqa: S104 - a bind address, not a bind
-        return f"http://{host}:{self.port}/"
+        return f"http://{url_host(host)}:{self.port}/"
+
+    @property
+    def bind_url(self) -> str:
+        """What JupyterHub listens on."""
+        return f"http://{url_host(self.ip)}:{self.port}/"
+
+
+def url_host(ip: str) -> str:
+    """``ip`` as a URL's host: an IPv6 address goes in brackets."""
+    return f"[{ip}]" if ":" in ip and not ip.startswith("[") else ip
 
 
 def _require_posix() -> None:
@@ -185,7 +196,10 @@ def read_settings(folder: Path | None = None) -> Settings:
     hub = _read_toml((folder or hub_dir()) / "hub.toml").get("hub", {})
     ip = hub.get("ip", DEFAULT_IP) if isinstance(hub, dict) else DEFAULT_IP
     port = hub.get("port", DEFAULT_PORT) if isinstance(hub, dict) else DEFAULT_PORT
-    return Settings(str(ip), int(port))
+    try:
+        return Settings(str(ip), int(port))
+    except (TypeError, ValueError) as exc:
+        raise HubError(f"{(folder or hub_dir()) / 'hub.toml'}: port must be a number, not {port!r}") from exc
 
 
 def write_settings(settings: Settings, folder: Path | None = None) -> None:
@@ -249,13 +263,28 @@ def proxy_command() -> str | None:
     return shutil.which("configurable-http-proxy")
 
 
+def _is_hub(pid: int) -> bool:
+    """Whether process ``pid`` is JupyterHub, not another that took its
+    number after a reboot left the pid file behind; True when that can't be
+    told."""
+    try:
+        command = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        done = subprocess.run(["ps", "-p", str(pid), "-o", "command="],  # noqa: S607 - ps from PATH
+                              capture_output=True, text=True, check=False)
+        if done.returncode:
+            return True
+        command = done.stdout
+    return "jupyterhub" in command
+
+
 def hub_pid(folder: Path | None = None) -> int | None:
     """The running hub's process, or None."""
     try:
         pid = int((run_dir(folder) / "jupyterhub.pid").read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
-    return pid if pid_alive(pid) else None
+    return pid if pid_alive(pid) and _is_hub(pid) else None
 
 
 def _answers(url: str) -> bool:
@@ -373,7 +402,9 @@ def launchd_plist(folder: Path | None = None) -> str:
         f"    <key>PATH</key>{string(_service_path_env())}\n"
         "  </dict>\n"
         "  <key>RunAtLoad</key><true/>\n"
-        "  <key>KeepAlive</key><true/>\n"
+        # Restarted when it fails, as systemd's Restart=on-failure does, not
+        # when `sim jupyter hub stop` stops it.
+        "  <key>KeepAlive</key>\n  <dict><key>SuccessfulExit</key><false/></dict>\n"
         f"  <key>StandardOutPath</key>{string(run_dir(folder) / 'service.log')}\n"
         f"  <key>StandardErrorPath</key>{string(run_dir(folder) / 'service.log')}\n"
         "</dict>\n</plist>\n"

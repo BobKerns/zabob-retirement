@@ -225,15 +225,17 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
             raise hub.HubError("configurable-http-proxy isn't on PATH: "
                                "`npm install -g configurable-http-proxy` installs it")
         settings = hub.read_settings()
+        # Checked before --ip/--port are remembered: a running hub stays where it is.
+        if (pid := hub.hub_pid()) is not None:
+            if foreground:
+                raise hub.HubError(f"the hub is already running (process {pid}); `sim jupyter hub stop` stops it")
+            click.echo(f"The hub is already running (process {pid}) at {settings.url}"
+                       + ("; stop it first to move it" if ip is not None or port is not None else ""))
+            return
         if ip is not None or port is not None:
             settings = hub.Settings(ip if ip is not None else settings.ip,
                                     port if port is not None else settings.port)
             hub.write_settings(settings)
-        if (pid := hub.hub_pid()) is not None:
-            if foreground:
-                raise hub.HubError(f"the hub is already running (process {pid}); `sim jupyter hub stop` stops it")
-            click.echo(f"The hub is already running (process {pid}) at {settings.url}")
-            return
         hub.write_config()
         if not hub.read_users():
             click.echo("WARN: the hub has no users yet; `sim jupyter user add LOGIN` adds one.", err=True)
@@ -243,6 +245,7 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
         if foreground:
             click.echo(f"Starting the hub at {settings.url}; Ctrl+C stops it.")
             argv = hub.hub_argv()
+            hub.run_dir().mkdir(parents=True, exist_ok=True)  # a new hub's first start, as the service's
             os.chdir(hub.run_dir())
             os.execv(argv[0], argv)  # noqa: S606 - our own Python and arguments
         log = hub.run_dir() / "jupyterhub.log"
@@ -296,7 +299,8 @@ def hub_service_command(install: bool) -> None:
     path = hub.service_path()
     if not install:
         click.echo(text, nl=False)
-        click.echo(f"\n# Save it as {path} (`sudo sim jupyter hub service --install` does), then:\n"
+        # sudo's secure_path seldom has the folder `sim` is in.
+        click.echo(f"\n# Save it as {path} (`sudo \"$(command -v sim)\" jupyter hub service --install` does), then:\n"
                    f"#   {hub.service_enable_command()}")
         return
     try:

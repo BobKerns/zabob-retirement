@@ -61,7 +61,7 @@ def configure(c: Any, folder: Path) -> None:
     settings = hub.read_settings(folder)
     run = hub.run_dir(folder)
     run.mkdir(parents=True, exist_ok=True)
-    c.JupyterHub.bind_url = f"http://{settings.ip}:{settings.port}/"
+    c.JupyterHub.bind_url = settings.bind_url
     c.JupyterHub.db_url = f"sqlite:///{run / 'jupyterhub.sqlite'}"
     c.JupyterHub.cookie_secret_file = str(run / "jupyterhub_cookie_secret")
     c.JupyterHub.pid_file = str(run / "jupyterhub.pid")
