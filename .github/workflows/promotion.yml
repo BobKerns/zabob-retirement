@@ -4,6 +4,10 @@
 # pull requests it carries and the issues it closes. Right after a promotion
 # merges, dev has nothing main lacks, and the script does nothing.
 #
+# A second step (--labels) then gives the issues the promotion closes the
+# "on dev" label and takes it off the rest (#783). It also runs on a push to
+# main, so the label leaves the issues a promotion closed as it merges.
+#
 # `/promote` and running the script by hand are the fallback when a run here
 # fails; "Run workflow" reruns it.
 #
@@ -21,12 +25,14 @@ name: Promotion
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
+  # The label step, which uses GITHUB_TOKEN: PROMOTION_TOKEN needn't reach issues.
+  issues: write
 
 # The script rebuilds the body from dev's whole history since main, so only
 # the newest run matters: a burst of merges ends in one refresh.
@@ -62,3 +68,11 @@ jobs:
           fi
           # The script needs only the standard library.
           uv run --no-project python scripts/promote_dev.py
+
+      # With GITHUB_TOKEN, whatever opened the promotion: labeling starts no
+      # workflow, so nothing is lost by its being the bot's.
+      - name: Label the issues fixed on dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: uv run --no-project python scripts/promote_dev.py --labels

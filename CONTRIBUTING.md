@@ -75,6 +75,16 @@ which needs the repository setting "Allow GitHub Actions to create and
 approve pull requests" (Settings, Actions, General), and its Gates runs
 wait for approval.
 
+The same workflow then labels each open issue the promotion closes (its
+"Fixes" lines, including ones added by hand) **on dev**, and takes the
+label off every other issue, so
+[the issues fixed on `dev` but not yet on `main`](https://github.com/BobKerns/zabob-retirement/issues?q=is%3Aissue+label%3A%22on+dev%22)
+are one filter away. It runs on pushes to `main` too, so the label leaves
+the issues a promotion closes as it merges. That step uses the workflow's
+own token, so `PROMOTION_TOKEN` needs no access to issues;
+`scripts/promote_dev.py --labels` (with `--dry-run` to only list the
+changes) does the same by hand.
+
 With Claude Code, `/promote` (the skill in
 [`.claude/skills/promote/`](.claude/skills/promote/SKILL.md)) is the
 fallback when that workflow's run failed, and the step before merging: it
