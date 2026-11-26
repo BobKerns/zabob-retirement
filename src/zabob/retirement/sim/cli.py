@@ -2189,7 +2189,7 @@ def _graph_options(
     instead = f" instead of {after} (add --table for both, the chart first)" if after else ""
     graph = click.option(
         flag, "as_graph", is_flag=True,
-        help=capital(f"draw {drawn} in the terminal (kitty or iTerm2 image protocol){how}, "
+        help=capital(f"draw {drawn} in the terminal (kitty, iTerm2 or Sixel image protocol){how}, "
                      f"or write a PNG file when the terminal can't show images{instead}."),
     )
     graph_file = click.option(
@@ -15781,7 +15781,7 @@ def _draw_chain_graph(source: str, graph_file: Path | None) -> None:
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
     # Draw for the terminal's own cells, so the chart's text matches the
     # terminal's on a Retina screen and off it.
-    cell = chain_graph.cell_size() if protocol else None
+    cell = _terminal_cell(protocol)
     # As wide as the terminal, short of its last column, which some
     # terminals wrap at.
     fit_width = (shutil.get_terminal_size().columns - 1) * cell[0] if cell else None
@@ -15813,7 +15813,7 @@ def _draw_figure(
         held.charts.append((fig, graph_file, prefix, fit))
         return
     protocol = chain_graph.terminal_protocol() if graph_file is None else None
-    cell = chain_graph.cell_size() if protocol else None
+    cell = _terminal_cell(protocol)
     if fit is not None and cell is not None:
         fig = fit(_terminal_figure_size(cell))
     dpi = _figure_dpi(cell)
@@ -15891,13 +15891,29 @@ def _check_graph_file(graph_file: Path | None, file_flag: str = "--graph-file") 
         raise click.UsageError(f"{file_flag} {graph_file} must end in .png or .svg")
 
 
+def _terminal_cell(protocol: str | None) -> tuple[float, float] | None:
+    """The terminal's cell size in the pixels it draws images in, for a
+    terminal that takes an image ``protocol``. A Sixel terminal that doesn't
+    say gets Windows Terminal's: a Sixel image, unlike the others, can't be
+    told how many columns to fill, so it must be drawn to its width."""
+    from zabob.retirement.sim import chain_graph
+
+    if protocol is None:
+        return None
+    cell = chain_graph.cell_size()
+    return chain_graph.SIXEL_CELL if cell is None and protocol == "sixel" else cell
+
+
 def _show_image(
     image: bytes, graph_file: Path | None, protocol: str | None,
     cell: tuple[float, float] | None, prefix: str,
 ) -> None:
     """Write ``image`` to ``graph_file``; else show it in the terminal with
     ``protocol``; else, when the terminal takes no image protocol, write it
-    to a temporary PNG named with ``prefix`` and say where."""
+    to a temporary PNG named with ``prefix``, say where, and open it in the
+    image viewer when someone is at this machine to see it
+    (``chain_graph.open_fallback``)."""
+    from zabob.retirement import oscompat
     from zabob.retirement.sim import chain_graph
 
     if graph_file is not None:
@@ -15918,14 +15934,20 @@ def _show_image(
                 Path(name).unlink(missing_ok=True)  # don't leave half a chart behind
             raise click.ClickException(f"couldn't write the chart to a temporary file: {error}") from error
         click.echo(f"wrote {name}")
-        click.echo("This terminal can't show images. iTerm2, kitty, Ghostty, WezTerm or "
-                   "VS Code's terminal draws the chart in place.", err=True)
+        if chain_graph.open_fallback() and oscompat.open_file(Path(name)):
+            click.echo("opened it in the image viewer", err=True)
+        click.echo("This terminal can't show images. iTerm2, kitty, Ghostty, WezTerm, "
+                   "VS Code's terminal or Windows Terminal (1.22 or later) draws the chart in place.",
+                   err=True)
         return
+    oscompat.enable_vt_output()  # Windows: send the escapes on, not print them
     columns = chain_graph.fit_columns(chain_graph.png_size(image)[0],
                                       shutil.get_terminal_size().columns, cell and cell[0])
     if protocol == "kitty":
         click.echo(chain_graph.kitty_sequence(image, columns), nl=False)
         chain_graph.swallow_replies()
+    elif protocol == "sixel":
+        click.echo(chain_graph.sixel_sequence(image, columns, cell), nl=False)
     else:
         click.echo(chain_graph.iterm_sequence(image, columns), nl=False)
 
