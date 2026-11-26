@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -172,7 +173,8 @@ def test_a_detached_process_outlives_the_tree_that_started_it(tmp_path: Path) ->
         time.sleep(0.5)
         assert oscompat.pid_alive(child)
     finally:
-        os.kill(child, signal.SIGTERM)  # TerminateProcess, on Windows
+        with contextlib.suppress(OSError):  # gone already, when it failed
+            os.kill(child, signal.SIGTERM)  # TerminateProcess, on Windows
     _assert_ends(child)
 
 

@@ -205,8 +205,10 @@ def _job_for(pid: int) -> int:
     if not job:
         raise ctypes.WinError(ctypes.get_last_error())
     # Closing the last handle (this process exiting, say) ends the job too.
+    # A process may still leave it by asking to (start_detached's daemon,
+    # #748); one that doesn't ask stays in, as every child does by default.
     info = _Extended()
-    info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    info.BasicLimitInformation.LimitFlags = 0x2000 | 0x0800  # KILL_ON_JOB_CLOSE | BREAKAWAY_OK
     process = kernel32.OpenProcess(0x0100 | 0x0001, False, pid)  # PROCESS_SET_QUOTA | PROCESS_TERMINATE
     try:
         if not (process and kernel32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
