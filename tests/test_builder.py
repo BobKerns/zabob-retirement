@@ -236,7 +236,8 @@ def test_on_windows_a_stopping_daemon_waits_for_its_fetch_roll_and_research(
     logged: list[str] = []
     monkeypatch.setattr(daemon, "log", logged.append)
     daemon.await_children()
-    assert fetch.returncode == 0 and logged == ["waiting for the price fetch to finish before stopping"]
+    assert fetch.returncode == 0 and logged == ["waiting for the price fetch to finish before stopping",
+                                                "the price fetch finished (exit 0)"]
 
 
 def test_the_data_hook_is_written_with_lf_and_reads_analysis_without_its_cr(
@@ -248,7 +249,7 @@ def test_the_data_hook_is_written_with_lf_and_reads_analysis_without_its_cr(
     builder.install(data_dir)
     hook = builder._data_hooks_dir(data_dir.parent) / "post-commit"
     assert b"\r" not in hook.read_bytes()
-    assert "tr -d '\\r' < \"$top/sim/.analysis\"" in hook.read_text(encoding="utf-8")
+    assert "tr -d '\\r' 2>/dev/null < \"$top/sim/.analysis\"" in hook.read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(builder.WINDOWS, reason="POSIX reaping")

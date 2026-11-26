@@ -940,12 +940,16 @@ class _Daemon:
         to, so exiting would end it in the middle of a commit or merge, or
         throw away research already paid for. On POSIX each has its own
         session and outlives the daemon."""
-        for what, process in (("price fetch", self.fetcher), ("roll", self.roller),
-                              ("research", self.researcher)):
+        for what, process, reader in (("price fetch", self.fetcher, self.fetch_reader),
+                                      ("roll", self.roller, self.roll_reader),
+                                      ("research", self.researcher, self.research_reader)):
             if process is not None and process.poll() is None:
                 self.log(f"waiting for the {what} to finish before stopping")
-                process.wait()
+                code = process.wait()
+                if reader is not None:
+                    reader.join(timeout=5)  # its last lines land before ours
                 release_tree(process)
+                self.log(f"the {what} finished (exit {code})")
 
     def cancel(self, why: str) -> None:
         build = self.build
@@ -1201,6 +1205,8 @@ class _Daemon:
             self.log(f"not started: this is {this_home() or 'code outside git'}, but the pair's code is {configured}")
             os.close(lock)
             return 1
+        # Our pid at once, so `sim builder stop` never signals the one before.
+        self.write_status()
         # This process and its builds must never wait on the builder itself.
         os.environ[BUILDER_SWITCH_ENV] = "off"
         forget_hook_repository()
@@ -1299,7 +1305,10 @@ def _kill(process: subprocess.Popen[bytes]) -> None:
     readers skip, and its scenario's lock, freed as it exits."""
     if WINDOWS:
         kill_tree(process)
-        process.wait()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass  # TerminateJobObject was refused; nothing more to send it
         return
     try:
         os.killpg(process.pid, signal.SIGTERM)
@@ -1572,7 +1581,7 @@ if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
 [ -f "$top/state/builder/config.json" ] || exit $status
 # tr: sim init on Windows wrote it with CRLF before #748.
-code="$(tr -d '\\r' < "$top/sim/.analysis" 2>/dev/null)" || exit $status
+code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" || exit $status
 case "$code" in
     {INSTALLED}*) dir="${{code#{INSTALLED}}}" ;;
     *) dir="$code/.venv/bin" ;;
