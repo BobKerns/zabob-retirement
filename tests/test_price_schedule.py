@@ -560,3 +560,12 @@ def test_a_fetch_ignores_an_inherited_object_directory(
     monkeypatch.delenv("GIT_OBJECT_DIRECTORY")
     assert outcome.committed is not None
     assert repo.commit(price_schedule.PRICES_BRANCH).hexsha == outcome.committed
+
+
+def test_a_scheduled_task_that_cant_be_removed_says_so(tmp_path: Path) -> None:
+    """#748: access denied, say; uninstall doesn't claim it went."""
+    def run(args: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 1 if args[1] == "/Delete" else 0, "", "Access is denied.")
+    line = price_schedule.uninstall_timer(tmp_path, run=run, platform="win32")
+    assert line is not None and line.startswith("couldn't remove the scheduled task") \
+        and "Access is denied." in line

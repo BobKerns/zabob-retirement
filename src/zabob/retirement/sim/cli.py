@@ -22812,7 +22812,8 @@ def builder_install(branch: str | None, fetch_prices: bool | None, roll: bool | 
     change it.
 
     Unless --no-prices, it also installs an hourly timer (a launchd agent on
-    macOS, a crontab line elsewhere) that wakes the builder, so prices are
+    macOS, a Task Scheduler task on Windows, a crontab line elsewhere) that
+    wakes the builder, so prices are
     fetched after each weekday's close. They are committed on the data repo's
     builder/prices branch and merged into main when main is checked out and
     has no uncommitted changes; main is then pushed if it is strictly ahead of

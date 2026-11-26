@@ -90,19 +90,27 @@ def test_a_scenario_runs_and_reports(session: dict[str, str], data_dir: Path) ->
 
 @pytest.mark.skipif(not WINDOWS, reason="elsewhere the daemon would outlive the test (#748)")
 def test_the_background_builder_rebuilds_a_changed_scenario(session: dict[str, str], data_dir: Path) -> None:
-    """The commit's hook (Git for Windows's sh) starts the daemon, which
-    builds base again; the networth waits for that build if it is still
-    going. Then `sim builder stop` ends the daemon, by a request it reads."""
+    """A plain `git commit`'s hook (Git for Windows's sh, LF only) starts
+    the daemon, with no sim command to start or poke it, and the daemon
+    builds base again. Then `sim builder stop` ends it, by a request it
+    reads."""
     _sim(session, "run", "base")
+    _sim(session, "builder", "stop")
+    assert _until(lambda: "builder: not running" in _sim(session, "builder", "status"))
+    built = _sim(session, "builder", "log", "--all").count("built base")
     persons = data_dir / "persons.csv"
     persons.write_text(persons.read_text(encoding="utf-8").replace("1965-03-15", "1965-04-15"), encoding="utf-8")
-    _sim(session, "commit", "base")
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "birthday"],
+                   cwd=data_dir, env=session, check=True, stdin=subprocess.DEVNULL)
     try:
-        _sim(session, "networth", "base")
-        assert _until(lambda: "built base" in _sim(session, "builder", "log")), _sim(session, "builder", "log")
+        started = _until(lambda: "builder: not running" not in _sim(session, "builder", "status"), 60)
+        rebuilt = started and _until(
+            lambda: _sim(session, "builder", "log", "--all").count("built base") > built)
     finally:
         _sim(session, "builder", "stop")
-        assert _until(lambda: "builder: not running" in _sim(session, "builder", "status"))
+    assert started, "the commit's hook didn't start the daemon"
+    assert rebuilt, _sim(session, "builder", "log", "--all")
+    assert _until(lambda: "builder: not running" in _sim(session, "builder", "status"))
 
 
 def _until(check: Callable[[], bool], seconds: float = 120) -> bool:

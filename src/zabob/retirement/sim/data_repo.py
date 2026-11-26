@@ -170,8 +170,8 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # the person the repo was made for: git's committer for its commits while
     # nobody has said who they are with `sim login` (#773).
     home = str(CODE_REPO_DIR) if CODE_REPO_DIR is not None else program_home()
-    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8")
-    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8")
+    (sim / ".analysis").write_text(f"{home}\n", encoding="utf-8", newline="\n")
+    (sim / ".analysis_user").write_text(f"{person['id']}\n", encoding="utf-8", newline="\n")
     # state/ (beside sim/) holds runs, rebuilt from the data; the code repo's
     # cspell.json reads .cspell/data-words.txt for the household's words.
     _ignore(root / ".gitignore", "/state/")

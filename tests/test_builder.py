@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -193,10 +194,70 @@ def test_stopping_a_daemon_that_is_not_running_does_nothing(pair: tuple[Path, Pa
     assert builder._drain_requests(paths) == []
 
 
-def test_a_stop_request_stops_the_daemon(daemon: builder._Daemon) -> None:
-    builder._request(daemon.paths, "stop")
+def test_a_stop_request_stops_the_daemon_before_it_starts_anything(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every scenario is stale, but no scan, build, fetch, roll or research
+    starts in the pass that reads the stop."""
+    real = builder._drain_requests
+    monkeypatch.setattr(builder, "_drain_requests", lambda paths: [
+        *real(paths), {"kind": "stop", "made": time.time() + 60}])
+    monkeypatch.setattr(daemon, "scan", lambda: pytest.fail("scanned"))
+    monkeypatch.setattr(daemon, "prices_tick", lambda _now: pytest.fail("looked at prices"))
     assert daemon.run() == 0
     assert builder.read_status(daemon.paths)["state"] == "stopped"
+
+
+def test_a_stop_request_left_for_an_earlier_daemon_is_ignored(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One made while the last daemon was already exiting doesn't stop the
+    next one on its first pass."""
+    builder._request(daemon.paths, "stop")
+    scanned: list[bool] = []
+
+    def scan() -> None:
+        scanned.append(True)
+        daemon.stopping = True
+    monkeypatch.setattr(daemon, "scan", scan)
+    assert daemon.run() == 0
+    assert scanned == [True]
+
+
+def test_on_windows_a_stopping_daemon_waits_for_its_fetch_roll_and_research(
+    daemon: builder._Daemon, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#748: each is a Job Object only the daemon holds, so exiting would
+    end it in the middle of a commit."""
+    monkeypatch.setattr(builder, "release_tree", lambda _p: None)
+    fetch = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.5)"])
+    daemon.fetcher = fetch  # a stand-in fetch
+    logged: list[str] = []
+    monkeypatch.setattr(daemon, "log", logged.append)
+    daemon.await_children()
+    assert fetch.returncode == 0 and logged == ["waiting for the price fetch to finish before stopping"]
+
+
+def test_the_data_hook_is_written_with_lf_and_reads_analysis_without_its_cr(
+    pair: tuple[Path, Path],
+) -> None:
+    """#748: Git for Windows's sh reads a CR as part of the word before it,
+    and `sim init` on Windows used to write sim/.analysis with CRLF."""
+    _code, data_dir = pair
+    builder.install(data_dir)
+    hook = builder._data_hooks_dir(data_dir.parent) / "post-commit"
+    assert b"\r" not in hook.read_bytes()
+    assert "tr -d '\\r' < \"$top/sim/.analysis\"" in hook.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(builder.WINDOWS, reason="POSIX reaping")
+def test_on_posix_a_detached_daemon_is_left_to_be_reaped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A return code would keep the collected Popen from being reaped by
+    the next one, leaving a zombie in a long-lived process (a notebook)."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    builder._detach(process)
+    assert process.returncode is None
+    process.wait()
 
 
 def test_on_windows_a_daemon_whose_code_changed_starts_the_next_one(

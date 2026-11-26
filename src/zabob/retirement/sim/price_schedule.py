@@ -35,7 +35,8 @@ weekday's US market close, without touching the user's checkout (Bob):
 - A fetch is due when the last good one came before the latest weekday
   17:30 in New York, after the close is final. Nothing keeps the builder
   running, so ``sim builder install`` adds an hourly OS timer (a launchd agent
-  on macOS, a crontab line elsewhere) that runs ``sim builder tick``: a look
+  on macOS, a Task Scheduler task on Windows, a crontab line elsewhere) that
+  runs ``sim builder tick``: a look
   at the state, and a fetch when one is due (and a roll, #564), which pokes
   the builder when it commits. The daemon also checks on starting, and on
   each rescan.
@@ -604,7 +605,9 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def _run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, capture_output=True, text=True, check=False, **kwargs)
+    # errors="replace": schtasks writes a pipe in the OEM code page, which on
+    # some non-English Windows has bytes the ANSI one (text=True's) lacks.
+    return subprocess.run(args, capture_output=True, text=True, errors="replace", check=False, **kwargs)
 
 
 def timer_label(data_dir: Path) -> str:
@@ -742,7 +745,9 @@ def uninstall_timer(data_dir: Path, *, run: Runner = _run, platform: str = sys.p
     if platform == "win32":
         if run(["schtasks", "/Query", "/TN", _task_name(data_dir)]).returncode:
             return None
-        run(["schtasks", "/Delete", "/F", "/TN", _task_name(data_dir)])
+        done = run(["schtasks", "/Delete", "/F", "/TN", _task_name(data_dir)])
+        if done.returncode:
+            return f"couldn't remove the scheduled task {_task_name(data_dir)}: {(done.stderr or done.stdout).strip()}"
         return f"removed the scheduled task {_task_name(data_dir)}"
     if platform == "darwin":
         plist = _plist_path(data_dir)

@@ -106,6 +106,8 @@ DEFAULT_BRANCH = "main"
 IDLE_GRACE_SECONDS = 120.0
 # How often the daemon looks for requests and its build finishing.
 TICK_SECONDS = 0.5
+# How long `uninstall` waits on Windows for a stopped daemon to be gone (#748).
+STOP_WAIT_SECONDS = 60.0
 # Hook stubs this module writes into the data repo carry this line.
 HOOK_MARKER = "# analysis sim builder hook (#300)"
 HOOK_NAMES = ("post-commit", "post-checkout", "post-merge", "post-rewrite")
@@ -556,9 +558,12 @@ def spawn_daemon(paths: BuilderPaths, data_dir: Path) -> None:
 
 
 def _detach(process: subprocess.Popen[bytes]) -> None:
-    """Leave ``process`` running and never wait for it: a return code keeps
-    Popen from warning, when collected, that it still runs."""
-    process.returncode = 0
+    """Leave ``process`` running and never wait for it. On Windows a return
+    code keeps Popen from warning, when collected, that it still runs; on
+    POSIX the collected Popen is reaped by the next one, which a return code
+    would stop, leaving a zombie in a long-lived process (a notebook's)."""
+    if WINDOWS:
+        process.returncode = 0
 
 
 def notify(data_dir: Path, *, start: bool = True) -> str:
@@ -890,6 +895,19 @@ class _Daemon:
         """A reader asked for one of ``scenario``'s jobs: its others follow."""
         self.follow = [scenario, *[n for n in self.follow if n != scenario]]
 
+    def await_children(self) -> None:
+        """Wait for a running price fetch, roll or research to finish (#748).
+        On Windows each is a Job Object this process holds the only handle
+        to, so exiting would end it in the middle of a commit or merge, or
+        throw away research already paid for. On POSIX each has its own
+        session and outlives the daemon."""
+        for what, process in (("price fetch", self.fetcher), ("roll", self.roller),
+                              ("research", self.researcher)):
+            if process is not None and process.poll() is None:
+                self.log(f"waiting for the {what} to finish before stopping")
+                process.wait()
+                release_tree(process)
+
     def cancel(self, why: str) -> None:
         build = self.build
         if build is None:
@@ -1129,19 +1147,23 @@ class _Daemon:
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         self.log(f"started (pid {os.getpid()}) for {self.data_dir}")
+        started = time.time()
         idle_since: float | None = None
         rescan = True
         try:
             while not self.stopping and not self.restart:
                 for request in _drain_requests(self.paths):
                     rescan = True
-                    if request.get("kind") == "stop":
+                    # One left for a daemon that was already exiting isn't ours.
+                    if request.get("kind") == "stop" and float(request.get("made") or 0) >= started:
                         self.stopping = True
                     if request.get("kind") == "first" and request.get("scenario"):
                         name = request["scenario"]
                         jobs = [job_key(name, step) for step in request.get("steps") or ("run",)
                                 if step in STEPS]
                         self.first = [*jobs, *[j for j in self.first if j not in jobs]]
+                if self.stopping:
+                    break  # before a scan could start anything new
                 if self.finished():
                     rescan = True
                 if held(self.paths) != self.held:  # one taken, or its command ended
@@ -1170,6 +1192,8 @@ class _Daemon:
                 time.sleep(TICK_SECONDS)
         finally:
             self.cancel("builder stopping" if not self.restart else "code changed")
+            if WINDOWS:
+                self.await_children()
             self.state = "stopped"
             self.queue = []
             self.write_status()
@@ -1477,7 +1501,8 @@ status=0
 if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
 [ -f "$top/state/builder/config.json" ] || exit $status
-code="$(cat "$top/sim/.analysis" 2>/dev/null)" || exit $status
+# tr: sim init on Windows wrote it with CRLF before #748.
+code="$(tr -d '\\r' < "$top/sim/.analysis" 2>/dev/null)" || exit $status
 case "$code" in
     {INSTALLED}*) dir="${{code#{INSTALLED}}}" ;;
     *) dir="$code/.venv/bin" ;;
@@ -1567,10 +1592,21 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
             chained = hook.with_name(hook.name + CHAINED_SUFFIX)
             hook.rename(chained)
             done.append(f"moved {hook.name} to {chained.name}; the builder's hook runs it first")
-        hook.write_text(DATA_HOOK, encoding="utf-8")  # ours, or none: (re)write it
+        # LF even on Windows: Git for Windows's sh reads a CR as part of a word.
+        hook.write_text(DATA_HOOK, encoding="utf-8", newline="\n")  # ours, or none: (re)write it
         hook.chmod(0o755)
         done.append(f"installed {hook}")
     return done
+
+
+def await_stopped(paths: BuilderPaths, seconds: float = STOP_WAIT_SECONDS) -> bool:
+    """Wait up to ``seconds`` for the daemon to be gone; whether it is."""
+    deadline = time.monotonic() + seconds
+    while daemon_alive(paths):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.2)
+    return True
 
 
 def stop_daemon(paths: BuilderPaths) -> int | None:
@@ -1595,9 +1631,14 @@ def uninstall(data_dir: Path) -> list[str]:
     """Opt this workspace out. The data repo's hooks stay (other data
     worktrees may be opted in); without a config they do nothing."""
     paths = BuilderPaths.for_data(data_dir.resolve())
-    stop_daemon(paths)
+    done = []
+    # On Windows a stop is a request, and files in use can't be removed:
+    # the worktrees wait for the daemon (and its fetch, roll or research).
+    if stop_daemon(paths) is not None and WINDOWS and not await_stopped(paths):
+        done.append(f"the background builder hasn't stopped after {STOP_WAIT_SECONDS:.0f}s; "
+                    "its worktrees may not all be removed")
     paths.config.unlink(missing_ok=True)
-    done = [f"removed {paths.config}"]
+    done.insert(0, f"removed {paths.config}")
     if paths.prices_worktree.exists():
         # The price branch stays: it holds nothing main lacks once merged.
         subprocess.run(["git", "-C", str(data_dir), "worktree", "remove", "--force",
