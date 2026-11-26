@@ -129,8 +129,38 @@ class ResearchConfig:
 NEUTRAL = ResearchConfig()
 
 
+# Every setting commented out, so it reads as NEUTRAL (#798): a new data
+# repo shows where the settings go and what they are, and changes nothing.
+DEFAULT_CONFIG = """\
+# Settings for the finance-research Claude plugin: tear sheets on funds and
+# companies (docs/guides/finance-research.md). Every setting is optional;
+# commented out, the plugin is neutral: English only, no tax state, every tab.
+# After a change, run `sim symbol research-plugin install` again and start a
+# new Claude Code session.
+
+# languages: [en, ja]   # tab languages; en first. Each other language adds a
+#                       # copy of every tab in that language.
+# tax_state: CA         # two-letter state code for state-tax notes on money
+#                       # market and Treasury income; leave out for none.
+# tabs:
+#   overview: true      # false drops the overview, in every language
+#   price: true         # false drops the price chart, in every language
+#   glossary: true      # false drops the glossary, in every language
+"""
+
+
 def config_path(data_dir: Path) -> Path:
     return data_dir / CONFIG_FILENAME
+
+
+def write_default_config(data_dir: Path) -> Path | None:
+    """Write :data:`DEFAULT_CONFIG` as ``data_dir``'s research.yaml unless it
+    has one; the path written, or None."""
+    path = config_path(data_dir)
+    if path.exists():
+        return None
+    path.write_text(DEFAULT_CONFIG, encoding="utf-8", newline="\n")
+    return path
 
 
 def read_config(path: Path, source: Path = SOURCE_DIR) -> ResearchConfig:
@@ -425,6 +455,11 @@ def install_command(data_dir: Path | None, config_file: Path | None, out_dir: Pa
     """
     if shutil.which("claude") is None:
         raise click.ClickException("claude (Claude Code) is not on PATH")
+    if config_file is None:
+        # A data repo made before #798 has none: give it the commented one.
+        data = data_dir or (Path(env) if (env := data_dir_setting()) else None)
+        if data is not None and data.is_dir() and (written := write_default_config(data)):
+            click.echo(f"Wrote {written}, every setting commented out; edit it to change them.")
     config, where = _resolve_config(data_dir, config_file)
     out_dir = out_dir or default_out_dir()
     plugin = render(config, out_dir)

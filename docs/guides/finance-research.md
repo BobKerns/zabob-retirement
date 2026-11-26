@@ -76,8 +76,10 @@ tabs:
   glossary: true      # false drops the glossary, in every language
 ```
 
-Every setting is optional. With no file, the plugin is neutral: English
-only, and state-tax points say that the treatment depends on your state,
+`sim init` writes this file with every setting commented out, and
+`sim symbol research-plugin install` writes it into a data repo that has
+none; uncomment a line to change that setting. Every setting is optional.
+With none set, or no file, the plugin is neutral: English only, and state-tax points say that the treatment depends on your state,
 with no state rate bands. Only Japanese (`ja`) has a translation file
 today.
 
