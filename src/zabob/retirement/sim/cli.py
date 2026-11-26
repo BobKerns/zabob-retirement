@@ -5848,8 +5848,8 @@ def _next_steps(data_dir: Path, activate: str, *, no_builder: bool) -> None:
     click.echo()
     # Not logged in here (#773): whoever uses the data repo next, maybe not
     # whoever made it, says who they are.
-    login = "" if user_config.current_user() else "Then `sim login` says who you are. "
-    click.echo(f"Next: {login}Add the rest of the household with `sim person add` and accounts to the "
+    login = "Add" if user_config.current_user() else "`sim login` says who you are. Then add"
+    click.echo(f"Next: {login} the rest of the household with `sim person add` and accounts to the "
                "base scenario with `sim account add`.")
     if not WINDOWS:
         click.echo(f"Optional: `source {activate}` in bash or zsh shows the data repo and you in the "
