@@ -17257,11 +17257,13 @@ def _run_research(data: Path, subject: str, key: str, kind: str | None, plugin_d
         if not has_files:
             if not outcome.ok:
                 why = research.failed_because(outcome.message, outcome.denied, outcome.tool_errors)
-            elif outcome.denied or outcome.tool_errors:
-                why = research.nothing_written(outcome.denied, outcome.tool_errors, outcome.message)
             else:
-                why = ("the run wrote no files; are the fund-tear-sheet and public-tear-sheet skills "
-                       "in the plugin (--plugin-dir)?")
+                # Its final words, and what its folder does hold, say why (#800).
+                found = sorted(p.relative_to(work).as_posix() for p in work.rglob("*") if p.is_file())
+                why = (research.nothing_written(outcome.denied, outcome.tool_errors, outcome.message)
+                       + (f"; its folder holds {', '.join(found[:10])}" if found else "; its folder is empty")
+                       + ("" if outcome.denied or outcome.tool_errors else
+                          "; are the fund-tear-sheet and public-tear-sheet skills in the plugin (--plugin-dir)?"))
             raise click.ClickException(f"the research failed: {why}")
         bundle = research.bundle_dir(data, key)
         research.keep_bundle(work, bundle)

@@ -498,6 +498,9 @@ def test_a_run_that_writes_nothing_points_at_the_plugin(
     result = _sim(test_data_dir, "ABCDX", "--yes", "--no-open")
     assert result.exit_code != 0
     assert "--plugin-dir" in result.output
+    output = " ".join(result.output.split())
+    # #800: its last words and its (empty) folder, whatever the cause.
+    assert "it ended saying: Wrote the tear sheet.; its folder is empty" in output
     assert not (test_data_dir / "research").exists()
 
 
