@@ -67,12 +67,15 @@ def jupyter_group() -> None:
 @click.argument("notebook", required=False, type=completion.NOTEBOOK)
 @click.argument("jupyter_args", nargs=-1, type=click.UNPROCESSED)
 @click.option("--no-browser", is_flag=True, help="Print the address; don't open a browser.")
+@click.option("--port", type=click.IntRange(1, 65535), default=None,
+              help="Serve on this port, or fail if it is taken (default: the one in .mcp.json, 8888 "
+                   "unless changed, moving to a free one if that is taken).")
 @click.option("--foreground", is_flag=True,
               help="Run in this terminal until Ctrl+C, as `jupyter lab` does, instead of in the background.")
 @click.option("--notebook-dir", type=click.Path(file_okay=False, path_type=Path),
               help="Serve this folder instead of the notebooks.")
 def jupyter_start_command(notebook: str | None, jupyter_args: tuple[str, ...], no_browser: bool,
-                          foreground: bool, notebook_dir: Path | None) -> None:
+                          port: int | None, foreground: bool, notebook_dir: Path | None) -> None:
     """Start JupyterLab in the background and open it in a browser, or
     NOTEBOOK in it. If it is already running for these notebooks, open
     that one instead of starting another.
@@ -113,10 +116,10 @@ def jupyter_start_command(notebook: str | None, jupyter_args: tuple[str, ...], n
         raise click.ClickException(str(exc)) from exc
     if created:
         click.echo(f"Generated {root / '.mcp.json'} with a new Jupyter token.")
-    argv = srv.lab_argv(settings, folder)
+    argv = srv.lab_argv(settings, folder, port)
 
     if foreground:
-        click.echo(f"Starting JupyterLab for {folder} on port {settings.port}; Ctrl+C stops it.")
+        click.echo(f"Starting JupyterLab for {folder} on port {port or settings.port}; Ctrl+C stops it.")
         # In full: jupyter lab takes a file to open relative to the working
         # folder, not to --notebook-dir.
         _exec_foreground([*argv, *(["--no-browser"] if no_browser else []), *jupyter_args,
@@ -129,10 +132,13 @@ def jupyter_start_command(notebook: str | None, jupyter_args: tuple[str, ...], n
         started = srv.start([*argv, "--no-browser", *jupyter_args], log, root, folder)
     except srv.StartError as exc:
         raise click.ClickException(f"{exc}. The end of {log}:\n{srv.log_tail(log)}") from exc
-    port_given = any(a.split("=")[0] in ("--port", "--ServerApp.port") for a in jupyter_args)
-    if started.port != settings.port and not port_given:
-        click.echo(f"WARN: port {settings.port} was busy, so it took {started.port}; the Jupyter MCP "
-                   f"server in {root / '.mcp.json'} still looks on {settings.port}.", err=True)
+    port_given = port is not None or any(
+        a.split("=")[0] in ("--port", "--ServerApp.port") for a in jupyter_args)
+    if started.port != settings.port:
+        # The MCP server agents use reads its address from .mcp.json.
+        reason = "as asked" if port_given else f"since {settings.port} was busy"
+        click.echo(f"NOTE: it is on port {started.port}, {reason}; the Jupyter MCP server in "
+                   f"{root / '.mcp.json'} still looks on {settings.port}.", err=True)
     click.echo("JupyterLab is running; `sim jupyter stop` stops it.")
     _open(started.lab_url(path), no_browser)
 
