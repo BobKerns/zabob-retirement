@@ -6,6 +6,7 @@ ACCTTYPE
 acquirability
 addback
 addl
+adduser
 adelay
 affordances
 aformat
