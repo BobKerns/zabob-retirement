@@ -146,10 +146,10 @@ echo "Configuring merges (merge.ff false, pull.ff true)..."
 set_merge_config .
 
 echo "Syncing dependencies..."
-if ! uv sync --group dev; then
+if ! uv sync --group dev --extra hub; then
     echo "uv sync failed; installing pinned Python ($(cat .python-version)) and retrying..."
     uv python install
-    uv sync --group dev
+    uv sync --group dev --extra hub
 fi
 
 echo "Installing nbstripout notebook filter..."

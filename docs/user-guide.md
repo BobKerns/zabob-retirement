@@ -2386,6 +2386,12 @@ JupyterLab in the terminal until Ctrl+C. `sim jupyter status` shows whether
 it is running and its address, and `sim jupyter stop` stops it and its
 notebooks' kernels: save your notebooks first.
 
+For the rest of the household, `sim jupyter hub` runs a JupyterHub: each
+person logs in with their own account on the machine and gets their own
+JupyterLab, on a data repo they share or one of their own
+(`sim jupyter user add`). [Share with your household](guides/jupyterhub.md)
+sets it up.
+
 ### The same views from the terminal
 
 Several of the same views also work as a plain command, with no notebook or

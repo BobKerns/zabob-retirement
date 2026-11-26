@@ -288,7 +288,7 @@ jobs:
         # uv reads the pinned version from .python-version.
         run: |
           uv python install
-          uv sync --locked --group dev
+          uv sync --locked --group dev --extra hub
 
       # The same data/private layout a developer has, from templates/.
       - name: Template data repo
@@ -321,7 +321,7 @@ jobs:
       - name: Install Python and dependencies
         run: |
           uv python install
-          uv sync --locked --group dev
+          uv sync --locked --group dev --extra hub
 
       - name: Lint
         run: uv run --no-sync ruff check src tests plugins

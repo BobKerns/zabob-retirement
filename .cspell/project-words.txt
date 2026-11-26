@@ -6,6 +6,7 @@ ACCTTYPE
 acquirability
 addback
 addl
+adduser
 adelay
 affordances
 aformat
@@ -76,6 +77,7 @@ CCSTMTRS
 CCSTMTTRNRS
 charmbracelet
 CHECKNUM
+chgrp
 chipmaker
 chunksize
 CLAUDECODE
@@ -170,9 +172,12 @@ FXAIX
 GAAP
 getbasetemp
 geteuid
+getgid
 gethostname
 getpalette
 getpid
+getpwall
+getpwnam
 getuid
 getwch
 Ghostty
@@ -439,6 +444,7 @@ sidefx
 SIGNONMSGSRSV
 signum
 Simons
+singleuser
 Sixel
 Smirnov
 SNSXX
@@ -463,6 +469,7 @@ STMTRS
 STMTTRN
 STMTTRNRS
 Stooq
+strerror
 SUBACCTFUND
 SUBACCTSEC
 subclassing
@@ -535,6 +542,7 @@ unsourced
 unspsc
 upserts
 usefixtures
+usermod
 USSTK
 vaccts
 VBTLX
@@ -547,8 +555,10 @@ vmin
 vsplit
 VTSAX
 VTWNX
+waitpid
 Webull
 wezterm
+WNOHANG
 wordcount
 worktree
 worktrees
