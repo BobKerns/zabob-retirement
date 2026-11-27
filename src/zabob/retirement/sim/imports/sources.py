@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import datetime as dt
 import itertools
+import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ import pandas as pd
 
 from zabob.retirement.sim.imports import ofx, profiles, quicken
 from zabob.retirement.sim.imports.forms import (
-    CORRECTS, ORIGIN, REFERENCE, REMOVES, Budget, Flows, Snapshot, masked_flows, masked_snapshot,
+    CORRECTS, ORIGIN, REFERENCE, REMOVES, Budget, Flows, Snapshot, mask_account, masked_flows, masked_snapshot,
 )
 
 __all__ = [
@@ -383,6 +384,11 @@ def read_flows(
     references = _References()
     # Accounts that one file has together, so are known to differ.
     apart: set[tuple[str, str, str]] = set()
+    # Each masked name of a source and the whole name it was made from, over
+    # every file of the run: two accounts of separate files that end alike
+    # would otherwise be taken for one, and a row of one dropped as a
+    # duplicate of the other's by its reference.
+    wholes: dict[tuple[str, str], str] = {}
     duplicates = 0
     notes: list[str] = []
     # Each outside account's days in each file, and whether every one of its
@@ -396,6 +402,18 @@ def read_flows(
             read = described.read(path, said)
         else:
             read = source.transactions.read(path)
+        # One number written "1234-5678" in one download and "12345678" in
+        # another is one account. Two of one file are the masking's to refuse.
+        here = {(source.name, mask_account(whole, key)): re.sub(r"[-. ]", "", whole)
+                for whole in dict.fromkeys(name for name in read.transactions["account"] if isinstance(name, str))}
+        for (_, masked), plain in here.items():
+            if wholes.get((source.name, masked), plain) != plain:
+                raise SourceError(
+                    f"{path}: one of its accounts and one of an earlier file's would both be {masked!r} (an "
+                    "account number is kept to its last four digits), and read in one run they would be "
+                    "taken for one account, rows of one left out as the other's; import them in separate "
+                    "runs, or set an import password, which tells them apart (`sim login --import-password`)")
+        wholes.update(here)
         # Every source's, and every name given for a file: an outside
         # account is its last four digits from here on (#815).
         read = _masked(path, masked_flows, read, key)

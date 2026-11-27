@@ -141,9 +141,14 @@ def _check_masked(where: str, outside: str) -> None:
     from zabob.retirement.sim.imports.forms import mask_account
 
     if (masked := mask_account(outside)) != outside:
+        # Without the key here, the name is given as it is with no import
+        # password; with one, the import adds a fingerprint (#817), which
+        # only a run of the import can give.
         raise ValueError(
             f"{where}: outside_account has a whole account number; an import names the account "
-            f"{masked!r}, by its last four digits, so write that instead")
+            f"{masked!r}, by its last four digits, so write that instead (when this data repo has an "
+            "import password, the import adds '#' and a fingerprint to it: take the row out and answer "
+            "the import's question instead)")
 
 
 # ---------- accounts ----------

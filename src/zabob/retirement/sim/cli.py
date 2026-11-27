@@ -6141,7 +6141,13 @@ def login_command(name: str | None, scenario: str | None, data: Path | None, imp
     gives the same one; the first to give it sets it. Only a key made from
     it is kept, in your own settings, and it is used only by imports:
     losing it means only answering the import's questions again."""
-    _switch(name or login_name(), data, scenario)
+    from zabob.retirement import user_config
+
+    # Giving the password only isn't saying who you are: with no NAME, a
+    # user already logged in stays so, rather than becoming the login name
+    # (and set_by naming the wrong person).
+    keep = name is None and import_password and user_config.user_name() is not None
+    _switch(None if keep else name or login_name(), data, scenario)
     if import_password:
         _set_import_password(_data_repo_option(data) if data is not None else _data_dir_from_setting())
 
@@ -10648,11 +10654,11 @@ def import_transactions(
         files = (default_file,)
     amazon_state_path = amazon_state_dir or data_repo_root / "state"
     try:
-        key = import_key_.key(data_dir_p)
+        import_key = import_key_.key(data_dir_p)
         flows = import_sources_.read_flows(
             files, layout, import_mapping.imports_dir(data_dir_p), account=outside_account,
-            ask_account=functools.partial(_ask_transactions_account, key=key) if _interactive() and not summary
-            else None, key=key)
+            ask_account=functools.partial(_ask_transactions_account, key=import_key) if _interactive() and not summary
+            else None, key=import_key)
     except ValueError as e:
         raise click.ClickException(str(e)) from None
     if flows.transactions.empty:
@@ -14887,15 +14893,15 @@ def import_holdings(
     imports = import_mapping.imports_dir(data_dir_p)
     asked_account = False
     try:
-        key = import_key_.key(data_dir_p)
+        import_key = import_key_.key(data_dir_p)
         source, unnamed = import_sources_.unnamed(files, layout, imports)
         if unnamed and outside_account is None and len(files) == 1 and _interactive():
             outside_account = _ask_outside_account(
                 source, files[0],
                 import_mapping.load_account_map(
-                    import_mapping.source_dir(data_dir_p, source.name) / import_mapping.ACCOUNTS), key)
+                    import_mapping.source_dir(data_dir_p, source.name) / import_mapping.ACCOUNTS), import_key)
             asked_account = True
-        snapshot = import_sources_.read_holdings(files, source, imports, account=outside_account, key=key)
+        snapshot = import_sources_.read_holdings(files, source, imports, account=outside_account, key=import_key)
         # A report over a period: the numbers of the day the plan's are as of.
         snapshot = import_holdings_.nearest(
             snapshot, date(scenario_start.year - 1, 12, 31) if year_end else scenario_start.replace(day=1))
