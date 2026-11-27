@@ -35,6 +35,13 @@ on what you make and change. `sim switch` shows both, and your current
 scenario; `sim switch --data DIR` switches to another data repo, as does
 running a `sim` command inside one.
 
+`sim version` (or `sim --version`) says which build is running, as in
+`zabob-retirement 1.0.0rc1+g0123456789ab`: the release, and the commit it was
+built from. Run from a source checkout, it names the checkout's own commit
+and the checkout's folder, with `.dirty` after uncommitted changes. `--short`
+prints the version alone and `--json` adds the Python running it; `analysis`
+and `amazon` take the same command.
+
 To have TAB complete `sim`'s commands, options and the names your scenarios
 define (accounts, chains, scenarios...), set it up once for your shell:
 
