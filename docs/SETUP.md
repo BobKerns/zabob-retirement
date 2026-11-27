@@ -137,7 +137,7 @@ For the one-line install below, the shared
 clone of the code, use WSL, the Windows Subsystem for Linux, which runs
 Ubuntu inside Windows 11, or Windows 10 version 2004 or later. The video
 [WSL for Windows](https://youtu.be/YJiwuHzIq1w) walks through this
-([日本語](https://youtu.be/mF9CMkimH80)).
+([日本語](https://youtu.be/7Qku6qGmjBM)).
 
 1. Right-click Start and choose **Terminal (Admin)** (on Windows 10,
    **Windows PowerShell (Admin)**), then run `wsl --install`. Restart when
