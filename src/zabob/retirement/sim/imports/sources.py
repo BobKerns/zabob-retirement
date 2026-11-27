@@ -20,7 +20,9 @@ from typing import Literal
 import pandas as pd
 
 from zabob.retirement.sim.imports import ofx, profiles, quicken
-from zabob.retirement.sim.imports.forms import CORRECTS, ORIGIN, REFERENCE, REMOVES, Budget, Flows, Snapshot
+from zabob.retirement.sim.imports.forms import (
+    CORRECTS, ORIGIN, REFERENCE, REMOVES, Budget, Flows, Snapshot, masked_flows, masked_snapshot,
+)
 
 __all__ = [
     "FORMS", "Form", "Reader", "Source", "SourceError", "broken", "detect", "get", "names",
@@ -273,6 +275,15 @@ def unnamed(
     return source, [] if held is None or held.unnamed is None else [path for path in paths if held.unnamed(path)]
 
 
+def _masked[T](path: Path, mask: Callable[[T], T], read: T) -> T:
+    """``read``, from ``path``, with its outside accounts masked; two that
+    would get one name are refused as ``path``'s."""
+    try:
+        return mask(read)
+    except ValueError as e:
+        raise SourceError(f"{path}: {e}") from None
+
+
 def read_holdings(
     paths: Sequence[Path], name: str | Source | None = None, imports: Path | None = None,
     *, account: str | None = None,
@@ -285,14 +296,14 @@ def read_holdings(
     if account is None:
         snapshots = []
         for path in paths:
-            snapshots.append(source.holdings.read(path))
+            snapshots.append(_masked(path, masked_snapshot, source.holdings.read(path)))
     elif source.holdings.read_named is None:
         raise SourceError(
             f"a {source.name} file names its accounts itself, so --outside-account doesn't apply")
     elif len(paths) > 1:
         raise SourceError("--outside-account names one file's account; import the files one at a time")
     else:
-        snapshots = [source.holdings.read_named(paths[0], account)]
+        snapshots = [_masked(paths[0], masked_snapshot, source.holdings.read_named(paths[0], account))]
     dates = {snapshot.as_of for snapshot in snapshots if snapshot.as_of is not None}
     if len(dates) > 1:
         raise SourceError(
@@ -383,6 +394,9 @@ def read_flows(
             read = described.read(path, said)
         else:
             read = source.transactions.read(path)
+        # Every source's, and every name given for a file: an outside
+        # account is its last four digits from here on (#815).
+        read = _masked(path, masked_flows, read)
         frame = read.transactions
         notes += read.notes
         frame = frame.assign(**{ORIGIN: source.name})

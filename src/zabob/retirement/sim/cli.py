@@ -10150,6 +10150,8 @@ def _ask_outside_account(
     held = list(dict.fromkeys(h.asset for h in read if h.asset))
     # What the file calls itself (the name a report was saved under), offered.
     called = next((h.hints["report"] for h in read if h.hints.get("report")), None)
+    # Offered as it will be saved: an account number kept to its last four (#815).
+    called = called and import_forms.mask_account(called)
     known = list(dict.fromkeys(outside for outside, _ in saved.entries))
     click.echo(f"{path.name} doesn't say which {source.name} account it is"
                + (f"; it holds {_some(held)}." if held else "."))
@@ -10376,7 +10378,7 @@ def _ask_transactions_account(path: Path, source: str) -> str:
     its name says: a bank names its downloads alike, whatever the account."""
     click.echo(f"{path.name} ({source}) doesn't say which account it is.")
     while True:
-        answer = _prompt_with_completion("  account", default=path.stem).strip()
+        answer = _prompt_with_completion("  account", default=import_forms.mask_account(path.stem)).strip()
         if answer:
             return answer
 
@@ -10621,8 +10623,12 @@ def import_transactions(
     if flows.duplicates:
         click.echo(f"note: {flows.duplicates} transaction(s) that an earlier file had too, by "
                    "their reference, were left out")
-    cards, card_maps = _cards_charged(
-        data_dir_p, scenario_name, flows.transactions, ask=_interactive() and not summary)
+    try:
+        cards, card_maps = _cards_charged(
+            data_dir_p, scenario_name, flows.transactions, ask=_interactive() and not summary)
+    except ValueError as e:
+        # A mapping file it reads that can't be (a row with a whole account number).
+        raise click.ClickException(str(e)) from None
     for note in flows.notes:
         click.echo(f"note: {note}")
     payee_maps: dict[str, import_mapping.PayeeMap] = {}

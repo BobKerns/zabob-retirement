@@ -1506,7 +1506,7 @@ def test_sim_import_holdings_asks_about_a_brokerage_files_lots_once(
                      input="Asset_Brokerage_Joint\nAsset_Roth_Alice\nn\ny\n\n\n\n")
 
     assert result.exit_code == 0, result.output
-    assert "'111111111' (Joint brokerage)" in result.output
+    assert "'...1111' (Joint brokerage)" in result.output
     assert "fidelity snapshot as of 2026-01-05" in result.output
     lots = _all_lots(test_data_dir)
     fund = lots["Asset_Brokerage_Joint", "fxaix"]
@@ -1527,7 +1527,7 @@ def test_sim_import_holdings_asks_about_a_brokerage_files_lots_once(
     assert "is a Roth lot with no basis" in result.output
     assert "the plan doesn't know FSKAX, FXAIX, SPAXX yet" in result.output
     assert _saved(test_data_dir, "fidelity") == [
-        "111111111,,map,Asset_Brokerage_Joint,,", "222222222,,map,Asset_Roth_Alice,default,"]
+        "...1111,,map,Asset_Brokerage_Joint,,", "...2222,,map,Asset_Roth_Alice,default,"]
 
     # The next file finds every lot by its symbol, and asks nothing.
     fidelity_positions_export.write_text(
@@ -1544,7 +1544,7 @@ def test_sim_import_holdings_takes_an_existing_lot_or_skip_for_a_holding(
     write_import_map: MapWriter,
 ) -> None:
     write_import_map("fidelity/accounts.csv",
-                     "111111111,,map,Asset_Brokerage_Joint,,\n222222222,,skip,,,\n")
+                     "...1111,,map,Asset_Brokerage_Joint,,\n...2222,,skip,,,\n")
 
     # A lot for each; FXAIX gets one, FSKAX goes into it too, the cash is left out.
     result = _import(test_data_dir, "holdings", str(fidelity_positions_export),
@@ -1556,17 +1556,17 @@ def test_sim_import_holdings_takes_an_existing_lot_or_skip_for_a_holding(
     # Two funds in one lot have no one share count; what they cost adds up.
     assert (index["quantity"], index["opening_cost_basis"]) == ("", "230000.00")
     assert _saved(test_data_dir, "fidelity")[2:] == [
-        "111111111,FSKAX,map,Asset_Brokerage_Joint,index,", "111111111,SPAXX,skip,,,"]
+        "...1111,FSKAX,map,Asset_Brokerage_Joint,index,", "...1111,SPAXX,skip,,,"]
 
 
 def test_sim_import_holdings_new_lots_needs_no_terminal(
     test_data_dir: Path, vanguard_holdings_export: Path, write_import_map: MapWriter,
 ) -> None:
-    write_import_map("vanguard/accounts.csv", "12345678,,map,Asset_Roth_Bill,,\n")
+    write_import_map("vanguard/accounts.csv", "...5678,,map,Asset_Roth_Bill,,\n")
 
     refused = _import(test_data_dir, "holdings", str(vanguard_holdings_export))
     assert refused.exit_code != 0
-    assert "--new-lots" in refused.output and "12345678 / VTSAX" in refused.output
+    assert "--new-lots" in refused.output and "...5678 / VTSAX" in refused.output
 
     result = _import(test_data_dir, "holdings", str(vanguard_holdings_export), "--new-lots")
     assert result.exit_code == 0, result.output
@@ -1579,14 +1579,14 @@ def test_sim_import_holdings_new_lots_needs_no_terminal(
     assert lots["Asset_Roth_Bill", "vmfxx"]["opening_balance"] == "20000.00"
     assert "lot 'vtsax' of Asset_Roth_Bill is a Roth lot with no basis" in result.output
     # Nothing in the file says whose it is.
-    assert "vanguard account '12345678', from the file's name" in result.output
+    assert "vanguard account '...5678', from the file's name" in result.output
 
 
 def test_sim_import_holdings_new_lots_finds_a_free_name(
     test_data_dir: Path, vanguard_holdings_export: Path, write_import_map: MapWriter,
     add_account_value: Callable[..., None],
 ) -> None:
-    write_import_map("vanguard/accounts.csv", "12345678,,map,Asset_Roth_Bill,,\n")
+    write_import_map("vanguard/accounts.csv", "...5678,,map,Asset_Roth_Bill,,\n")
     add_account_value("Asset_Roth_Bill", lot="vtsax", subkind="roth_ira", symbol="OTHER",
                       opening_balance="5.00")
 
@@ -1600,7 +1600,7 @@ def test_sim_import_holdings_new_lots_makes_one_lot_of_a_symbol_and_asks_of_word
     test_data_dir: Path, vanguard_two_row_export: Path, write_import_map: MapWriter,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    write_import_map("vanguard/accounts.csv", "12345678,,map,Asset_Roth_Bill,,\n")
+    write_import_map("vanguard/accounts.csv", "...5678,,map,Asset_Roth_Bill,,\n")
 
     refused = _import(test_data_dir, "holdings", str(vanguard_two_row_export), "--new-lots")
     assert refused.exit_code != 0
@@ -1615,13 +1615,13 @@ def test_sim_import_holdings_new_lots_makes_one_lot_of_a_symbol_and_asks_of_word
     assert (lots["Asset_Roth_Bill", "vtsax"]["quantity"], lots["Asset_Roth_Bill", "vtsax"]["opening_balance"]) \
         == ("2600", "416000.00")
     assert ("Asset_Roth_Bill", "vtsax-2") not in lots
-    assert "12345678,Pending activity,skip,,," in _saved(test_data_dir, "vanguard")
+    assert "...5678,Pending activity,skip,,," in _saved(test_data_dir, "vanguard")
 
 
 def test_sim_import_holdings_dry_run_adds_no_lot(
     test_data_dir: Path, vanguard_holdings_export: Path, write_import_map: MapWriter,
 ) -> None:
-    write_import_map("vanguard/accounts.csv", "12345678,,map,Asset_Roth_Bill,,\n")
+    write_import_map("vanguard/accounts.csv", "...5678,,map,Asset_Roth_Bill,,\n")
     before = _all_lots(test_data_dir)
 
     result = _import(test_data_dir, "holdings", str(vanguard_holdings_export), "--new-lots", "--dry-run")
@@ -1787,7 +1787,7 @@ def test_sim_import_holdings_offers_a_share_count_from_a_stored_price(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     write_import_map("fidelity/accounts.csv",
-                     "111111111,,map,Asset_Brokerage_Joint,,\n222222222,,skip,,,\n")
+                     "...1111,,map,Asset_Brokerage_Joint,,\n...2222,,skip,,,\n")
     # The file's money market row has a balance and neither shares nor a price.
     add_account_value("Asset_Brokerage_Joint", lot="spaxx", symbol="SPAXX", quantity="44000",
                       opening_balance="44000.00")
@@ -1810,7 +1810,7 @@ def test_sim_import_holdings_offers_a_share_count_from_a_stored_price(
 def test_sim_import_holdings_year_end_adds_no_lots(
     test_data_dir: Path, vanguard_holdings_export: Path, write_import_map: MapWriter,
 ) -> None:
-    write_import_map("vanguard/accounts.csv", "12345678,,map,Asset_Roth_Bill,,\n")
+    write_import_map("vanguard/accounts.csv", "...5678,,map,Asset_Roth_Bill,,\n")
 
     result = _import(test_data_dir, "holdings", str(vanguard_holdings_export), "--year-end", "--new-lots")
 
@@ -1865,7 +1865,7 @@ def test_sim_import_holdings_prune_empties_the_lot_a_file_no_longer_has(
     test_data_dir: Path, fidelity_positions_export: Path, write_import_map: MapWriter,
 ) -> None:
     write_import_map("fidelity/accounts.csv",
-                     "111111111,,map,Asset_Brokerage_Joint,,\n222222222,,skip,,,\n")
+                     "...1111,,map,Asset_Brokerage_Joint,,\n...2222,,skip,,,\n")
 
     first = _import(test_data_dir, "holdings", str(fidelity_positions_export), "--new-lots")
     assert first.exit_code == 0, first.output
@@ -1894,7 +1894,7 @@ def test_sim_import_holdings_warns_of_a_file_dated_far_from_the_start(
 ) -> None:
     import datetime as dt
 
-    write_import_map("fidelity/accounts.csv", "111111111,,skip,,,\n222222222,,skip,,,\n")
+    write_import_map("fidelity/accounts.csv", "...1111,,skip,,,\n...2222,,skip,,,\n")
     with (test_data_dir / "scenarios" / "base" / "scenario.csv").open(encoding="utf-8") as f:
         # The balances are the ones the first month opens with, on its first day.
         start = dt.date.fromisoformat(next(csv.DictReader(f))["start"][:10]).replace(day=1)
@@ -2520,6 +2520,19 @@ def test_sim_import_transactions_dry_run_shows_the_card_and_writes_nothing(
     assert not _generated(test_data_dir) and "card_payment_liability_card" not in _rules(test_data_dir)
 
 
+def test_sim_import_transactions_says_why_a_mapping_with_a_whole_account_number_is_refused(
+    card_import: Callable[..., Result], write_import_map: MapWriter,
+) -> None:
+    # Another source's file, read only to find the cards: a message, not a traceback (#815).
+    write_import_map("fidelity/accounts.csv", "111111111,,skip,,,\n")
+
+    result = card_import()
+
+    assert result.exit_code == 1 and result.exception is not None
+    assert isinstance(result.exception, SystemExit), result.exception
+    assert "whole account number" in result.output and "'...1111'" in result.output
+
+
 def test_sim_import_transactions_notes_a_card_with_no_account_away_from_a_terminal(
     test_data_dir: Path, card_import: Callable[..., Result],
 ) -> None:
@@ -2971,7 +2984,7 @@ def test_sim_import_transactions_notes_one_ofx_account_under_two_names(
     result = _transactions(test_data_dir, ofx_bank_download, str(unnamed))
 
     assert result.exit_code == 0, result.output
-    assert ("note: 3 transaction(s) of '121000000 checking ...4321' and of 'First Example Bank checking ...4321' "
+    assert ("note: 3 transaction(s) of '...0000 checking ...4321' and of 'First Example Bank checking ...4321' "
             "(ofx) have the same reference, day and amount") in result.output
     # The same account under one name has nothing to note.
     assert not import_sources.read_flows([ofx_bank_download, ofx_bank_later_download]).notes
@@ -2988,7 +3001,7 @@ def test_ofx_does_not_note_two_accounts_of_one_file_as_one(
         b"<FI>\n<ORG>First Example Bank\n<FID>1234\n</FI>\n", b"").replace(b"SAVINGS", b"MONEYMRKT"))
     notes = import_sources.read_flows([ofx_bank_like_accounts_download, other]).notes
     # Each of the first file's two names with each of the second's, and neither file's own pair.
-    assert len(notes) == 4 and all("121000000" in note and "First Example Bank" in note for note in notes)
+    assert len(notes) == 4 and all("...0000 " in note and "First Example Bank" in note for note in notes)
 
 
 def test_ofx_references_that_do_not_tell_duplicates_are_noted(

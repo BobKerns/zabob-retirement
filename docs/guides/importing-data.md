@@ -86,6 +86,23 @@ is shown again: read a row's number from the latest listing.
 You can still edit the files by hand. `sim account rename` and
 `sim account lot rename` follow into these files by themselves.
 
+**No import keeps a whole account number.** Wherever an outside account's
+name has an account number in it (a column of the file, the file's name, or
+a name you type), only its last four digits are kept, as `...4321`, in the
+saved answers and in what the import prints. A number in groups
+(`1234-5678`, `4111 1111 1111 1111`) counts as one; a date doesn't.
+
+Two accounts of one source whose numbers end in the same four digits can't
+be told apart. In one file they are refused; in separate files they would
+share one saved answer, each taking the other's. That's rare (about one pair
+in ten thousand), but if you have such a pair, import one of them and set the
+other by hand (`sim account lot edit`), answering `skip` for it.
+
+A row you write by hand with a whole number is refused too, with the name
+to write instead. Keep the downloads themselves outside the data repo,
+since they have the whole numbers in them; see
+[What doesn't belong in the data repo](data-repo-remote.md#what-doesnt-belong-in-the-data-repo).
+
 ```text
 imports/
   expense_accounts.csv     category -> expense account ('-' for no rule)
@@ -859,7 +876,11 @@ accounts is taken from that report's `Transfer:` category.
 With no file named, `sim import transactions` reads
 `quicken/Transaction Export.csv` at the data repo's top level, along with the
 Amazon categorizer's monthly summaries in `state/`, which split Amazon
-orders into real categories.
+orders into real categories. This export is the one download kept in the
+data repo: it has payees, categories and amounts, and your accounts by the
+names you gave them in Quicken, but no account numbers, unless an
+account's name in Quicken has one. Name accounts there by nickname or last
+four digits before keeping the export here.
 
 Quicken's net worth report has one number for a brokerage account, so it
 can't fill an account kept as several lots. For those, use the built-in
