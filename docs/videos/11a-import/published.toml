@@ -5,10 +5,9 @@
 # the next publish finishes (#695).
 
 [en]
-video = "26xt4l_Q6wA"
-uploaded = 2026-11-26T21:11:56Z
-snippet = "57a0272c81658575"
-pending = ["thumbnail", "captions", "playlist"]
+video = "-cLmweKvWUc"
+uploaded = 2026-11-27T08:23:49Z
+snippet = "7113de67ed1077cf"
 scenes = [
   ["title", 18.08],
   ["contents", 25.39],
@@ -29,9 +28,9 @@ scenes = [
 ]
 
 [ja]
-video = "WGHCHMUGBxg"
-uploaded = 2026-11-25T11:12:05Z
-snippet = "753ce4c256a4134d"
+video = "6zucfAfgw-8"
+uploaded = 2026-11-27T08:24:09Z
+snippet = "05b879b4a057d60e"
 scenes = [
   ["title", 21.33],
   ["contents", 27.86],

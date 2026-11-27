@@ -5,48 +5,47 @@
 # the next publish finishes (#695).
 
 [en]
-video = "IhaLt50RRjo"
-uploaded = 2026-11-26T19:47:31Z
-snippet = "65d7791e4fc7c77e"
-pending = ["captions", "playlist"]
+video = "gIWRS5qTcsY"
+uploaded = 2026-11-27T08:17:09Z
+snippet = "9f83ed484247f868"
 scenes = [
   ["title", 17.12],
   ["contents", 15.66],
   ["strategy", 25.34],
   ["mix", 45.26],
   ["classes", 32.41],
-  ["targets", 74.44],
-  ["add", 34.16],
-  ["invest", 57.24],
-  ["log", 56.24],
+  ["targets", 74.28],
+  ["add", 34.24],
+  ["invest", 57.52],
+  ["log", 56.56],
   ["nb-drift", 16.93],
-  ["off", 75.44],
+  ["off", 75.68],
   ["why", 18.32],
-  ["mc", 45.24],
+  ["mc", 44.92],
   ["mc-compare", 56.66],
-  ["nb-compare", 17.07],
+  ["nb-compare", 16.93],
   ["ai", 24.48],
   ["end", 8.63],
 ]
 
 [ja]
-video = "BgpUJpEFW2o"
-uploaded = 2026-11-24T19:12:06Z
-snippet = "2166483ff2a9b41a"
+video = "cj-kB9fUSSo"
+uploaded = 2026-11-27T08:17:27Z
+snippet = "ef7f49a627075e06"
 scenes = [
   ["title", 18.08],
   ["contents", 19.91],
   ["strategy", 25.78],
   ["mix", 54.38],
   ["classes", 38.62],
-  ["targets", 74.48],
+  ["targets", 74.28],
   ["add", 38.02],
-  ["invest", 57.08],
-  ["log", 56.16],
+  ["invest", 57.52],
+  ["log", 56.56],
   ["nb-drift", 16.93],
-  ["off", 75.64],
+  ["off", 75.68],
   ["why", 22.92],
-  ["mc", 46.32],
+  ["mc", 44.92],
   ["mc-compare", 64.99],
   ["nb-compare", 19.09],
   ["ai", 28.55],
