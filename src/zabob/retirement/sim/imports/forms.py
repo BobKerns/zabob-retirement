@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import datetime as dt
-from collections.abc import Mapping
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 
+from zabob.retirement.sim.imports import import_key
+
 __all__ = [
     "Activity",
     "CORRECTS", "FLOW_COLUMNS", "ORIGIN", "REFERENCE", "REMOVES", "Budget", "BudgetLine", "Flows", "Holding",
-    "Snapshot", "read_rows",
+    "Snapshot", "mask_account", "masked_flows", "masked_snapshot", "read_rows",
 ]
 
 
@@ -157,6 +161,130 @@ class Flows:
         missing = [c for c in FLOW_COLUMNS if c not in self.transactions.columns]
         if missing:
             raise ValueError(f"{self.source}: transactions lack column(s) {missing}")
+
+
+# An account number: digits, written whole ("123456789", "Z12345678") or in
+# groups joined by a dash or a dot ("1234-5678") or by single spaces where
+# each group is three or four digits ("4111 1111 1111 1111"), or a card's
+# 4-6-5 or 4-6-4 grouping ("3782 822463 10005", "3056 930902 5904"), with up to
+# three letters or a dash before it (an issuer's "-41001", its own last
+# five). Bounded by digits, not by words, so "Account_123456789" and
+# "ROTH12345678" are found too. It is one when it has five digits or more
+# and isn't a date (one whose month and day can be: "12-34-5678" is a
+# number) or a range of years; four or fewer are a year, a last-four
+# already, or part of a date, and are left as they are.
+_NUMBER = (r"(\d{4} \d{6} \d{4,5}(?![-.]?\d)|\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)"
+           r"(?![0-9])")
+_ACCOUNT_NUMBER = re.compile(r"(?<![0-9])(?:(?<![A-Za-z])[A-Za-z]{1,3}|-)?" + _NUMBER)
+_YEAR_FIRST = re.compile(r"\d{4}[-.](\d{1,2})(?:[-.](\d{1,2}))?")
+_YEAR_LAST = re.compile(r"(\d{1,2})[-.](\d{1,2})[-.]\d{2,4}")
+_YEARS = re.compile(r"(?:19|20)\d\d-(?:19|20)\d\d")
+
+
+def _a_date(text: str) -> bool:
+    """Whether ``text`` can be a date (or a range of years), and so isn't
+    an account number: its month 1 to 12 and its day 1 to 31, the two in
+    either order where the year comes last."""
+    if _YEARS.fullmatch(text):
+        return True
+    if found := _YEAR_FIRST.fullmatch(text):
+        return 1 <= int(found[1]) <= 12 and (found[2] is None or 1 <= int(found[2]) <= 31)
+    if found := _YEAR_LAST.fullmatch(text):
+        first, second = int(found[1]), int(found[2])
+        return (1 <= first <= 12 and 1 <= second <= 31) or (1 <= second <= 12 and 1 <= first <= 31)
+    return False
+
+
+def mask_account(name: str, key: bytes | None = None) -> str:
+    """``name`` with every account number in it cut to its last four digits,
+    as ``...1234``: what an outside account is called everywhere past the
+    reader. A whole number reaches money; the last four only tell one
+    account from another, which is all a mapping needs (issue #815). With
+    the data repo's import ``key`` (#817), each also gets a fingerprint of
+    the whole number, ``...1234#kqzmtbe``, which tells apart two that end
+    alike. Idempotent: a masked name is its own mask."""
+    def one(found: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", found.group(1))
+        if len(digits) < 5 or _a_date(found.group(1)):
+            return found.group(0)
+        # After a mask's own "...", a longer run takes only the digits.
+        kept = ("" if found.string.endswith("...", 0, found.start()) else "...") + digits[-4:]
+        return kept if key is None else f"{kept}#{import_key.fingerprint(key, digits)}"
+    return _ACCOUNT_NUMBER.sub(one, name)
+
+
+def _masks(names: Iterable[str], key: bytes | None) -> dict[str, str]:
+    """Each of ``names`` and its mask. Two names of one file that would get
+    one mask are refused: read as one, each would take the other's mapping."""
+    masks: dict[str, str] = {}
+    named: dict[str, str] = {}
+    for name in dict.fromkeys(names):
+        masked = masks[name] = mask_account(name, key)
+        if named.setdefault(masked, name) != name:
+            if key is None:
+                raise ValueError(
+                    f"two of its accounts would both be {masked!r} (an account number is kept to its last four "
+                    "digits), which no import can tell apart: kept apart, in separate files, they would share "
+                    "one mapping row. An import password tells them apart (`sim login --import-password`); "
+                    "or set one of them by hand ('sim account lot edit'), and skip it here")
+            # A fingerprint shared by two numbers: about once in eight billion pairs.
+            raise ValueError(f"two of its accounts would both be {masked!r}; import them from separate files")
+    return masks
+
+
+# How a reader that has the whole number writes it into a name (``ofx``):
+# ``...`` and the number as an account name has it, letters, dashes and
+# groups included (``...Z12345678``, ``...1234-5678``).
+_WRITTEN_WHOLE = re.compile(r"\.\.\.(?:[A-Za-z]{1,3}|-)?" + _NUMBER)
+
+
+def _masked_notes(notes: Iterable[str], masks: Mapping[str, str], key: bytes | None) -> tuple[str, ...]:
+    """``notes`` with each account name a reader wrote into them replaced by
+    its mask, and any other ``...<whole number>`` (an account with nothing
+    else read of it) masked. Not ``mask_account`` over the whole note, which
+    would take an amount (``12345.00``) for a number."""
+    whole = sorted((name for name, masked in masks.items() if name != masked), key=len, reverse=True)
+    def masked(note: str) -> str:
+        for name in whole:
+            # Not inside an amount: an account named by its digits alone
+            # ("123456789") is in "1234567890.00" too.
+            note = re.sub(rf"(?<![0-9]){re.escape(name)}(?![0-9])", lambda _, name=name: masks[name], note)
+        return _WRITTEN_WHOLE.sub(lambda found: mask_account(found.group(0), key), note)
+    return tuple(masked(note) for note in notes)
+
+
+def _masked_holding(holding: Holding, masks: Mapping[str, str], key: bytes | None) -> Holding:
+    hints = dict(holding.hints)
+    if "account_name" in hints:
+        hints["account_name"] = mask_account(hints["account_name"], key)
+    return dataclasses.replace(holding, account=masks[holding.account], hints=hints)
+
+
+def masked_snapshot(snapshot: Snapshot, key: bytes | None = None) -> Snapshot:
+    """``snapshot`` with its outside accounts masked (``mask_account``)."""
+    held = [h.account for h in (*snapshot.holdings, *(h for hs in snapshot.dated.values() for h in hs))]
+    masks = _masks([*held, *snapshot.complete, *snapshot.activity, *snapshot.unaccounted], key)
+    return dataclasses.replace(
+        snapshot,
+        holdings=tuple(_masked_holding(h, masks, key) for h in snapshot.holdings),
+        complete=frozenset(masks[name] for name in snapshot.complete),
+        activity={masks[name]: activity for name, activity in snapshot.activity.items()},
+        dated={day: tuple(_masked_holding(h, masks, key) for h in held_then)
+               for day, held_then in snapshot.dated.items()},
+        unaccounted={masks[name]: why for name, why in snapshot.unaccounted.items()},
+        notes=_masked_notes(snapshot.notes, masks, key),
+        dated_notes={day: _masked_notes(said, masks, key) for day, said in snapshot.dated_notes.items()},
+    )
+
+
+def masked_flows(flows: Flows, key: bytes | None = None) -> Flows:
+    """``flows`` with its outside accounts masked (``mask_account``): each
+    row's account, and the account a transfer names."""
+    frame = flows.transactions.copy()
+    masks = _masks((name for name in frame["account"] if isinstance(name, str)), key)
+    frame["account"] = frame["account"].map(lambda name: masks.get(name, name) if isinstance(name, str) else name)
+    frame["transfer"] = frame["transfer"].map(lambda name: mask_account(name, key) if isinstance(name, str) else name)
+    return dataclasses.replace(flows, transactions=frame, notes=_masked_notes(flows.notes, masks, key))
 
 
 @dataclass(frozen=True)

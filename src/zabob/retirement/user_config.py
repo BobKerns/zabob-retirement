@@ -19,6 +19,8 @@ Windows, else ``$XDG_CONFIG_HOME``, by default ``~/.config``)::
     data_dir                  the current data repo's folder name under repos/
     repos/<name>/location     a data repo's data dir (its sim/)
     repos/<name>/scenario     your current scenario in it (empty: none)
+    repos/<name>/import_key   the key made from its import password (`sim login
+                              --import-password`, #817), readable by you alone
 
 ``<name>`` is the data repo's folder name, with ``-2``, ``-3``... when two
 have the same one. Versions before #773 kept the data repo in
@@ -36,8 +38,9 @@ from pathlib import Path
 from zabob.retirement.oscompat import WINDOWS
 
 __all__ = ["config_dir", "config_path", "current_user", "data_dir_setting", "default_data_dir", "in_checkout",
-           "local_data_dir",
-           "read_scenario", "repo_folder", "set_default_data_dir", "set_user", "user_name", "write_scenario"]
+           "local_data_dir", "read_import_key",
+           "read_scenario", "repo_folder", "set_default_data_dir", "set_user", "user_name", "write_import_key",
+           "write_scenario"]
 
 
 def config_path() -> Path:
@@ -164,6 +167,23 @@ def write_scenario(data_dir: Path | str, scenario: str) -> None:
     folder = repo_folder(data_dir, create=True)
     assert folder is not None  # noqa: S101 - create=True always makes one
     _write_value(folder / "scenario", scenario)
+
+
+def read_import_key(data_dir: Path | str) -> str | None:
+    """The key (hex) this user made from the data dir's import password, or
+    None when they haven't set it here (#817)."""
+    folder = repo_folder(data_dir)
+    return None if folder is None else _read_value(folder / "import_key")
+
+
+def write_import_key(data_dir: Path | str, key: str) -> None:
+    """Keep ``key`` (hex) as this user's key for the data dir's imports, in
+    a file only they can read: it stands in for the password (#817)."""
+    folder = repo_folder(data_dir, create=True)
+    assert folder is not None  # noqa: S101 - create=True always makes one
+    _write_value(folder / "import_key", key)
+    if not WINDOWS:  # Windows: the profile folder is the user's own already
+        os.chmod(folder / "import_key", 0o600)
 
 
 def user_name() -> str | None:

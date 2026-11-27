@@ -15,6 +15,9 @@ scenarios, stays in files on your computer: your data repository and the
 `state/` folder of simulation results. The software doesn't upload them
 anywhere. If you put your data repository on a hosting service such as
 GitHub, that's your choice, and that service's own policy applies.
+Whole account numbers, logins and passwords don't belong in it at all, and
+the imports keep only an account number's last four digits; see
+[What doesn't belong in the data repo](docs/guides/data-repo-remote.md#what-doesnt-belong-in-the-data-repo).
 
 A few commands go to public data sources when you run them, and send only
 what is needed to ask:

@@ -18,6 +18,36 @@ cloned or indexed. Keep the code repo and the data repo apart (the code repo
 is the one that can be public), and check where a remote points before the
 first push.
 
+## What doesn't belong in the data repo
+
+Even a private repo gets copied: to each person's clone, to the server, to
+backups, and into anything that reads it, such as an AI assistant you ask
+about your plan. So keep two kinds of information apart.
+
+| Kind | Examples | Where it lives |
+| --- | --- | --- |
+| What describes your finances | names, an account's nickname and kind, balances, income, spending, plans | the data repo |
+| What reaches the money | whole account, routing and card numbers, logins and passwords, PINs, security questions and their answers, tax ID numbers | a password manager, or a separate repo or vault with its own access |
+
+The first kind, if it leaked, tells someone a lot about you, which can help
+a scam (a convincing phone call to you or to your bank), but nobody can move
+money with it. The second kind is what an attacker actually uses. Keeping
+it out of the data repo keeps every copy of the data repo on the safer side
+of that line, however many copies there are.
+
+The simulator never needs the second kind. An account needs only a name you
+choose, and every import tells an institution's accounts apart by the last
+four digits of their numbers, so it saves `...4321`, never the whole number
+([Importing your data](importing-data.md#how-every-import-works)). An import
+password, if you set one, is kept the same way: the data repo records only
+that it is set. When you
+write a note or a description in the data repo, use an account's nickname
+or its last four digits. Read the files you download for an import from your
+downloads folder rather than saving them in the repo: they have the whole
+numbers in them. The one exception is Quicken's transaction export, which
+has none unless an account's name in Quicken does
+([Quicken](importing-data.md#quicken)).
+
 ## Two tiers
 
 A good setup has two layers, which protect against different things:

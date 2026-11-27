@@ -134,6 +134,23 @@ def _write(
         raise
 
 
+def _check_masked(where: str, outside: str) -> None:
+    """Refuse an outside account written with a whole account number: every
+    reader keeps only its last four digits, so the row would match nothing,
+    and the data repo is no place for a number that reaches money (#815)."""
+    from zabob.retirement.sim.imports.forms import mask_account
+
+    if (masked := mask_account(outside)) != outside:
+        # Without the key here, the name is given as it is with no import
+        # password; with one, the import adds a fingerprint (#817), which
+        # only a run of the import can give.
+        raise ValueError(
+            f"{where}: outside_account has a whole account number; an import names the account "
+            f"{masked!r}, by its last four digits, so write that instead (when this data repo has an "
+            "import password, the import adds '#' and a fingerprint to it: take the row out and answer "
+            "the import's question instead)")
+
+
 # ---------- accounts ----------
 
 @dataclass(frozen=True)
@@ -186,6 +203,7 @@ def load_account_map(path: Path) -> AccountMap:
             continue
         key = (row["outside_account"], row["asset"])
         where = f"{path} row {number}"
+        _check_masked(where, row["outside_account"])
         if row["action"] not in {"map", "skip", "split"}:
             raise ValueError(f"{where}: action must be 'map', 'skip' or 'split', got {row['action']!r}")
         if row["action"] != "skip" and not row["account"]:
@@ -245,6 +263,7 @@ def load_lot_splits(path: Path | str) -> LotSplits:
         if not row["outside_account"]:
             continue
         where = f"{path} row {number}"
+        _check_masked(where, row["outside_account"])
         parts = found.parts.setdefault((row["outside_account"], row["asset"]), [])
         if not row["lot"]:
             raise ValueError(f"{where}: a lot is required")
@@ -314,6 +333,7 @@ def load_category_splits(path: Path | str) -> dict[str, dict[str, str]]:
             continue
         if not target:
             raise ValueError(f"{path} row {number}: target category is required")
+        _check_masked(f"{path} row {number}", account)
         targets = splits.setdefault(category, {})
         if account in targets:
             raise ValueError(

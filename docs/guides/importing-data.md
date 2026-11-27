@@ -8,8 +8,8 @@ writes the scenario's own files from it.
 
 **Video.** *Importing your data* (video 11a) walks through this guide with
 Alice and Bill and a Quicken export:
-[English](https://www.youtube.com/watch?v=KHS9dpUaHFc),
-[Japanese (日本語)](https://www.youtube.com/watch?v=Dby3vYmfFPA).
+[English](https://www.youtube.com/watch?v=26xt4l_Q6wA),
+[Japanese (日本語)](https://www.youtube.com/watch?v=WGHCHMUGBxg).
 
 ## Which path is yours
 
@@ -85,6 +85,44 @@ Removing a row moves the numbers of the rows after it, so the whole list
 is shown again: read a row's number from the latest listing.
 You can still edit the files by hand. `sim account rename` and
 `sim account lot rename` follow into these files by themselves.
+
+**No import keeps a whole account number.** Wherever an outside account's
+name has an account number in it (a column of the file, the file's name, or
+a name you type), only its last four digits are kept, as `...4321`, in the
+saved answers and in what the import prints. A number in groups
+(`1234-5678`, `4111 1111 1111 1111`) counts as one; a date doesn't.
+
+Two accounts of one source whose numbers end in the same four digits can't
+be told apart by the last four alone. In one file they are refused; in
+separate files they would share one saved answer, each taking the other's.
+An **import password** tells them apart:
+
+```sh
+sim login --import-password
+```
+
+With one set, each account number also gets a short fingerprint, as
+`...4321#kqzmtbe`, made from the whole number and the password, which
+can't be turned back into the number without the password. The first person
+to give it sets it, and the data repo records that it is set and by whom (in
+`imports/import_password.toml`: commit it), never the password itself. Give
+the others in the household the same password; each gives it once on their
+own computer, which keeps a key made from it, never the password. It is used
+only by imports: lose it and the only cost is answering the import's
+questions again. Answers saved before it was set are asked about again too.
+
+Use a long passphrase. Anyone with a copy of the data repo can try guesses
+at it as fast as their computer allows, with no lockout and nobody watching,
+as a bank has; the password is made slow to check on purpose (about a second
+a guess), but only its length keeps it out of reach.
+
+Without a password, if you have such a pair, import one of them and set the
+other by hand (`sim account lot edit`), answering `skip` for it.
+
+A row you write by hand with a whole number is refused too, with the name
+to write instead. Keep the downloads themselves outside the data repo,
+since they have the whole numbers in them; see
+[What doesn't belong in the data repo](data-repo-remote.md#what-doesnt-belong-in-the-data-repo).
 
 ```text
 imports/
@@ -859,7 +897,11 @@ accounts is taken from that report's `Transfer:` category.
 With no file named, `sim import transactions` reads
 `quicken/Transaction Export.csv` at the data repo's top level, along with the
 Amazon categorizer's monthly summaries in `state/`, which split Amazon
-orders into real categories.
+orders into real categories. This export is the one download kept in the
+data repo: it has payees, categories and amounts, and your accounts by the
+names you gave them in Quicken, but no account numbers, unless an
+account's name in Quicken has one. Name accounts there by nickname or last
+four digits before keeping the export here.
 
 Quicken's net worth report has one number for a brokerage account, so it
 can't fill an account kept as several lots. For those, use the built-in

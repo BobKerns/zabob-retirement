@@ -69,9 +69,9 @@ version become stale and are rebuilt.
 On Windows, this works in PowerShell or Windows Terminal as it stands; see
 [Windows](#windows) for what differs.
 
-Video: [Setup and install](https://youtu.be/_-NY-h16hsk) walks through
+Video: [Setup and install](https://youtu.be/XMJum3pSGJU) walks through
 installing from PyPI, a new data repo, and saving your work
-([日本語](https://youtu.be/VSZ0j2qAJuI)).
+([日本語](https://youtu.be/J7Vj3jpNiVA)).
 
 The rest of this page is for working from a clone of the code.
 
@@ -136,8 +136,8 @@ For the one-line install below, the shared
 [Jupyter hub](guides/jupyterhub.md#on-windows-inside-wsl), or to work from a
 clone of the code, use WSL, the Windows Subsystem for Linux, which runs
 Ubuntu inside Windows 11, or Windows 10 version 2004 or later. The video
-[WSL for Windows](https://youtu.be/yHr90VdoHGQ) walks through this
-([日本語](https://youtu.be/zeTFTujsWwI)).
+[WSL for Windows](https://youtu.be/JumkG40iA20) walks through this
+([日本語](https://youtu.be/mF9CMkimH80)).
 
 1. Right-click Start and choose **Terminal (Admin)** (on Windows 10,
    **Windows PowerShell (Admin)**), then run `wsl --install`. Restart when

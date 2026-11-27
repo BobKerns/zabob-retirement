@@ -24,8 +24,8 @@ them first. Any unfamiliar word is in the
 **Video.** *Ensembles* turns Alice and Bill's base scenario into an
 ensemble, shows its factors, runs it, reads the fan chart, and compares a
 what-if across the same futures:
-[English](https://www.youtube.com/watch?v=Q825lq05EvQ),
-[Japanese (日本語)](https://www.youtube.com/watch?v=ug5Mv7g9quM).
+[English](https://www.youtube.com/watch?v=qeSTMlVFMUA),
+[Japanese (日本語)](https://www.youtube.com/watch?v=61L28CiR5rU).
 
 ## Setting one up
 

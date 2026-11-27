@@ -92,6 +92,13 @@ Invariants that are easy to break:
   queryable, not fatal. A scenario must stay runnable past its first shortfall.
 - **Money is integer cents everywhere past the loader.** CSVs are authored in
   decimal dollars; the loader converts. Don't leak floats inward.
+- **No whole account number reaches the data repo.** Every import path,
+  built in or new, names an outside account with its account numbers cut
+  to their last four digits (`forms.mask_account`, applied in
+  `sources.read_holdings`/`read_flows`, with a keyed fingerprint under an
+  import password, `imports/import_key.py`, #817); a mapping row with a
+  whole number is refused at load. Logins, passwords and whole account numbers stay out
+  of the data repo altogether ([ADR-003](../docs/architecture/ADR-003-registries-and-csv-schemas.md) §4.17, #815).
 - **Scenario inheritance is real.** Most scenarios set `parent_scenario` and
   ship only their overrides. Anything reasoning about "the files this scenario
   read" must walk the whole lineage, not just the scenario's own folder.
