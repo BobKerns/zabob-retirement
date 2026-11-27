@@ -171,9 +171,8 @@ class Flows:
 # "ROTH12345678" are found too. It is one when it has five digits or more
 # and isn't a date or a range of years; four or fewer are a year, a
 # last-four already, or part of a date, and are left as they are.
-_ACCOUNT_NUMBER = re.compile(
-    r"(?<![0-9])(?:(?<![A-Za-z])[A-Za-z]{1,3}|-)?"
-    r"(\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)(?![0-9])")
+_NUMBER = r"(\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)(?![0-9])"
+_ACCOUNT_NUMBER = re.compile(r"(?<![0-9])(?:(?<![A-Za-z])[A-Za-z]{1,3}|-)?" + _NUMBER)
 _NOT_A_NUMBER = re.compile(
     r"\d{4}[-.]\d{1,2}(?:[-.]\d{1,2})?|\d{1,2}[-.]\d{1,2}[-.]\d{2,4}|(?:19|20)\d\d-(?:19|20)\d\d")
 
@@ -211,12 +210,14 @@ def _masks(names: Iterable[str], key: bytes | None) -> dict[str, str]:
                     "one mapping row. An import password tells them apart (`sim login --import-password`); "
                     "or set one of them by hand ('sim account lot edit'), and skip it here")
             # A fingerprint shared by two numbers: about once in eight billion pairs.
-            raise ValueError(f"two of its accounts would both be {masked!r}; name one with --outside-account")
+            raise ValueError(f"two of its accounts would both be {masked!r}; import them from separate files")
     return masks
 
 
-# How a reader that has the whole number writes it into a name (``ofx``).
-_WRITTEN_WHOLE = re.compile(r"\.\.\.\d{5,}(?![0-9])")
+# How a reader that has the whole number writes it into a name (``ofx``):
+# ``...`` and the number as an account name has it, letters, dashes and
+# groups included (``...Z12345678``, ``...1234-5678``).
+_WRITTEN_WHOLE = re.compile(r"\.\.\.(?:[A-Za-z]{1,3}|-)?" + _NUMBER)
 
 
 def _masked_notes(notes: Iterable[str], masks: Mapping[str, str], key: bytes | None) -> tuple[str, ...]:

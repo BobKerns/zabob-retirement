@@ -540,6 +540,15 @@ def test_yearly_script_takes_the_latest_year_and_names_a_rule_past_the_payee_s_n
     assert "leave_out card " in text and "leave_out bank " not in text
 
 
+def test_yearly_script_keeps_an_account_number_in_a_payee_to_its_last_four() -> None:
+    # The rule's description reaches scheduled.csv when the script runs (#820).
+    seen = _seen("Insurance", "ONLINE TRANSFER TO 123456789012",
+                 (date(2027, 3, 1), 120_000), (date(2026, 3, 1), 110_000))
+    text, written = _script(seen)
+    assert written == 1
+    assert "123456789012" not in text and "'Yearly: ONLINE TRANSFER TO ...9012 (Insurance)'" in text
+
+
 def test_yearly_script_s_pattern_finds_the_payee_s_own_key_and_no_other() -> None:
     def found(pattern: str, payee: str) -> bool:
         return bool(re.search(pattern, payee, re.IGNORECASE))
@@ -1537,6 +1546,30 @@ def test_sim_login_sets_the_import_password_and_the_next_one_must_match(
     right = CliRunner().invoke(main, ["sim", "login", "bill", "--data", str(test_data_dir), "--import-password"],
                                input="a long passphrase\n")
     assert right.exit_code == 0 and "Import password given" in right.output, right.output
+
+
+def test_giving_the_import_password_alone_keeps_who_is_logged_in(
+    test_data_dir: Path, import_password: Callable[[str], bytes], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zabob.retirement import user_config
+
+    monkeypatch.setattr("zabob.retirement.sim.cli.login_name", lambda: "bill")
+    user_config.set_user("alice")
+    given = CliRunner().invoke(main, ["sim", "login", "--data", str(test_data_dir), "--import-password"],
+                               input="a long passphrase\na long passphrase\n")
+    assert given.exit_code == 0, given.output
+    assert "Logged in as" not in given.output and user_config.user_name() == "alice"
+    assert 'set_by = "alice"' in (test_data_dir / "imports" / import_key.FILE).read_text(encoding="utf-8")
+
+
+def test_an_import_password_file_with_bad_settings_is_refused(
+    test_data_dir: Path, import_password: Callable[[str], bytes],
+) -> None:
+    import_password("a long passphrase")
+    path = test_data_dir / "imports" / import_key.FILE
+    path.write_text(path.read_text(encoding="utf-8").replace("lanes = 1", "lanes = 0"), encoding="utf-8")
+    with pytest.raises(import_key.ImportKeyError, match="out of range"):
+        import_key.key(test_data_dir)
 
 
 def test_an_import_password_tells_apart_accounts_that_end_alike_in_separate_files(

@@ -382,12 +382,12 @@ def _account(root: Element, statement: Element) -> str:
 
 
 def _accounts(path: Path, root: Element, statements: list[Element]) -> list[str]:
-    """Each statement's account name. Refused: two accounts of one file
-    one account with two
+    """Each statement's account name. Refused: one account with two
     statements in the file, which would be counted twice; and a statement
     whose own group gives no number, since every such account, of any
     institution, would have one name (a group left unclosed reads so: it
-    is an empty value, and what was in it is beside it)."""
+    is an empty value, and what was in it is beside it). Two accounts that
+    end alike are refused where ``sources`` masks the names."""
     for statement in statements:
         if not _text(_own(statement), "ACCTID"):
             raise ValueError(

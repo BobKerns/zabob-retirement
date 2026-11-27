@@ -621,6 +621,15 @@ def test_a_notes_account_names_are_masked_and_its_amounts_left() -> None:
     assert masked_snapshot(snapshot).notes == ("Joint ...6789 holds 12345.00 in cash",)
 
 
+@pytest.mark.parametrize("written", ["...Z12345678", "...1234-5678", "...4111 1111 1111 1111"])
+def test_a_note_naming_a_whole_number_with_letters_or_groups_is_masked(written: str) -> None:
+    # An account with nothing else read of it, so not among the masked names (#820).
+    snapshot = Snapshot("ofx", (), notes=(f"Bank investment {written}: the file has no balance for it",))
+    (note,) = masked_snapshot(snapshot).notes
+    assert written not in note and note.startswith("Bank investment ...")
+    assert not re.search(r"\d{5}", note.replace(" ", "").replace("-", ""))
+
+
 def test_two_accounts_of_one_file_that_end_alike_are_refused(fidelity_positions_export: Path) -> None:
     text = fidelity_positions_export.read_text(encoding="utf-8")
     fidelity_positions_export.write_text(text.replace("222222222", "991111111"), encoding="utf-8")

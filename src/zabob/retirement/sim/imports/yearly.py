@@ -21,6 +21,7 @@ from datetime import date
 from pathlib import Path
 
 from zabob.retirement.expenses.baseline import CARD_PAYMENT_TAG, Cards, Occasional, Payer, category_slug, payer_slug
+from zabob.retirement.sim.imports.forms import mask_account
 from zabob.retirement.sim.imports.holdings import format_dollars
 from zabob.retirement.sim.imports.mapping import EXCLUDED_PAYEES, NO_RULE, payee_key
 
@@ -190,7 +191,10 @@ def script(
     written = waiting = 0
     for each in occasional:
         when = ", ".join(f"{month:%b %Y} {format_dollars(cents)}" for month, cents in each.paid)
-        lines += ["", f"# {_comment(each.payee)} ({_comment(each.category)}): {when}"]
+        # A payee's text may name an account ("TRANSFER TO 123456789012"):
+        # what the script writes, and the rules it makes, keep its last four.
+        payee = _comment(mask_account(each.payee))
+        lines += ["", f"# {payee} ({_comment(each.category)}): {when}"]
         # As the import resolves it (`_category_accounts`).
         account = expense_accounts.get(each.category) or each.category
         if each.category in from_budget:
@@ -229,7 +233,7 @@ def script(
             named.add(name)
             block.append(
                 f"yearly {quote(name)} {quote(account)} {format_dollars(cents)} {month.month} "
-                f"{month:%Y-%m} {quote(f'Yearly: {_comment(each.payee)} ({_comment(each.category)})')}"
+                f"{month:%Y-%m} {quote(f'Yearly: {payee} ({_comment(each.category)})')}"
                 + paid_from)
         cell = quote(_csv_cell(payee_pattern(each.payee)))
         block += [f"leave_out {quote(origin)} {cell}" for origin in each.sources or (source,)]

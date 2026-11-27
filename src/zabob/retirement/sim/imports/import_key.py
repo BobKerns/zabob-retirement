@@ -71,6 +71,10 @@ class Settings:
 SETTINGS = Settings()
 """What a new import password is made with (tests make it cheap)."""
 
+_MAX_LANES = 64
+_MAX_ITERATIONS = 64
+_MAX_MEMORY_KIB = 4 * 1024 * 1024  # 4 GiB, sixteen times the default
+
 
 def _path(data_dir: Path | str) -> Path:
     return Path(data_dir) / "imports" / FILE
@@ -84,8 +88,14 @@ def _read(data_dir: Path | str) -> tuple[bytes, Settings, str, str | None] | Non
         return None
     try:
         found = tomllib.loads(path.read_text(encoding="utf-8"))
-        return (bytes.fromhex(str(found["salt"])),
-                Settings(int(found["memory_kib"]), int(found["iterations"]), int(found["lanes"])),
+        settings = Settings(int(found["memory_kib"]), int(found["iterations"]), int(found["lanes"]))
+        # Argon2's own limits, and ones well past any key worth waiting for:
+        # an edited or badly merged file is refused here, not met as argon2's
+        # error (not a ValueError) or as an import that takes all the memory.
+        if not (1 <= settings.lanes <= _MAX_LANES and 1 <= settings.iterations <= _MAX_ITERATIONS
+                and 8 * settings.lanes <= settings.memory_kib <= _MAX_MEMORY_KIB):
+            raise ValueError(f"Argon2 settings out of range: {settings}")
+        return (bytes.fromhex(str(found["salt"])), settings,
                 bytes.fromhex(str(found["check"])).hex(),
                 str(found["set_by"]) if "set_by" in found else None)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, KeyError, ValueError, TypeError) as e:
