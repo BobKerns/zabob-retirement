@@ -571,8 +571,8 @@ files pays no income tax.
   change, and `sim report tax --return state` shows every line of a return.
   [The tax calculators guide](guides/tax-calculators.md) works an example
   through, and the video *Tax plugins* walks through it with Alice and
-  Bill: [English](https://www.youtube.com/watch?v=0Sdb4wnNczE),
-  [Japanese (日本語)](https://www.youtube.com/watch?v=YjeeQYazdT8).
+  Bill: [English](https://www.youtube.com/watch?v=STsm80knsfo),
+  [Japanese (日本語)](https://www.youtube.com/watch?v=DGS1PKurLDw).
 
 **One important thing to know before you model a sale (Part 4.5):** the
 simulator can automatically split a withdrawal into "return of capital" and
@@ -1734,8 +1734,8 @@ usual rails, how to write them and how to read the results.
 **Video.** *Rebalancing* walks through this section with Alice and Bill:
 classing every lot, a target, a strategy that draws and one that invests,
 what it did, and what it buys across an ensemble:
-[English](https://www.youtube.com/watch?v=IhaLt50RRjo),
-[Japanese (日本語)](https://www.youtube.com/watch?v=BgpUJpEFW2o).
+[English](https://www.youtube.com/watch?v=gIWRS5qTcsY),
+[Japanese (日本語)](https://www.youtube.com/watch?v=cj-kB9fUSSo).
 
 A chain draws its steps in the order you wrote them, whatever your
 portfolio looks like. A **strategy** decides instead, from the month's
@@ -1818,8 +1818,8 @@ sweeps it like the rest. See
 repo's `sim/strategies/` folder: a strategy plugin. The video *Strategy
 plugins* walks through the example below with Alice and Bill: writing it,
 checking it, and what it does across eighty futures:
-[English](https://www.youtube.com/watch?v=kqZTiWXbPQI),
-[Japanese (日本語)](https://www.youtube.com/watch?v=dKvEbKSG9RE).
+[English](https://www.youtube.com/watch?v=QKA079aG7fk),
+[Japanese (日本語)](https://www.youtube.com/watch?v=VrogrMqqlgk).
 A plugin can build on a built-in by subclassing it or by delegating to
 it. For example, Alice and Bill want guardrail to decide how much travel
 a year can afford, while their own code decides which trips fit, taken whole:
@@ -1906,8 +1906,8 @@ written against, and the built-in classes you can build on are in
 and Bill: travel tagged as optional spending, the plan as written across
 eighty futures, and the threshold, guardrail, ceiling and floor, and VPW
 strategies side by side:
-[English](https://www.youtube.com/watch?v=4EPNYQCx7AQ),
-[Japanese (日本語)](https://www.youtube.com/watch?v=AjozWD9Avj4).
+[English](https://www.youtube.com/watch?v=La93h23Vylk),
+[Japanese (日本語)](https://www.youtube.com/watch?v=7o-N8Fxv8_A).
 
 Your scheduled rules spend the same inflation-indexed amount every year,
 whatever the markets do. A **spending strategy** changes that: it owns the
@@ -2136,8 +2136,8 @@ growth when markets rise. The design is in
 **Video.** *Keeping the plan current* walks through this section with Alice
 and Bill: rolling the plan forward to January, last year's income for April's
 tax, this year's spending, and comparing the new plan with last year's:
-[English](https://www.youtube.com/watch?v=51e5NJPoSMs),
-[Japanese (日本語)](https://www.youtube.com/watch?v=y1C8tGfzdDw).
+[English](https://www.youtube.com/watch?v=zOutoFUEHPQ),
+[Japanese (日本語)](https://www.youtube.com/watch?v=rK-mBNWnniE).
 
 A plan only knows what you told it when you wrote it. Once a year, or after
 a big change, start it again from what the accounts hold now:
@@ -2163,8 +2163,8 @@ offering the run's Dec 31.
 With more than a few accounts, the balances can come from a file another
 program exported instead, and the year's spending too:
 [Importing your data](guides/importing-data.md), with its own video
-([English](https://www.youtube.com/watch?v=26xt4l_Q6wA),
-[Japanese (日本語)](https://www.youtube.com/watch?v=WGHCHMUGBxg)).
+([English](https://www.youtube.com/watch?v=-cLmweKvWUc),
+[Japanese (日本語)](https://www.youtube.com/watch?v=6zucfAfgw-8)).
 
 A new year changes what some rows mean, so `roll` deals with those too:
 
