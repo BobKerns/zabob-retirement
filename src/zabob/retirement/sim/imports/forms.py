@@ -165,16 +165,34 @@ class Flows:
 
 # An account number: digits, written whole ("123456789", "Z12345678") or in
 # groups joined by a dash or a dot ("1234-5678") or by single spaces where
-# each group is three or four digits ("4111 1111 1111 1111"), with up to
+# each group is three or four digits ("4111 1111 1111 1111"), or a card's
+# 4-6-5 or 4-6-4 grouping ("3782 822463 10005", "3056 930902 5904"), with up to
 # three letters or a dash before it (an issuer's "-41001", its own last
 # five). Bounded by digits, not by words, so "Account_123456789" and
 # "ROTH12345678" are found too. It is one when it has five digits or more
-# and isn't a date or a range of years; four or fewer are a year, a
-# last-four already, or part of a date, and are left as they are.
-_NUMBER = r"(\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)(?![0-9])"
+# and isn't a date (one whose month and day can be: "12-34-5678" is a
+# number) or a range of years; four or fewer are a year, a last-four
+# already, or part of a date, and are left as they are.
+_NUMBER = (r"(\d{4} \d{6} \d{4,5}(?![-.]?\d)|\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)"
+           r"(?![0-9])")
 _ACCOUNT_NUMBER = re.compile(r"(?<![0-9])(?:(?<![A-Za-z])[A-Za-z]{1,3}|-)?" + _NUMBER)
-_NOT_A_NUMBER = re.compile(
-    r"\d{4}[-.]\d{1,2}(?:[-.]\d{1,2})?|\d{1,2}[-.]\d{1,2}[-.]\d{2,4}|(?:19|20)\d\d-(?:19|20)\d\d")
+_YEAR_FIRST = re.compile(r"\d{4}[-.](\d{1,2})(?:[-.](\d{1,2}))?")
+_YEAR_LAST = re.compile(r"(\d{1,2})[-.](\d{1,2})[-.]\d{2,4}")
+_YEARS = re.compile(r"(?:19|20)\d\d-(?:19|20)\d\d")
+
+
+def _a_date(text: str) -> bool:
+    """Whether ``text`` can be a date (or a range of years), and so isn't
+    an account number: its month 1 to 12 and its day 1 to 31, the two in
+    either order where the year comes last."""
+    if _YEARS.fullmatch(text):
+        return True
+    if found := _YEAR_FIRST.fullmatch(text):
+        return 1 <= int(found[1]) <= 12 and (found[2] is None or 1 <= int(found[2]) <= 31)
+    if found := _YEAR_LAST.fullmatch(text):
+        first, second = int(found[1]), int(found[2])
+        return (1 <= first <= 12 and 1 <= second <= 31) or (1 <= second <= 12 and 1 <= first <= 31)
+    return False
 
 
 def mask_account(name: str, key: bytes | None = None) -> str:
@@ -187,7 +205,7 @@ def mask_account(name: str, key: bytes | None = None) -> str:
     alike. Idempotent: a masked name is its own mask."""
     def one(found: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", found.group(1))
-        if len(digits) < 5 or _NOT_A_NUMBER.fullmatch(found.group(1)):
+        if len(digits) < 5 or _a_date(found.group(1)):
             return found.group(0)
         # After a mask's own "...", a longer run takes only the digits.
         kept = ("" if found.string.endswith("...", 0, found.start()) else "...") + digits[-4:]
@@ -228,7 +246,9 @@ def _masked_notes(notes: Iterable[str], masks: Mapping[str, str], key: bytes | N
     whole = sorted((name for name, masked in masks.items() if name != masked), key=len, reverse=True)
     def masked(note: str) -> str:
         for name in whole:
-            note = note.replace(name, masks[name])
+            # Not inside an amount: an account named by its digits alone
+            # ("123456789") is in "1234567890.00" too.
+            note = re.sub(rf"(?<![0-9]){re.escape(name)}(?![0-9])", lambda _, name=name: masks[name], note)
         return _WRITTEN_WHOLE.sub(lambda found: mask_account(found.group(0), key), note)
     return tuple(masked(note) for note in notes)
 

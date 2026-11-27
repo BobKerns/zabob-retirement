@@ -3081,6 +3081,23 @@ def test_ofx_tells_apart_accounts_that_end_alike(
     assert len(names) == 2 and all(re.fullmatch(r"First Example Bank checking \.\.\.4321#[a-z]{7}", n) for n in names)
 
 
+def test_two_accounts_that_end_alike_in_separate_files_of_one_run_are_refused(
+    ofx_bank_download: Path, rewrite_download: Rewrite,
+) -> None:
+    # Read as one, a row of the second whose reference the first has would be dropped as a duplicate (#820).
+    number = re.search(rb"<ACCTID>(\d+)", ofx_bank_download.read_bytes())
+    assert number is not None
+    other = b"9" + number[1][1:]
+    assert other != number[1] and other[-4:] == number[1][-4:]
+    twin = rewrite_download(ofx_bank_download, lambda raw: raw.replace(b"<ACCTID>" + number[1], b"<ACCTID>" + other))
+    with pytest.raises(ValueError, match="one of an earlier file's would both be 'First Example Bank checking"):
+        import_sources.read_flows([ofx_bank_download, twin])
+    # The same account in two downloads is still read, and an import password tells the twins apart.
+    assert len(import_sources.read_flows([ofx_bank_download, rewrite_download(ofx_bank_download, lambda raw: raw)])
+               .transactions) > 0
+    assert len(set(import_sources.read_flows([ofx_bank_download, twin], key=bytes(32)).transactions["account"])) == 2
+
+
 def test_sim_import_transactions_notes_one_ofx_account_under_two_names(
     test_data_dir: Path, ofx_bank_download: Path, ofx_bank_later_download: Path, rewrite_download: Rewrite,
     write_import_map: MapWriter,

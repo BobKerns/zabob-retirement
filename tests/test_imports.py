@@ -604,6 +604,12 @@ def test_a_profile_reads_money_dates_and_where_the_holdings_stop(
     ("4111-1111-1111-1111", "...1111"),
     ("Checking_123456789_2026-01-05", "Checking_...6789_2026-01-05"),
     ("Checking 1234 2026-01-05", "Checking 1234 2026-01-05"),
+    # A card's 4-6-5 and 4-6-4 groupings, and runs shaped like dates that can't be (#820).
+    ("Amex 3782 822463 10005", "Amex ...0005"),
+    ("Diners 3056 930902 5904", "Diners ...5904"),
+    ("Card 12-34-5678", "Card ...5678"),
+    ("Acct 1234-56-78", "Acct ...5678"),
+    ("Opened 31-12-2026", "Opened 31-12-2026"),
 ])
 def test_an_account_number_is_kept_to_its_last_four_digits(name: str, masked: str) -> None:
     assert mask_account(name) == masked
@@ -619,6 +625,11 @@ def test_a_notes_account_names_are_masked_and_its_amounts_left() -> None:
     snapshot = Snapshot("broker", (Holding("Joint 123456789", 1234500),),
                         notes=("Joint 123456789 holds 12345.00 in cash",))
     assert masked_snapshot(snapshot).notes == ("Joint ...6789 holds 12345.00 in cash",)
+
+
+def test_a_notes_account_name_is_not_masked_inside_an_amount() -> None:
+    snapshot = Snapshot("broker", (Holding("123456789", 1234500),), notes=("123456789 holds 1234567890.00",))
+    assert masked_snapshot(snapshot).notes == ("...6789 holds 1234567890.00",)
 
 
 @pytest.mark.parametrize("written", ["...Z12345678", "...1234-5678", "...4111 1111 1111 1111"])
