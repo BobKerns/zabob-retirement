@@ -3205,6 +3205,23 @@ def quicken_category_map(test_data_dir: Path) -> Path:
 
 
 @pytest.fixture
+def import_password(monkeypatch: pytest.MonkeyPatch, test_data_dir: Path) -> Callable[[str], bytes]:
+    """Set the private copy's import password (#817): ``set("passphrase")``
+    returns the key. Argon2id is made cheap, since the real settings take
+    a second and 256 MiB on purpose."""
+    from zabob.retirement.sim.imports import import_key
+
+    monkeypatch.setattr(import_key, "SETTINGS", import_key.Settings(memory_kib=64, iterations=1, lanes=1))
+
+    def set_password(password: str) -> bytes:
+        import_key.set_password(test_data_dir, password)
+        found = import_key.key(test_data_dir)
+        assert found is not None
+        return found
+    return set_password
+
+
+@pytest.fixture
 def write_import_map(test_data_dir: Path) -> Callable[[str, str], Path]:
     """Write a mapping file under the test data dir's ``imports/``:
     ``write("quicken/accounts.csv", rows)`` or
