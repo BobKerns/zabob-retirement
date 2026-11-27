@@ -42,7 +42,9 @@ four digits of their numbers, so it saves `...4321`, never the whole number
 write a note or a description in the data repo, use an account's nickname
 or its last four digits. Read the files you download for an import from your
 downloads folder rather than saving them in the repo: they have the whole
-numbers in them.
+numbers in them. The one exception is Quicken's transaction export, which
+has none unless an account's name in Quicken does
+([Quicken](importing-data.md#quicken)).
 
 ## Two tiers
 

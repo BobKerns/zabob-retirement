@@ -13,7 +13,9 @@ import pytest
 
 from zabob.retirement.sim.imports import budget as budgets
 from zabob.retirement.sim.imports import flows, holdings, mapping, profiles, quicken, sources, transactions
-from zabob.retirement.sim.imports.forms import ORIGIN, Budget, BudgetLine, Flows, Holding, Snapshot, mask_account
+from zabob.retirement.sim.imports.forms import (
+    ORIGIN, Budget, BudgetLine, Flows, Holding, Snapshot, mask_account, masked_snapshot,
+)
 
 # ---------- the Quicken source ----------
 
@@ -590,15 +592,33 @@ def test_a_profile_reads_money_dates_and_where_the_holdings_stop(
     ("Joint brokerage", "Joint brokerage"),
     ("IRA 2019", "IRA 2019"),
     ("Opened 2026-01-05", "Opened 2026-01-05"),
+    ("IRA 2019-2026", "IRA 2019-2026"),
+    ("Account_123456789", "Account_...6789"),
+    ("123456789_IRA", "...6789_IRA"),
+    ("ROTH12345678", "ROTH...5678"),
+    ("12345678A", "...5678A"),
+    ("...12345678", "...5678"),
+    ("1234-5678", "...5678"),
+    ("123-456789", "...6789"),
+    ("4111 1111 1111 1111", "...1111"),
+    ("4111-1111-1111-1111", "...1111"),
+    ("Checking_123456789_2026-01-05", "Checking_...6789_2026-01-05"),
+    ("Checking 1234 2026-01-05", "Checking 1234 2026-01-05"),
 ])
 def test_an_account_number_is_kept_to_its_last_four_digits(name: str, masked: str) -> None:
     assert mask_account(name) == masked
     assert mask_account(masked) == masked
 
 
-def test_a_file_named_for_its_account_and_a_name_given_are_masked_too(vanguard_holdings_export: Path) -> None:
+def test_a_name_given_for_a_file_is_masked_too(vanguard_holdings_export: Path) -> None:
     given = sources.read_holdings([vanguard_holdings_export], account="Roth 87654321")
     assert {h.account for h in given.holdings} == {"Roth ...4321"}
+
+
+def test_a_notes_account_names_are_masked_and_its_amounts_left() -> None:
+    snapshot = Snapshot("broker", (Holding("Joint 123456789", 1234500),),
+                        notes=("Joint 123456789 holds 12345.00 in cash",))
+    assert masked_snapshot(snapshot).notes == ("Joint ...6789 holds 12345.00 in cash",)
 
 
 def test_two_accounts_of_one_file_that_end_alike_are_refused(fidelity_positions_export: Path) -> None:

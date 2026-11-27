@@ -161,11 +161,27 @@ class Flows:
             raise ValueError(f"{self.source}: transactions lack column(s) {missing}")
 
 
-# An account number: five or more digits, with up to three letters before
-# them (a brokerage's "Z12345678") or a dash (an issuer's "-41001", its own
-# last five). Four digits are a year, a last-four already, or part of a
-# date, and are left as they are.
-_ACCOUNT_NUMBER = re.compile(r"(?<![\w.])(?:[A-Za-z]{1,3}|-)?(\d{5,})\b")
+# An account number: digits, written whole ("123456789", "Z12345678") or in
+# groups joined by a dash or a dot ("1234-5678") or by single spaces where
+# each group is three or four digits ("4111 1111 1111 1111"), with up to
+# three letters or a dash before it (an issuer's "-41001", its own last
+# five). Bounded by digits, not by words, so "Account_123456789" and
+# "ROTH12345678" are found too. It is one when it has five digits or more
+# and isn't a date or a range of years; four or fewer are a year, a
+# last-four already, or part of a date, and are left as they are.
+_ACCOUNT_NUMBER = re.compile(
+    r"(?<![0-9])(?:(?<![A-Za-z])[A-Za-z]{1,3}|-)?"
+    r"(\d{3,4}(?: \d{3,4})+(?![-.]?\d)|\d+(?:[-.]\d+)*)(?![0-9])")
+_NOT_A_NUMBER = re.compile(
+    r"\d{4}[-.]\d{1,2}(?:[-.]\d{1,2})?|\d{1,2}[-.]\d{1,2}[-.]\d{2,4}|(?:19|20)\d\d-(?:19|20)\d\d")
+
+
+def _mask_one(found: re.Match[str]) -> str:
+    digits = re.sub(r"\D", "", found.group(1))
+    if len(digits) < 5 or _NOT_A_NUMBER.fullmatch(found.group(1)):
+        return found.group(0)
+    # After a mask's own "...", a longer run takes only the digits.
+    return ("" if found.string.endswith("...", 0, found.start()) else "...") + digits[-4:]
 
 
 def mask_account(name: str) -> str:
@@ -174,7 +190,7 @@ def mask_account(name: str) -> str:
     reader. A whole number reaches money; the last four only tell one
     account from another, which is all a mapping needs (issue #815).
     Idempotent: a masked name is its own mask."""
-    return _ACCOUNT_NUMBER.sub(lambda found: "..." + found.group(1)[-4:], name)
+    return _ACCOUNT_NUMBER.sub(_mask_one, name)
 
 
 def _masks(names: Iterable[str]) -> dict[str, str]:
@@ -186,9 +202,22 @@ def _masks(names: Iterable[str]) -> dict[str, str]:
         masked = masks[name] = mask_account(name)
         if named.setdefault(masked, name) != name:
             raise ValueError(
-                f"two of its accounts would both be {masked!r} (an account number is kept to its "
-                "last four digits), which can't be told apart; read them from separate files")
+                f"two of its accounts would both be {masked!r} (an account number is kept to its last four "
+                "digits), which no import can tell apart: kept apart, in separate files, they would share one "
+                "mapping row. Set one of them by hand instead ('sim account lot edit'), and skip it here")
     return masks
+
+
+def _masked_notes(notes: Iterable[str], masks: Mapping[str, str]) -> tuple[str, ...]:
+    """``notes`` with each account name a reader wrote into them replaced by
+    its mask. Not ``mask_account`` over the whole note, which would take an
+    amount (``12345.00``) for a number."""
+    whole = sorted((name for name, masked in masks.items() if name != masked), key=len, reverse=True)
+    def masked(note: str) -> str:
+        for name in whole:
+            note = note.replace(name, masks[name])
+        return note
+    return tuple(masked(note) for note in notes)
 
 
 def _masked_holding(holding: Holding, masks: Mapping[str, str]) -> Holding:
@@ -210,6 +239,8 @@ def masked_snapshot(snapshot: Snapshot) -> Snapshot:
         dated={day: tuple(_masked_holding(h, masks) for h in held_then)
                for day, held_then in snapshot.dated.items()},
         unaccounted={masks[name]: why for name, why in snapshot.unaccounted.items()},
+        notes=_masked_notes(snapshot.notes, masks),
+        dated_notes={day: _masked_notes(said, masks) for day, said in snapshot.dated_notes.items()},
     )
 
 
@@ -220,7 +251,7 @@ def masked_flows(flows: Flows) -> Flows:
     masks = _masks(name for name in frame["account"] if isinstance(name, str))
     frame["account"] = frame["account"].map(lambda name: masks.get(name, name) if isinstance(name, str) else name)
     frame["transfer"] = frame["transfer"].map(lambda name: mask_account(name) if isinstance(name, str) else name)
-    return dataclasses.replace(flows, transactions=frame)
+    return dataclasses.replace(flows, transactions=frame, notes=_masked_notes(flows.notes, masks))
 
 
 @dataclass(frozen=True)

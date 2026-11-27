@@ -2520,6 +2520,19 @@ def test_sim_import_transactions_dry_run_shows_the_card_and_writes_nothing(
     assert not _generated(test_data_dir) and "card_payment_liability_card" not in _rules(test_data_dir)
 
 
+def test_sim_import_transactions_says_why_a_mapping_with_a_whole_account_number_is_refused(
+    card_import: Callable[..., Result], write_import_map: MapWriter,
+) -> None:
+    # Another source's file, read only to find the cards: a message, not a traceback (#815).
+    write_import_map("fidelity/accounts.csv", "111111111,,skip,,,\n")
+
+    result = card_import()
+
+    assert result.exit_code == 1 and result.exception is not None
+    assert isinstance(result.exception, SystemExit), result.exception
+    assert "whole account number" in result.output and "'...1111'" in result.output
+
+
 def test_sim_import_transactions_notes_a_card_with_no_account_away_from_a_terminal(
     test_data_dir: Path, card_import: Callable[..., Result],
 ) -> None:
