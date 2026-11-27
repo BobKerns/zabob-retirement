@@ -26,6 +26,7 @@ import datetime as dt
 import html
 import io
 import re
+from collections import Counter
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,6 +44,7 @@ from zabob.retirement.sim.imports.forms import (
     Flows,
     Holding,
     Snapshot,
+    mask_account,
 )
 from zabob.retirement.sim.imports.holdings import format_dollars
 from zabob.retirement.sim.imports.mapping import payee_key
@@ -355,9 +357,11 @@ def _kind(statement: Element) -> str:
 
 def _account(root: Element, statement: Element) -> str:
     """How a statement's account is named: the institution, the account's
-    type (a bank account's own, ``card`` or ``investment``), and the last
-    four digits of the account's number. The whole number stays out of the
-    mapping files.
+    type (a bank account's own, ``card`` or ``investment``), and the
+    account's number, as ``...<number>``. The whole number is only in
+    memory: ``sources`` masks it to its last four digits, with a fingerprint
+    of it under an import password (``forms.mask_account``), before anything
+    keeps it or shows it.
 
     The mappings and the dropping of duplicates go by the name, so it
     should be the same in every download of the account. It is made from
@@ -374,36 +378,28 @@ def _account(root: Element, statement: Element) -> str:
         or _text(own, "BROKERID")
     # A card and a brokerage account of one institution may end alike too.
     kind = {"CCSTMTRS": "card", _INVESTMENT: "investment"}.get(statement.tag) or _kind(statement).lower()
-    return " ".join(part for part in (institution, kind, f"...{number[-4:]}") if part)
+    return " ".join(part for part in (institution, kind, f"...{number}") if part)
 
 
 def _accounts(path: Path, root: Element, statements: list[Element]) -> list[str]:
-    """Each statement's account name. Refused: two accounts of one file
-    that would get one name (one institution, one type, the same last four
-    digits), since read as one each would take the other's mapping and
-    lose transactions as the other's duplicates; and one account with two
+    """Each statement's account name. Refused: one account with two
     statements in the file, which would be counted twice; and a statement
     whose own group gives no number, since every such account, of any
     institution, would have one name (a group left unclosed reads so: it
-    is an empty value, and what was in it is beside it)."""
+    is an empty value, and what was in it is beside it). Two accounts that
+    end alike are refused where ``sources`` masks the names."""
     for statement in statements:
         if not _text(_own(statement), "ACCTID"):
             raise ValueError(
                 f"{path}: not an OFX file that can be read: a statement doesn't say which account it is "
                 f"(no ACCTID in its {_OWN[statement.tag]})")
     names = [_account(root, each) for each in statements]
-    numbers: dict[str, str] = {}
-    for name, statement in zip(names, statements, strict=True):
-        number = _text(_own(statement), "ACCTID")
-        if name not in numbers:
-            numbers[name] = number
-        elif numbers[name] == number:
+    # Two accounts that end alike are refused where the names are masked
+    # (sources), unless an import password tells them apart.
+    for name, count in Counter(names).items():
+        if count > 1:
             raise ValueError(
-                f"{path}: it has more than one statement of {name!r}, which would be counted twice")
-        else:
-            raise ValueError(
-                f"{path}: two of its accounts would both be {name!r}, which can't be told apart "
-                "by the institution, the type and the last four digits; they can't be read from one file")
+                f"{path}: it has more than one statement of {mask_account(name)!r}, which would be counted twice")
     return names
 
 
