@@ -8,8 +8,8 @@ writes the scenario's own files from it.
 
 **Video.** *Importing your data* (video 11a) walks through this guide with
 Alice and Bill and a Quicken export:
-[English](https://www.youtube.com/watch?v=KHS9dpUaHFc),
-[Japanese (日本語)](https://www.youtube.com/watch?v=Dby3vYmfFPA).
+[English](https://www.youtube.com/watch?v=26xt4l_Q6wA),
+[Japanese (日本語)](https://www.youtube.com/watch?v=WGHCHMUGBxg).
 
 ## Which path is yours
 
