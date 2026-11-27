@@ -26,12 +26,13 @@ scenes = [
 ]
 
 [ja]
-video = "mF9CMkimH80"
-uploaded = 2026-11-23T14:15:14Z
-snippet = "71a383e1a27197d0"
+video = "7Qku6qGmjBM"
+uploaded = 2026-11-27T09:14:04Z
+snippet = "733ce1137f9cf470"
+pending = ["captions"]
 scenes = [
-  ["title", 17.14],
-  ["skip", 33.38],
+  ["title", 20.17],
+  ["skip", 48.06],
   ["why", 35.28],
   ["turn-on", 35.31],
   ["linux-user", 20.70],
@@ -41,6 +42,6 @@ scenes = [
   ["explorer", 27.27],
   ["vscode", 32.22],
   ["vscode-window", 36.99],
-  ["ready", 26.13],
+  ["ready", 26.52],
   ["end", 6.99],
 ]
