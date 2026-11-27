@@ -5,17 +5,16 @@
 # the next publish finishes (#695).
 
 [en]
-video = "51e5NJPoSMs"
-uploaded = 2026-11-26T20:44:22Z
-snippet = "8ef79e0cd82076c9"
-pending = ["thumbnail", "captions", "playlist"]
+video = "zOutoFUEHPQ"
+uploaded = 2026-11-27T08:22:55Z
+snippet = "0bc87d821c74b446"
 scenes = [
   ["title", 12.02],
   ["contents", 16.81],
   ["why", 29.25],
   ["roll", 111.42],
-  ["taxes", 55.56],
-  ["spending", 36.48],
+  ["taxes", 55.48],
+  ["spending", 36.60],
   ["compare", 44.28],
   ["after", 37.29],
   ["what-ifs", 28.58],
@@ -26,16 +25,16 @@ scenes = [
 ]
 
 [ja]
-video = "y1C8tGfzdDw"
-uploaded = 2026-11-25T10:34:42Z
-snippet = "2ad5ba93bcd48ea6"
+video = "rK-mBNWnniE"
+uploaded = 2026-11-27T08:23:12Z
+snippet = "c51f76f7e86220fa"
 scenes = [
   ["title", 14.69],
   ["contents", 18.22],
   ["why", 33.34],
   ["roll", 124.00],
-  ["taxes", 55.36],
-  ["spending", 36.36],
+  ["taxes", 55.48],
+  ["spending", 36.60],
   ["compare", 46.21],
   ["after", 39.52],
   ["what-ifs", 31.70],
