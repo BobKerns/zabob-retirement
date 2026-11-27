@@ -510,10 +510,10 @@ picture doesn't reach YouTube. Each language is its own video. An upload:
 - adds it to the language's playlist (`playlist` in `youtube.toml`, by
   title; the playlist must exist);
 - records its id in `published.toml` beside the script the moment the
-  upload is in, before the steps above it, so an error or a Ctrl-C after
-  it can't lose the id (#828). Commit that file:
-  ids are public, and they're how a later `publish` updates the video
-  instead of uploading it again, and how descriptions link to it.
+  upload is in, ahead of its thumbnail, captions and playlist, so an error
+  or a Ctrl-C after it can't lose the id (#828). Commit that file: ids
+  are public, and they're how a later `publish` updates the video instead
+  of uploading it again, and how descriptions link to it.
 
 A video already up only has its title, description and tags updated, and
 the same goes for the videos before and after it, whose descriptions link
