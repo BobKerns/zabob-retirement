@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import datetime as dt
-from collections.abc import Mapping
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -14,7 +16,7 @@ import pandas as pd
 __all__ = [
     "Activity",
     "CORRECTS", "FLOW_COLUMNS", "ORIGIN", "REFERENCE", "REMOVES", "Budget", "BudgetLine", "Flows", "Holding",
-    "Snapshot", "read_rows",
+    "Snapshot", "mask_account", "masked_flows", "masked_snapshot", "read_rows",
 ]
 
 
@@ -157,6 +159,68 @@ class Flows:
         missing = [c for c in FLOW_COLUMNS if c not in self.transactions.columns]
         if missing:
             raise ValueError(f"{self.source}: transactions lack column(s) {missing}")
+
+
+# An account number: five or more digits, with up to three letters before
+# them (a brokerage's "Z12345678") or a dash (an issuer's "-41001", its own
+# last five). Four digits are a year, a last-four already, or part of a
+# date, and are left as they are.
+_ACCOUNT_NUMBER = re.compile(r"(?<![\w.])(?:[A-Za-z]{1,3}|-)?(\d{5,})\b")
+
+
+def mask_account(name: str) -> str:
+    """``name`` with every account number in it cut to its last four digits,
+    as ``...1234``: what an outside account is called everywhere past the
+    reader. A whole number reaches money; the last four only tell one
+    account from another, which is all a mapping needs (issue #815).
+    Idempotent: a masked name is its own mask."""
+    return _ACCOUNT_NUMBER.sub(lambda found: "..." + found.group(1)[-4:], name)
+
+
+def _masks(names: Iterable[str]) -> dict[str, str]:
+    """Each of ``names`` and its mask. Two names of one file that would get
+    one mask are refused: read as one, each would take the other's mapping."""
+    masks: dict[str, str] = {}
+    named: dict[str, str] = {}
+    for name in dict.fromkeys(names):
+        masked = masks[name] = mask_account(name)
+        if named.setdefault(masked, name) != name:
+            raise ValueError(
+                f"two of its accounts would both be {masked!r} (an account number is kept to its "
+                "last four digits), which can't be told apart; read them from separate files")
+    return masks
+
+
+def _masked_holding(holding: Holding, masks: Mapping[str, str]) -> Holding:
+    hints = dict(holding.hints)
+    if "account_name" in hints:
+        hints["account_name"] = mask_account(hints["account_name"])
+    return dataclasses.replace(holding, account=masks[holding.account], hints=hints)
+
+
+def masked_snapshot(snapshot: Snapshot) -> Snapshot:
+    """``snapshot`` with its outside accounts masked (``mask_account``)."""
+    held = [h.account for h in (*snapshot.holdings, *(h for hs in snapshot.dated.values() for h in hs))]
+    masks = _masks([*held, *snapshot.complete, *snapshot.activity, *snapshot.unaccounted])
+    return dataclasses.replace(
+        snapshot,
+        holdings=tuple(_masked_holding(h, masks) for h in snapshot.holdings),
+        complete=frozenset(masks[name] for name in snapshot.complete),
+        activity={masks[name]: activity for name, activity in snapshot.activity.items()},
+        dated={day: tuple(_masked_holding(h, masks) for h in held_then)
+               for day, held_then in snapshot.dated.items()},
+        unaccounted={masks[name]: why for name, why in snapshot.unaccounted.items()},
+    )
+
+
+def masked_flows(flows: Flows) -> Flows:
+    """``flows`` with its outside accounts masked (``mask_account``): each
+    row's account, and the account a transfer names."""
+    frame = flows.transactions.copy()
+    masks = _masks(name for name in frame["account"] if isinstance(name, str))
+    frame["account"] = frame["account"].map(lambda name: masks.get(name, name) if isinstance(name, str) else name)
+    frame["transfer"] = frame["transfer"].map(lambda name: mask_account(name) if isinstance(name, str) else name)
+    return dataclasses.replace(flows, transactions=frame)
 
 
 @dataclass(frozen=True)

@@ -86,6 +86,16 @@ is shown again: read a row's number from the latest listing.
 You can still edit the files by hand. `sim account rename` and
 `sim account lot rename` follow into these files by themselves.
 
+**No import keeps a whole account number.** Wherever an outside account's
+name has an account number in it (a column of the file, the file's name, or
+a name you type), only its last four digits are kept, as `...4321`, in the
+saved answers and in what the import prints. Two accounts of one file that
+end in the same four digits can't be told apart, so such a file is refused:
+download each account on its own. A row you write by hand with a whole number
+is refused too, with the name to write instead. Keep the downloads themselves
+outside the data repo, since they have the whole numbers in them; see
+[What doesn't belong in the data repo](data-repo-remote.md#what-doesnt-belong-in-the-data-repo).
+
 ```text
 imports/
   expense_accounts.csv     category -> expense account ('-' for no rule)

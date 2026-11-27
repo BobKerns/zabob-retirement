@@ -13,7 +13,7 @@ import pytest
 
 from zabob.retirement.sim.imports import budget as budgets
 from zabob.retirement.sim.imports import flows, holdings, mapping, profiles, quicken, sources, transactions
-from zabob.retirement.sim.imports.forms import ORIGIN, Budget, BudgetLine, Flows, Holding, Snapshot
+from zabob.retirement.sim.imports.forms import ORIGIN, Budget, BudgetLine, Flows, Holding, Snapshot, mask_account
 
 # ---------- the Quicken source ----------
 
@@ -567,8 +567,8 @@ def test_a_profile_reads_money_dates_and_where_the_holdings_stop(
     assert (fidelity.source, fidelity.as_of) == ("fidelity", dt.date(2026, 1, 5))
     # The notes after the empty row are not holdings; '**' is Fidelity's mark.
     assert [(h.account, h.asset, h.value_cents, h.cost_basis_cents) for h in fidelity.holdings] == [
-        ("111111111", "FXAIX", 20010000, 15000000), ("111111111", "FSKAX", 7500000, 8000000),
-        ("111111111", "SPAXX", 4490000, None), ("222222222", "FXAIX", 9000000, 6000000)]
+        ("...1111", "FXAIX", 20010000, 15000000), ("...1111", "FSKAX", 7500000, 8000000),
+        ("...1111", "SPAXX", 4490000, None), ("...2222", "FXAIX", 9000000, 6000000)]
     assert fidelity.holdings[0].hints["account_name"] == "Joint brokerage"
 
     vanguard = sources.read_holdings([vanguard_holdings_export])
@@ -576,8 +576,49 @@ def test_a_profile_reads_money_dates_and_where_the_holdings_stop(
     # The account is the file's name; the basis is the balance less the gain,
     # and a dash is no gain to take off.
     assert [(h.account, h.asset, h.cost_basis_cents) for h in vanguard.holdings] == [
-        ("12345678", "VTSAX", 30000000), ("12345678", "VBTLX", 11642362),
-        ("12345678", "VMFXX", None)]
+        ("...5678", "VTSAX", 30000000), ("...5678", "VBTLX", 11642362),
+        ("...5678", "VMFXX", None)]
+
+
+# ---------- account numbers stay out of the data repo (#815) ----------
+
+@pytest.mark.parametrize(("name", "masked"), [
+    ("Z12345678", "...5678"),
+    ("-41001", "...1001"),
+    ("holdings 12345678", "holdings ...5678"),
+    ("First Example Bank checking ...4321", "First Example Bank checking ...4321"),
+    ("Joint brokerage", "Joint brokerage"),
+    ("IRA 2019", "IRA 2019"),
+    ("Opened 2026-01-05", "Opened 2026-01-05"),
+])
+def test_an_account_number_is_kept_to_its_last_four_digits(name: str, masked: str) -> None:
+    assert mask_account(name) == masked
+    assert mask_account(masked) == masked
+
+
+def test_a_file_named_for_its_account_and_a_name_given_are_masked_too(vanguard_holdings_export: Path) -> None:
+    given = sources.read_holdings([vanguard_holdings_export], account="Roth 87654321")
+    assert {h.account for h in given.holdings} == {"Roth ...4321"}
+
+
+def test_two_accounts_of_one_file_that_end_alike_are_refused(fidelity_positions_export: Path) -> None:
+    text = fidelity_positions_export.read_text(encoding="utf-8")
+    fidelity_positions_export.write_text(text.replace("222222222", "991111111"), encoding="utf-8")
+    with pytest.raises(sources.SourceError, match=r"both be '\.\.\.1111'"):
+        sources.read_holdings([fidelity_positions_export])
+
+
+@pytest.mark.parametrize(("name", "rows", "load"), [
+    (mapping.ACCOUNTS, "111111111,,skip,,,\n", mapping.load_account_map),
+    (mapping.LOT_SPLITS, "111111111,FXAIX,index,,\n", mapping.load_lot_splits),
+    (mapping.SPLITS, "Shopping,111111111,Gifts\n", mapping.load_category_splits),
+])
+def test_a_mapping_row_with_a_whole_account_number_is_refused(
+    write_import_map: Callable[[str, str], Path], name: str, rows: str, load: Callable[[Path], object],
+) -> None:
+    path = write_import_map(f"fidelity/{name}", rows)
+    with pytest.raises(ValueError, match=r"row 2: .*whole account number.*'\.\.\.1111'"):
+        load(path)
 
 
 @pytest.mark.parametrize(("text", "problem"), [
@@ -1008,7 +1049,7 @@ def test_a_cards_two_layouts_are_one_profile_and_a_reference_is_counted_once(
 
     plain = sources.read_flows([short], imports=imports).transactions
     assert (plain["amount_cents"].tolist(), plain["account"].tolist(), plain["category"].tolist()) == (
-        [-6000], ["-12345"], [""])
+        [-6000], ["...2345"], [""])
 
     # The two detailed files share January 25: by its reference it is one charge.
     both = sources.read_flows([detailed, february], imports=imports)
@@ -1039,7 +1080,7 @@ def test_a_file_without_references_may_not_overlap_one_with_them(
     detailed, february, short = card_exports
     imports = test_data_dir / "imports"
     # February 10 is in both, and the short download has no reference to match it by.
-    with pytest.raises(ValueError, match="both have transactions of '-12345' between 2026-02-10"):
+    with pytest.raises(ValueError, match="both have transactions of '...2345' between 2026-02-10"):
         sources.read_flows([february, short], imports=imports)
     with pytest.raises(ValueError, match="both have transactions"):
         sources.read_flows([short, february], imports=imports)
