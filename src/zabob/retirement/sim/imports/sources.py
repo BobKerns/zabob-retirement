@@ -275,35 +275,37 @@ def unnamed(
     return source, [] if held is None or held.unnamed is None else [path for path in paths if held.unnamed(path)]
 
 
-def _masked[T](path: Path, mask: Callable[[T], T], read: T) -> T:
-    """``read``, from ``path``, with its outside accounts masked; two that
-    would get one name are refused as ``path``'s."""
+def _masked[T](path: Path, mask: Callable[[T, bytes | None], T], read: T, key: bytes | None) -> T:
+    """``read``, from ``path``, with its outside accounts masked (under the
+    import ``key``, when the data repo has one); two that would get one name
+    are refused as ``path``'s."""
     try:
-        return mask(read)
+        return mask(read, key)
     except ValueError as e:
         raise SourceError(f"{path}: {e}") from None
 
 
 def read_holdings(
     paths: Sequence[Path], name: str | Source | None = None, imports: Path | None = None,
-    *, account: str | None = None,
+    *, account: str | None = None, key: bytes | None = None,
 ) -> Snapshot:
     """One snapshot from every file in ``paths``, read with source ``name``
     (or the one their layout says). The files must agree on the date.
-    ``account`` names the outside account of a file that doesn't say."""
+    ``account`` names the outside account of a file that doesn't say.
+    ``key`` is the data repo's import key (``import_key.key``), if it has one."""
     source = _resolve(paths, name, "holdings", imports)
     assert source.holdings is not None
     if account is None:
         snapshots = []
         for path in paths:
-            snapshots.append(_masked(path, masked_snapshot, source.holdings.read(path)))
+            snapshots.append(_masked(path, masked_snapshot, source.holdings.read(path), key))
     elif source.holdings.read_named is None:
         raise SourceError(
             f"a {source.name} file names its accounts itself, so --outside-account doesn't apply")
     elif len(paths) > 1:
         raise SourceError("--outside-account names one file's account; import the files one at a time")
     else:
-        snapshots = [_masked(paths[0], masked_snapshot, source.holdings.read_named(paths[0], account))]
+        snapshots = [_masked(paths[0], masked_snapshot, source.holdings.read_named(paths[0], account), key)]
     dates = {snapshot.as_of for snapshot in snapshots if snapshot.as_of is not None}
     if len(dates) > 1:
         raise SourceError(
@@ -335,7 +337,7 @@ def read_holdings(
 def read_flows(
     paths: Sequence[Path], name: str | None = None, imports: Path | None = None,
     *, account: str | Sequence[str] | None = None,
-    ask_account: Callable[[Path, str], str] | None = None,
+    ask_account: Callable[[Path, str], str] | None = None, key: bytes | None = None,
 ) -> Flows:
     """Every file's transactions, in order, each read with source ``name``
     (or the one its own layout says: the files of one run may come from
@@ -350,7 +352,7 @@ def read_flows(
     the files' order. Without it ``ask_account(path, source name)`` is asked
     for each, when given; otherwise one such file is the account of its own
     name, and several are refused, since the names of a bank's downloads
-    don't tell its accounts apart."""
+    don't tell its accounts apart. ``key`` is as for ``read_holdings``."""
     given = [account] if isinstance(account, str) else list(account or ())
     known = table(imports)
     found = [known.get(name, "transactions") if name is not None
@@ -396,7 +398,7 @@ def read_flows(
             read = source.transactions.read(path)
         # Every source's, and every name given for a file: an outside
         # account is its last four digits from here on (#815).
-        read = _masked(path, masked_flows, read)
+        read = _masked(path, masked_flows, read, key)
         frame = read.transactions
         notes += read.notes
         frame = frame.assign(**{ORIGIN: source.name})
@@ -405,23 +407,23 @@ def read_flows(
         days: dict[tuple[str, str], list[dt.date]] = {}
         bare: set[tuple[str, str]] = set()
         for each, stamp, reference in zip(frame["account"], frame["date"], frame[REFERENCE], strict=True):
-            key = (source.name, str(each))
-            days.setdefault(key, []).append(stamp.date())
+            outside = (source.name, str(each))
+            days.setdefault(outside, []).append(stamp.date())
             if not reference:
-                bare.add(key)
-        for key, dates in days.items():
+                bare.add(outside)
+        for outside, dates in days.items():
             first, last = min(dates), max(dates)
-            for start, end, referenced, other in spans.setdefault(key, []):
+            for start, end, referenced, other in spans.setdefault(outside, []):
                 # Where both files give every row its reference, a row in
                 # both is found below and counted once. A file without them
                 # (a card's short download) can't be matched row to row.
-                if first <= end and start <= last and not (referenced and key not in bare):
+                if first <= end and start <= last and not (referenced and outside not in bare):
                     raise SourceError(
                         f"{paths[other]} and {paths[number]} both have transactions of "
-                        f"{key[1]!r} between {max(first, start)} and {min(last, end)}; "
+                        f"{outside[1]!r} between {max(first, start)} and {min(last, end)}; "
                         "import each period of an outside account from one file")
-            spans[key].append((first, last, key not in bare, number))
-        apart.update((source.name, *pair) for pair in itertools.combinations(sorted(key[1] for key in days), 2))
+            spans[outside].append((first, last, outside not in bare, number))
+        apart.update((source.name, *pair) for pair in itertools.combinations(sorted(outside[1] for outside in days), 2))
         fresh, said = references.sift(source.name, path, frame)
         notes += said
         duplicates += fresh.count(False)

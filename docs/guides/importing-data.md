@@ -93,9 +93,30 @@ saved answers and in what the import prints. A number in groups
 (`1234-5678`, `4111 1111 1111 1111`) counts as one; a date doesn't.
 
 Two accounts of one source whose numbers end in the same four digits can't
-be told apart. In one file they are refused; in separate files they would
-share one saved answer, each taking the other's. That's rare (about one pair
-in ten thousand), but if you have such a pair, import one of them and set the
+be told apart by the last four alone. In one file they are refused; in
+separate files they would share one saved answer, each taking the other's.
+An **import password** tells them apart:
+
+```sh
+sim login --import-password
+```
+
+With one set, each account number also gets a short fingerprint, as
+`...4321#kqzmtbe`, made from the whole number and the password, which
+can't be turned back into the number without the password. The first person
+to give it sets it, and the data repo records that it is set and by whom (in
+`imports/import_password.toml`: commit it), never the password itself. Give
+the others in the household the same password; each gives it once on their
+own computer, which keeps a key made from it, never the password. It is used
+only by imports: lose it and the only cost is answering the import's
+questions again. Answers saved before it was set are asked about again too.
+
+Use a long passphrase. Anyone with a copy of the data repo can try guesses
+at it as fast as their computer allows, with no lockout and nobody watching,
+as a bank has; the password is made slow to check on purpose (about a second
+a guess), but only its length keeps it out of reach.
+
+Without a password, if you have such a pair, import one of them and set the
 other by hand (`sim account lot edit`), answering `skip` for it.
 
 A row you write by hand with a whole number is refused too, with the name

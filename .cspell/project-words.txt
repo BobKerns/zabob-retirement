@@ -240,6 +240,7 @@ klinger
 kokoro
 Kolmogorov
 KPERS
+kqzmtbe
 kstest
 kumo
 labelbottom

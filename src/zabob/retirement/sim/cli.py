@@ -157,6 +157,7 @@ from zabob.retirement.sim.loader import (
 from zabob.retirement.sim.imports import flows as import_flows_
 from zabob.retirement.sim.imports import forms as import_forms
 from zabob.retirement.sim.imports import holdings as import_holdings_
+from zabob.retirement.sim.imports import import_key as import_key_
 from zabob.retirement.sim.imports import mapping as import_mapping
 from zabob.retirement.sim.imports import sources as import_sources_
 from zabob.retirement.sim.imports import budget as import_budget_
@@ -6125,12 +6126,49 @@ _DATA_HELP = "Make this data repo (or its sim/ folder) yours: the one every comm
 @click.option("--scenario", type=completion.SCENARIO, default=None, help="Make this scenario current, too.")
 @click.option("--data", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
               help=_DATA_HELP)
-def login_command(name: str | None, scenario: str | None, data: Path | None) -> None:
+@click.option("--import-password", "import_password", is_flag=True,
+              help="Give the data repo's import password (asked for, not shown), or set its first one.")
+def login_command(name: str | None, scenario: str | None, data: Path | None, import_password: bool) -> None:
     """Say who you are (#773): NAME, by default your login name. It is the
     same in every data repo, and names who made or changed things; it isn't
     one of the household's people. Shows your data repo and current
-    scenario after."""
+    scenario after.
+
+    --import-password (#817) asks for the data repo's import password. It
+    tells apart two accounts whose numbers end in the same four digits, by a
+    fingerprint of the whole number that can't be undone without it, so no
+    whole account number reaches the data repo. Everyone in the household
+    gives the same one; the first to give it sets it. Only a key made from
+    it is kept, in your own settings, and it is used only by imports:
+    losing it means only answering the import's questions again."""
     _switch(name or login_name(), data, scenario)
+    if import_password:
+        _set_import_password(_data_repo_option(data) if data is not None else _data_dir_from_setting())
+
+
+def _data_dir_from_setting() -> Path:
+    setting = data_dir_setting()
+    if not setting:
+        raise click.ClickException("no data repo to give the import password for: give --data DIR")
+    return Path(setting).resolve()
+
+
+def _set_import_password(data_dir: Path) -> None:
+    first = not import_key_.is_set(data_dir)
+    if first:
+        click.echo("This data repo has no import password yet; the one you give becomes it. Use a long "
+                   "passphrase: anyone with a copy of the data repo can try guesses at it without limit.")
+    password = click.prompt("Import password", hide_input=True, confirmation_prompt=first)
+    click.echo("Making the key (a second or so, on purpose)...")
+    try:
+        made = import_key_.set_password(data_dir, password)
+    except import_key_.ImportKeyError as e:
+        raise click.ClickException(str(e)) from None
+    if made:
+        click.echo(f"Import password set: {import_mapping.imports_dir(data_dir) / import_key_.FILE} records "
+                   "that it is (never the password); commit it, and give the others the password.")
+    else:
+        click.echo("Import password given: imports here tell apart accounts that end alike.")
 
 
 @sim_group_command.command("switch")
@@ -10141,7 +10179,7 @@ def _outside_label(holdings: Sequence[import_forms.Holding], *, whole: bool) -> 
 
 
 def _ask_outside_account(
-    source: import_sources_.Source, path: Path, saved: import_mapping.AccountMap,
+    source: import_sources_.Source, path: Path, saved: import_mapping.AccountMap, key: bytes | None = None,
 ) -> str:
     """Which outside account ``path`` is, asked for: nothing in the file or
     its name says. One the source's mapping has, or a new name for it."""
@@ -10151,7 +10189,7 @@ def _ask_outside_account(
     # What the file calls itself (the name a report was saved under), offered.
     called = next((h.hints["report"] for h in read if h.hints.get("report")), None)
     # Offered as it will be saved: an account number kept to its last four (#815).
-    called = called and import_forms.mask_account(called)
+    called = called and import_forms.mask_account(called, key)
     known = list(dict.fromkeys(outside for outside, _ in saved.entries))
     click.echo(f"{path.name} doesn't say which {source.name} account it is"
                + (f"; it holds {_some(held)}." if held else "."))
@@ -10373,12 +10411,12 @@ def _show_generated_changes(
         if (count := sum(c.status == status for c in changes)))
 
 
-def _ask_transactions_account(path: Path, source: str) -> str:
+def _ask_transactions_account(path: Path, source: str, key: bytes | None = None) -> str:
     """Which outside account a transactions file is, when nothing in it or
     its name says: a bank names its downloads alike, whatever the account."""
     click.echo(f"{path.name} ({source}) doesn't say which account it is.")
     while True:
-        answer = _prompt_with_completion("  account", default=import_forms.mask_account(path.stem)).strip()
+        answer = _prompt_with_completion("  account", default=import_forms.mask_account(path.stem, key)).strip()
         if answer:
             return answer
 
@@ -10610,9 +10648,11 @@ def import_transactions(
         files = (default_file,)
     amazon_state_path = amazon_state_dir or data_repo_root / "state"
     try:
+        key = import_key_.key(data_dir_p)
         flows = import_sources_.read_flows(
             files, layout, import_mapping.imports_dir(data_dir_p), account=outside_account,
-            ask_account=_ask_transactions_account if _interactive() and not summary else None)
+            ask_account=functools.partial(_ask_transactions_account, key=key) if _interactive() and not summary
+            else None, key=key)
     except ValueError as e:
         raise click.ClickException(str(e)) from None
     if flows.transactions.empty:
@@ -14847,14 +14887,15 @@ def import_holdings(
     imports = import_mapping.imports_dir(data_dir_p)
     asked_account = False
     try:
+        key = import_key_.key(data_dir_p)
         source, unnamed = import_sources_.unnamed(files, layout, imports)
         if unnamed and outside_account is None and len(files) == 1 and _interactive():
             outside_account = _ask_outside_account(
                 source, files[0],
                 import_mapping.load_account_map(
-                    import_mapping.source_dir(data_dir_p, source.name) / import_mapping.ACCOUNTS))
+                    import_mapping.source_dir(data_dir_p, source.name) / import_mapping.ACCOUNTS), key)
             asked_account = True
-        snapshot = import_sources_.read_holdings(files, source, imports, account=outside_account)
+        snapshot = import_sources_.read_holdings(files, source, imports, account=outside_account, key=key)
         # A report over a period: the numbers of the day the plan's are as of.
         snapshot = import_holdings_.nearest(
             snapshot, date(scenario_start.year - 1, 12, 31) if year_end else scenario_start.replace(day=1))

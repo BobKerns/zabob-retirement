@@ -38,7 +38,9 @@ of that line, however many copies there are.
 The simulator never needs the second kind. An account needs only a name you
 choose, and every import tells an institution's accounts apart by the last
 four digits of their numbers, so it saves `...4321`, never the whole number
-([Importing your data](importing-data.md#how-every-import-works)). When you
+([Importing your data](importing-data.md#how-every-import-works)). An import
+password, if you set one, is kept the same way: the data repo records only
+that it is set. When you
 write a note or a description in the data repo, use an account's nickname
 or its last four digits. Read the files you download for an import from your
 downloads folder rather than saving them in the repo: they have the whole
