@@ -18,10 +18,12 @@ neighboring videos, and a link to each other language's version from its
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tomllib
@@ -165,8 +167,12 @@ class Published:
         # Written beside it and renamed over it, so a run that dies mid-write
         # leaves the last whole file, not half of one (#828).
         temp = self.path.with_name(self.path.name + ".tmp")
-        temp.write_text("\n".join(out) + "\n", encoding="utf-8")
-        temp.replace(self.path)
+        try:
+            temp.write_text("\n".join(out) + "\n", encoding="utf-8")
+            temp.replace(self.path)
+        except BaseException:
+            temp.unlink(missing_ok=True)  # not left in docs/videos for a `git add` to pick up
+            raise
 
 
 def load_published(folder: Path) -> Published:
@@ -474,6 +480,14 @@ def _event(line: str) -> dict[str, Any] | None:
     return event if isinstance(event, dict) and ("uploaded" in event or "done" in event) else None
 
 
+def _stop(proc: subprocess.Popen[str]) -> None:
+    if sys.platform == "win32":
+        proc.kill()
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+
+
 def run_worker(request: dict[str, Any], repo: Path, on_event: Event = lambda _: None) -> dict[str, Any]:
     """Send one request to the YouTube worker (its own ``uv run --script`` environment).
 
@@ -484,15 +498,28 @@ def run_worker(request: dict[str, Any], repo: Path, on_event: Event = lambda _: 
     # stderr passes through as it comes: the sign-in URL on first use, and
     # the upload's progress.
     lines: list[str] = []
+    # Its own process group, so stopping it stops the Python that `uv run`
+    # starts too, not just uv (on Windows, uv's job object takes it along).
     with subprocess.Popen(["uv", "run", "--quiet", "--script", str(worker)], stdin=subprocess.PIPE,
-                          stdout=subprocess.PIPE, text=True, encoding="utf-8") as proc:
+                          stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                          start_new_session=sys.platform != "win32") as proc:
         assert proc.stdin is not None and proc.stdout is not None
-        proc.stdin.write(json.dumps(request))
-        proc.stdin.close()
-        for line in proc.stdout:
-            lines.append(line)
-            if (event := _event(line)) is not None:
-                on_event(event)
+        try:
+            # A worker that exits before reading (uv can't install its
+            # dependencies, say) is reported from its answer, not as a broken pipe.
+            with contextlib.suppress(BrokenPipeError):
+                proc.stdin.write(json.dumps(request))
+                proc.stdin.close()
+            for line in proc.stdout:
+                lines.append(line)
+                if (event := _event(line)) is not None:
+                    on_event(event)
+        except BaseException:
+            # As subprocess.run does: Popen's exit leaves the worker running
+            # after a Ctrl-C (or a failed save), and it could then finish an
+            # upload whose id no one reads.
+            _stop(proc)
+            raise
     return worker_answer("".join(lines), proc.returncode)
 
 

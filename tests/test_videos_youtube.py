@@ -8,6 +8,7 @@ import json
 import py_compile
 import shutil
 import sys
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -307,16 +308,52 @@ def test_a_finish_that_dies_keeps_the_steps_it_did(videos_root: Path, tmp_path: 
 
 
 def test_run_worker_passes_on_each_step_as_it_comes(tmp_path: Path) -> None:
-    stub = tmp_path / "scripts" / "videos" / "youtube_api.py"
-    stub.parent.mkdir(parents=True)
-    stub.write_text("# /// script\n# dependencies = []\n# ///\n"
-                    "import json, sys\nrequest = json.load(sys.stdin)\n"
-                    "print(json.dumps({'uploaded': request['tag'], 'pending': ['captions']}), flush=True)\n"
-                    "print(json.dumps({'done': 'captions'}), flush=True)\nsys.exit(1)\n", encoding="utf-8")
+    _stub_worker(tmp_path, "request = json.load(sys.stdin)\n"
+                           "print(json.dumps({'uploaded': request['tag'], 'pending': ['captions']}), flush=True)\n"
+                           "print(json.dumps({'done': 'captions'}), flush=True)\nsys.exit(1)\n")
     events: list[dict[str, Any]] = []
     answer = youtube.run_worker({"tag": "abc"}, tmp_path, events.append)
     assert events == [{"uploaded": "abc", "pending": ["captions"]}, {"done": "captions"}]
     assert answer == {"video": None, "error": "the YouTube worker failed (see above)"}
+
+
+def _stub_worker(repo: Path, body: str) -> None:
+    stub = repo / "scripts" / "videos" / "youtube_api.py"
+    stub.parent.mkdir(parents=True)
+    stub.write_text("# /// script\n# dependencies = []\n# ///\nimport json, sys, time\n" + body, encoding="utf-8")
+
+
+@pytest.mark.slow
+def test_an_interrupted_run_worker_stops_the_worker(tmp_path: Path) -> None:
+    _stub_worker(tmp_path, "print(json.dumps({'uploaded': 'abc', 'pending': []}), flush=True)\n"
+                           "time.sleep(1)\nopen(sys.argv[0] + '.ran-on', 'w').close()\n")
+
+    def interrupt(_: dict[str, Any]) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        youtube.run_worker({}, tmp_path, interrupt)
+    time.sleep(1.5)
+    assert not list((tmp_path / "scripts" / "videos").glob("*.ran-on"))
+
+
+def test_a_worker_that_reads_nothing_is_a_failed_answer(tmp_path: Path) -> None:
+    _stub_worker(tmp_path, "sys.exit(1)\n")
+    # Bigger than a pipe's buffer, so the write meets the closed pipe.
+    answer = youtube.run_worker({"tag": "x" * 1_000_000}, tmp_path)
+    assert answer == {"video": None, "error": "the YouTube worker failed (see above)"}
+
+
+def test_a_failed_save_leaves_no_temporary_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    published = youtube.load_published(tmp_path)
+
+    def fail(*_: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", fail)
+    with pytest.raises(OSError, match="disk full"):
+        published.record("en", "abc", [("one", 1.0)], youtube.datetime.now())
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_dry_run_counts_the_quota_units(videos_root: Path, tmp_path: Path) -> None:
@@ -375,7 +412,7 @@ def _worker_module(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
              "googleapiclient.errors": {"HttpError": HttpError}, "googleapiclient.http": {}}
     for name, attrs in names.items():
         module = types.ModuleType(name)
-        module.__getattr__ = lambda attr, attrs=attrs: attrs.get(attr, object)  # ty: ignore[invalid-assignment]
+        setattr(module, "__getattr__", lambda attr, attrs=attrs: attrs.get(attr, object))  # noqa: B010 (PEP 562)
         monkeypatch.setitem(sys.modules, name, module)
     spec = importlib.util.spec_from_file_location("youtube_api", repo_root / "scripts" / "videos" / "youtube_api.py")
     assert spec and spec.loader
