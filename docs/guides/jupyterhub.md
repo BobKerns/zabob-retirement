@@ -86,7 +86,10 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    it (a systemd unit on Linux, a launchd daemon on macOS);
    `sudo "$(command -v sim)" jupyter hub service --install` writes it, and
    prints the command that enables and starts it. (A plain `sudo sim` usually
-   isn't found: sudo's `PATH` leaves out the folder `sim` is in.)
+   isn't found: sudo's `PATH` leaves out the folder `sim` is in.) After that,
+   `sim jupyter hub stop` and `sim jupyter hub start`, run with sudo, stop
+   the service and start it again, so the hub runs the same way, and logs
+   to the same place, whether it started at boot or by hand.
 
 Each person then opens the hub's address, logs in with their own account on
 the machine, and lands in their data repo's notebooks. The first time, the
@@ -94,6 +97,37 @@ hub records their login name and data repo in their own settings, as
 `sim login` and `sim switch --data` would, so a JupyterLab terminal's `sim`
 commands use the same data repo. Whatever they change there after, with
 `sim login NAME` or `sim switch --data DIR`, the hub leaves alone.
+
+## Reaching it from other devices
+
+Listening only on `127.0.0.1`, the hub needs nothing more. Given another
+address, two things matter.
+
+**Prefer Tailscale to `0.0.0.0`.** The hub speaks plain HTTP, so each
+person's login password crosses the network as it is. Tailscale encrypts the
+link between your devices; a home network or café Wi-Fi doesn't. Listen on
+`0.0.0.0` only on a network you trust.
+
+**The firewall must let it in.** What listens is `configurable-http-proxy`,
+which is node, not Python.
+
+- On macOS, with the firewall on (System Settings, Network, Firewall), a
+  service never gets the "allow incoming connections?" question, so
+  connections from other devices are simply refused until node is allowed:
+
+  ```sh
+  node="$(realpath "$(command -v node)")"  # the program itself, not a link to it
+  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$node"
+  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$node"
+  ```
+
+- On Linux, with `ufw` or `firewalld` on, open the hub's port, on the
+  Tailscale interface only where you can:
+
+  ```sh
+  sudo ufw allow in on tailscale0 to any port 8000 proto tcp
+  # or, with firewalld: sudo firewall-cmd --permanent --add-port=8000/tcp && sudo firewall-cmd --reload
+  ```
 
 ## A shared data repo needs shared permissions
 

@@ -221,12 +221,15 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
     try:
         if not hasattr(os, "getuid"):
             raise hub.HubError("the hub runs on Linux and macOS; on Windows, use `sim jupyter start`")
+        # With the service installed, it runs the hub, as at boot; --foreground
+        # is what the service itself runs, so that never hands off.
+        service = not foreground and hub.service_installed()
         import importlib.util
 
         if importlib.util.find_spec("jupyterhub") is None:
             raise hub.HubError("JupyterHub isn't installed: install the program with its hub extra, "
                                "zabob-retirement[hub] (in a checkout, `uv sync --extra hub`)")
-        if hub.proxy_command() is None:
+        if hub.proxy_command() is None and not service:  # the service has its own PATH
             raise hub.HubError("configurable-http-proxy isn't on PATH: "
                                "`npm install -g configurable-http-proxy` installs it")
         settings = hub.read_settings()
@@ -237,6 +240,9 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
             click.echo(f"The hub is already running (process {pid}) at {settings.url}"
                        + ("; stop it first to move it" if ip is not None or port is not None else ""))
             return
+        if service and os.getuid() != 0:
+            raise hub.HubError(f"the hub runs as the service ({hub.service_path()}); "
+                               "`sudo \"$(command -v sim)\" jupyter hub start` starts it")
         if ip is not None or port is not None:
             settings = hub.Settings(ip if ip is not None else settings.ip,
                                     port if port is not None else settings.port)
@@ -244,6 +250,12 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
         hub.write_config()
         if not hub.read_users():
             click.echo("WARN: the hub has no users yet; `sim jupyter user add LOGIN` adds one.", err=True)
+        if service:
+            click.echo(f"Starting the hub's service (log: {hub.run_dir() / 'service.log'})...")
+            pid = hub.start_service()
+            click.echo(f"The hub is running (process {pid}) at {settings.url}; "
+                       "`sim jupyter hub stop`, with sudo, stops it.")
+            return
         if os.getuid() != 0:
             click.echo("NOTE: not running as root, so only your own login can log in; "
                        "`sim jupyter hub service` runs it for everyone.", err=True)

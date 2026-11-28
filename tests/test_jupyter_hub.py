@@ -430,3 +430,69 @@ def test_a_hub_root_runs_is_stopped_with_sudo(
     result = _sim("hub", "stop")
     assert result.exit_code != 0
     assert "isn't yours to stop; `sudo \"$(command -v sim)\" jupyter hub stop` stops it" in result.output
+
+
+# ---------- start goes through an installed service (#834) ----------
+
+@pytest.fixture
+def service_installed(hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """The service file is there, the hub comes up as process 4242, and
+    the service manager's commands are recorded (returned) instead of run."""
+    monkeypatch.setattr(hub, "service_installed", lambda: True)
+    monkeypatch.setattr(hub, "_wait_until_up", lambda *_args: 4242)
+    monkeypatch.setattr(hub, "proxy_command", lambda: None)  # under sudo's PATH: the service has its own
+    commands: list[list[str]] = []
+    monkeypatch.setattr(hub.subprocess, "run", lambda argv, **_: (
+        commands.append(argv) or subprocess.CompletedProcess(argv, 1 if argv[1] == "kickstart" else 0, "", "")))
+    return commands
+
+
+def test_start_with_the_service_installed_starts_the_service(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(sys, "platform", "linux")
+    result = _sim("hub", "start")
+    assert result.exit_code == 0, result.output
+    assert service_installed == [["systemctl", "start", hub.SERVICE_NAME]]
+    assert "The hub is running (process 4242)" in result.output
+
+
+def test_on_macos_a_booted_out_service_is_bootstrapped(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    result = _sim("hub", "start")
+    assert result.exit_code == 0, result.output
+    # kickstart fails (as for a job booted out), so it is loaded again.
+    assert [argv[:2] for argv in service_installed] == [["launchctl", "kickstart"], ["launchctl", "bootstrap"]]
+
+
+def test_start_with_the_service_installed_needs_root(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 1000)
+    result = _sim("hub", "start", "--port", "8123")
+    assert result.exit_code != 0
+    assert "`sudo \"$(command -v sim)\" jupyter hub start` starts it" in result.output
+    assert not service_installed
+    assert hub.read_settings().port == hub.DEFAULT_PORT  # nothing remembered from a refused start
+
+
+def test_the_service_itself_starts_in_the_foreground(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Exec(Exception):
+        pass
+
+    def execv(_path: str, argv: list[str]) -> None:
+        raise Exec(argv)
+
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(os, "execv", execv)
+    monkeypatch.setattr(os, "chdir", lambda _path: None)  # into run/, as the service does
+    monkeypatch.setattr(hub, "proxy_command", lambda: "/usr/bin/configurable-http-proxy")
+    result = _sim("hub", "start", "--foreground")
+    assert isinstance(result.exception, Exec)
+    assert not service_installed
