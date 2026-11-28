@@ -35,7 +35,9 @@ Each person's JupyterLab works on one data repo, set per person:
 
 The notebooks can't change the data, so a person you only want to show
 results to sees them without being able to alter anything through them.
-They can still open a terminal in JupyterLab and run `sim` commands.
+They can still open a terminal in JupyterLab and run `sim` commands. A chart
+there (`--graph`) can't show in the terminal, so it goes into
+`notebooks/sim-charts/`, where the file browser opens it.
 
 ## Setting it up
 

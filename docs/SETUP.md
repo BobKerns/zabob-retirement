@@ -450,9 +450,11 @@ Terminal takes (and foot, xterm and others that say they do). Sixel images
 have at most 256 colors, which a chart barely notices. In any other terminal,
 including macOS Terminal and inside tmux, it writes the chart to a PNG file,
 prints its path, and opens it in your image viewer, unless you're connected
-over SSH. If it guesses your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to
-`kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
-open it even over SSH.
+over SSH. A JupyterLab terminal shows no images either; there the chart goes
+into `notebooks/sim-charts/` (which keeps the newest 20), where JupyterLab's
+file browser opens it, on whatever device the browser is on. If it guesses
+your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to `kitty`, `iterm` or
+`sixel`; to `file` to only write the PNG, or `open` to open it even over SSH.
 
 ## Jupyter and filesystem MCP servers
 

@@ -276,3 +276,64 @@ def test_only_a_sixel_terminal_is_asked_its_cell_size(monkeypatch: pytest.Monkey
     assert cli._terminal_cell("sixel") == (9.0, 18.0) and asked
     monkeypatch.setattr(chain_graph, "asked_cell_size", lambda: None)
     assert cli._terminal_cell("sixel") == chain_graph.SIXEL_CELL
+
+
+# ---------- in a JupyterLab terminal (#837) ----------
+
+def test_a_jupyter_terminal_takes_no_protocol_without_being_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
+    monkeypatch.setenv("JUPYTER_SERVER_ROOT", str(tmp_path))
+    monkeypatch.setattr(chain_graph, "_ask_terminal", lambda query: pytest.fail("JupyterLab answers nothing"))
+    assert chain_graph.terminal_protocol() is None
+    monkeypatch.setenv("ZABOB_IMAGE_PROTOCOL", "sixel")  # a JupyterLab given an image add-on
+    assert chain_graph.terminal_protocol() == "sixel"
+
+
+def test_a_jupyter_terminal_never_opens_a_viewer_on_the_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv("JUPYTER_SERVER_ROOT", str(tmp_path))
+    assert not chain_graph.open_fallback()
+    monkeypatch.setenv("ZABOB_IMAGE_PROTOCOL", "open")
+    assert chain_graph.open_fallback()
+
+
+def test_jupyter_charts_go_in_the_notebooks_it_opens_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert chain_graph.jupyter_chart_dir() is None  # not in a JupyterLab
+    monkeypatch.setenv("JUPYTER_SERVER_ROOT", str(tmp_path))
+    assert chain_graph.jupyter_chart_dir() == tmp_path / "sim-charts"
+    # A hub user with their own repo: the server serves their home.
+    own = tmp_path / "zabob-retirement"
+    (own / "notebooks").mkdir(parents=True)
+    monkeypatch.setenv("ZABOB_HUB_REPO", str(own))
+    assert chain_graph.jupyter_chart_dir() == own / "notebooks" / "sim-charts"
+    # A shared repo the server serves directly.
+    (tmp_path / "notebooks").mkdir()
+    assert chain_graph.jupyter_chart_dir() == tmp_path / "notebooks" / "sim-charts"
+
+
+def test_graph_in_a_jupyter_terminal_lands_in_its_file_browser(
+    guide_chains: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stub_render: list[tuple[str, str]],
+) -> None:
+    from zabob.retirement import oscompat
+    from zabob.retirement.sim import cli as sim_cli
+
+    served = tmp_path / "served"
+    (served / "notebooks").mkdir(parents=True)
+    monkeypatch.setenv("JUPYTER_SERVER_ROOT", str(served))
+    monkeypatch.setattr(oscompat, "open_file", lambda path: pytest.fail(f"opened {path} on the server"))
+    monkeypatch.setattr(sim_cli, "_JUPYTER_CHARTS_KEPT", 2)
+    for _ in range(3):
+        result = _sim(guide_chains, "bridge", "--graph")
+        assert result.exit_code == 0, result.output
+    charts = sorted((served / "notebooks" / "sim-charts").glob("chain-*.png"))
+    assert len(charts) == 2  # the oldest dropped
+    assert "wrote notebooks/sim-charts/chain-" in result.stdout
+    assert "open it from the file browser" in result.stderr

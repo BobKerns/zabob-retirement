@@ -16136,15 +16136,23 @@ def _show_image(
         click.echo(f"wrote {graph_file}")
         return
     if protocol is None:
+        folder = chain_graph.jupyter_chart_dir()
         name = None
         try:
-            with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".png", delete=False) as f:
+            if folder is not None:
+                folder.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".png", delete=False,
+                                             dir=folder) as f:
                 name = f.name
                 f.write(image)
         except OSError as error:
             if name is not None:
                 Path(name).unlink(missing_ok=True)  # don't leave half a chart behind
-            raise click.ClickException(f"couldn't write the chart to a temporary file: {error}") from error
+            where = folder or "a temporary file"
+            raise click.ClickException(f"couldn't write the chart to {where}: {error}") from error
+        if folder is not None:
+            _show_in_jupyter(Path(name), folder)
+            return
         click.echo(f"wrote {name}")
         if chain_graph.open_fallback() and oscompat.open_file(Path(name)):
             click.echo("asked the image viewer to open it", err=True)
@@ -16162,6 +16170,28 @@ def _show_image(
         click.echo(chain_graph.sixel_sequence(image, columns, cell), nl=False)
     else:
         click.echo(chain_graph.iterm_sequence(image, columns), nl=False)
+
+
+_JUPYTER_CHARTS_KEPT = 20
+"""How many of its charts a JupyterLab's ``sim-charts/`` keeps: they're
+for a look, and a command run often would otherwise fill it."""
+
+
+def _show_in_jupyter(chart: Path, folder: Path) -> None:
+    """Point to ``chart``, written into ``folder`` among a JupyterLab's
+    files, where its file browser opens it in the browser, on whatever
+    device that is (#837); and drop all but the newest charts there."""
+    from zabob.retirement.sim import chain_graph
+
+    charts = sorted(folder.glob("*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for old in charts[_JUPYTER_CHARTS_KEPT:]:
+        if old != chart:
+            old.unlink(missing_ok=True)
+    root = chain_graph.jupyter_root()
+    shown = chart.relative_to(root) if root is not None and chart.is_relative_to(root) else chart
+    click.echo(f"wrote {shown.as_posix()}")
+    click.echo("JupyterLab's terminal can't show images: open it from the file browser, "
+               "or draw the chart in a notebook.", err=True)
 
 
 _STEP_OPTIONS_HELP = {
