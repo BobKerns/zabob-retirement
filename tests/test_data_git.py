@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -93,7 +94,8 @@ def test_install_replaces_an_nbstripout_filter(data_repo_sim: Path) -> None:
     done = data_git.install(root)
     assert "removed git config filter.nbstripout, which this filter replaces" in done
     assert _git(root, "config", "--get-regexp", "nbstripout|^diff\\.ipynb").stdout == ""
-    assert info.read_text(encoding="utf-8") == "*.zpln filter=zabob-notebook\n"
+    # Zeppelin's notes aren't ours to clean: they lose nbstripout's filter.
+    assert info.read_text(encoding="utf-8") == ""
     assert (root / ".gitattributes").read_text(encoding="utf-8") == f"* text=auto\n{data_git.ATTRIBUTES}\n"
     assert data_git.problems(root) == []
 
@@ -118,3 +120,68 @@ def test_a_folder_inside_another_repository_is_left_alone(tmp_path: Path) -> Non
     assert not data_git.is_repo(inner) and data_git.problems(inner) == []
     with pytest.raises(data_git.SetupError):
         data_git.install(inner)
+
+
+def test_a_checkout_that_writes_a_notebook_works(data_repo_sim: Path, repo_root: Path) -> None:
+    """A required filter needs a smudge, or every checkout, stash, reset and
+    merge that writes a notebook fails."""
+    root = data_repo_sim.parent
+    _program_sim(repo_root)
+    (data_repo_sim / ".analysis").write_text(f"{repo_root}\n", encoding="utf-8")
+    data_git.install(root)
+    (root / "a.ipynb").write_text(RUN_NOTEBOOK, encoding="utf-8")
+    for args in (("add", "-A"), ("commit", "-qm", "notebook"), ("checkout", "-qb", "other")):
+        assert _git(root, *args).returncode == 0
+    (root / "a.ipynb").write_text(RUN_NOTEBOOK.replace("net_worth()", "spending()"), encoding="utf-8")
+    assert _git(root, "commit", "-qam", "changed").returncode == 0
+    switched = _git(root, "checkout", "-q", "main")
+    assert switched.returncode == 0, switched.stderr
+
+
+@pytest.mark.skipif(WINDOWS, reason="POSIX shims")
+def test_the_builders_hooks_run_only_the_paired_sim(data_repo_sim: Path, tmp_path: Path) -> None:
+    """Another sim's daemon would build with code other than the pair's;
+    the clean filter alone falls back to the sim on PATH."""
+    from zabob.retirement.sim import builder
+
+    root = data_repo_sim.parent
+    (data_repo_sim / ".analysis").write_text(f"{tmp_path / 'gone'}\n", encoding="utf-8")
+    data_git.install(root)
+    hooks = data_git.hooks_dir(root)
+    data_git.write_script(hooks / "post-commit", builder.DATA_HOOK)
+    (root / "state" / "builder").mkdir(parents=True)
+    (root / "state" / "builder" / "config.json").write_text("{}", encoding="utf-8")
+    on_path = tmp_path / "bin"
+    on_path.mkdir()
+    ran = tmp_path / "ran"
+    data_git.write_script(on_path / "sim", f"#!/bin/sh\necho \"$@\" >> {ran}\n")
+    env = {**os.environ, "PATH": f"{on_path}{os.pathsep}{os.environ['PATH']}"}
+    assert _git(root, "commit", "-q", "--allow-empty", "-m", "poke", env=env).returncode == 0
+    time.sleep(0.5)  # the hook's notify runs in the background
+    assert not ran.exists()
+
+
+@pytest.mark.skipif(WINDOWS, reason="POSIX shims")
+def test_a_sim_from_before_the_filter_is_named_as_the_cause(data_repo_sim: Path, tmp_path: Path) -> None:
+    root = data_repo_sim.parent
+    old = tmp_path / "old" / ".venv" / "bin"
+    old.mkdir(parents=True)
+    data_git.write_script(old / "sim", "#!/bin/sh\necho \"Error: No such command '$1'.\" >&2\nexit 2\n")
+    (data_repo_sim / ".analysis").write_text(f"{tmp_path / 'old'}\n", encoding="utf-8")
+    data_git.install(root)
+    (root / "a.ipynb").write_text(RUN_NOTEBOOK, encoding="utf-8")
+    failed = _git(root, "add", "a.ipynb")
+    assert failed.returncode != 0 and "may predate the notebook filter" in failed.stderr
+
+
+def test_sim_check_warns_when_it_cannot_look(
+        data_repo_sim: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """No git, say: a warning, never a traceback that stops the check."""
+    from zabob.retirement.sim import cli
+
+    def no_git(_root: Path) -> list[str]:
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(data_git, "problems", no_git)
+    cli._warn_git_setup(data_repo_sim)
+    assert "WARN: notebook filter: couldn't check it" in capsys.readouterr().err

@@ -618,7 +618,12 @@ def _warn_git_setup(data_dir: Path) -> None:
     its config, and would commit notebook outputs."""
     from zabob.retirement.sim import data_git
 
-    if found := data_git.problems(data_dir.parent):
+    try:
+        found = data_git.problems(data_dir.parent)
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as exc:
+        click.echo(f"WARN: notebook filter: couldn't check it: {exc}", err=True)
+        return
+    if found:
         for problem in found:
             click.echo(f"WARN: notebook filter: {problem}", err=True)
         click.echo("WARN: `sim notebooks filter` sets it up", err=True)
@@ -5938,6 +5943,20 @@ def _create_data_repo(
     return _report_created(root, failed, no_commit=no_commit, what="a data repo"), failed
 
 
+def _init_notebook_filter(root: Path) -> None:
+    """Set up the new data repo's notebook filter (#840), builder or not,
+    once it is a git repository: a failure is a warning, since the data repo
+    itself is ready, and `sim notebooks filter` can try again."""
+    from zabob.retirement.sim import data_git
+
+    try:
+        if data_git.is_repo(root):
+            data_git.install(root)
+    except (data_git.SetupError, OSError, subprocess.CalledProcessError) as exc:
+        click.echo(f"  warning: notebook filter not set up: {exc}; `sim notebooks filter` tries again",
+                   err=True)
+
+
 def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: str) -> Path:
     from zabob.retirement.sim import data_repo
 
@@ -5947,6 +5966,7 @@ def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: st
         click.echo(f"  warning: not committed: {failed}", err=True)
     elif not no_commit:
         click.echo("  committed the new files")
+    _init_notebook_filter(root)
     click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
     _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
     return sim

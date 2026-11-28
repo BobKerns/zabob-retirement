@@ -1565,17 +1565,18 @@ CHAINED_SUFFIX = ".before-builder"
 DATA_HOOK = f"""#!/bin/sh
 {HOOK_MARKER}
 # Runs the hook this one displaced ($0{CHAINED_SUFFIX}), if any, with its
-# arguments and input, and exits with its status. Then tells the sim that
-# {data_git.PREAMBLE_NAME} beside it finds (sim/.analysis's, else PATH's, #840)
-# to look for scenarios to rebuild, without blocking or failing the git command.
+# arguments and input, and exits with its status. Then tells the paired sim,
+# the one sim/.analysis names ({data_git.PREAMBLE_NAME} beside it finds it,
+# #840), to look for scenarios to rebuild, without blocking or failing the
+# git command. Never another sim: its daemon would build with other code.
 status=0
 if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
 here="$(dirname "$0")"
 [ -f "$here/{data_git.PREAMBLE_NAME}" ] || exit $status
 . "$here/{data_git.PREAMBLE_NAME}"
 [ -n "$top" ] && [ -f "$top/state/builder/config.json" ] || exit $status
-[ -n "$sim" ] || exit $status
-"$sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
+[ -n "$sim_paired" ] || exit $status
+"$sim_paired" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
 exit $status
 """
 

@@ -39,22 +39,30 @@ CONFIG = {
     f"filter.{DRIVER}.clean": _RUN_FILTER,
     # A filter that can't run fails `git add` rather than commit the outputs.
     f"filter.{DRIVER}.required": "true",
+    # Checkout writes notebooks as stored. A required filter with no smudge
+    # fails every checkout, stash, reset and merge that writes a notebook.
+    f"filter.{DRIVER}.smudge": "cat",
     f"diff.{DRIVER}.textconv": f"{_RUN_FILTER} --textconv",
 }
 # What `nbstripout --install` sets up, which this replaces: it records the
 # whole path of the Python it ran under, which goes stale when that moves.
 _OLD_SECTIONS = ("filter.nbstripout", "diff.ipynb")
 _OLD_ATTRIBUTES = {"filter=nbstripout": f"filter={DRIVER}", "diff=ipynb": f"diff={DRIVER}"}
+# Only Jupyter notebooks are ours to clean: nbstripout also takes Zeppelin's
+# *.zpln, which ours can't read, so those lose its attributes instead.
+_OURS = "*.ipynb"
 
 PREAMBLE = f"""#!/bin/sh
 {HOOK_MARKER}
 # Sourced by the data repo's hooks and its notebook clean filter (#840),
 # which find it beside themselves. Sets top, this worktree's top folder
-# (empty outside one), and sim: the program sim/.analysis names, a code
-# worktree or an installed program (#662), else the sim on PATH (a data
-# repo carried to another machine), else empty.
+# (empty outside one); sim_paired, the program sim/.analysis names (a code
+# worktree or an installed program, #662), else empty; and sim, that one,
+# else the sim on PATH (a data repo carried to another machine), else empty.
+# The builder's hooks use only sim_paired: another program would build with
+# code other than the pair's.
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=
-sim=
+sim_paired=
 # tr: sim init on Windows wrote .analysis with CRLF before #748.
 if [ -n "$top" ] && code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" && [ -n "$code" ]; then
     case "$code" in
@@ -65,10 +73,11 @@ if [ -n "$top" ] && code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" && 
     # and a venv's programs in Scripts, as .exe (#748).
     if command -v cygpath >/dev/null 2>&1; then dir="$(cygpath -u "$dir")"; fi
     [ -d "$dir" ] || dir="${{dir%/bin}}/Scripts"
-    sim="$dir/sim"
-    [ -x "$sim" ] || sim="$dir/sim.exe"
-    [ -x "$sim" ] || sim=
+    sim_paired="$dir/sim"
+    [ -x "$sim_paired" ] || sim_paired="$dir/sim.exe"
+    [ -x "$sim_paired" ] || sim_paired=
 fi
+sim="$sim_paired"
 [ -n "$sim" ] || sim="$(command -v sim 2>/dev/null)" || sim=
 """
 
@@ -82,7 +91,14 @@ if [ -z "$sim" ]; then
     echo "notebook filter: can't find sim (sim/.analysis names none here, and none is on PATH)" >&2
     exit 1
 fi
-exec "$sim" _clean-notebook "$@"
+"$sim" _clean-notebook "$@"
+status=$?
+# 2 is click's usage error: a sim from before the filter has no such command.
+if [ $status -eq 2 ]; then
+    echo "notebook filter: $sim may predate the notebook filter;" \\
+        "update it, or run 'sim notebooks filter' with a newer sim" >&2
+fi
+exit $status
 """
 
 SCRIPTS = {PREAMBLE_NAME: PREAMBLE, CLEAN_FILTER_NAME: CLEAN_FILTER}
@@ -127,15 +143,21 @@ def is_repo(root: Path) -> bool:
 
 
 def _rewrite_attributes(text: str) -> str:
-    """``text`` (an attributes file) with nbstripout's attributes made ours,
-    dropping a line that then only repeats part of ours."""
+    """``text`` (an attributes file) with nbstripout's attributes made ours
+    on notebooks and dropped elsewhere, dropping a line left with nothing
+    but part of ours, or nothing at all."""
     lines = []
     for line in text.splitlines():
         words = line.split()
         if words and not line.lstrip().startswith("#") and any(w in _OLD_ATTRIBUTES for w in words[1:]):
-            words = [words[0], *(_OLD_ATTRIBUTES.get(w, w) for w in words[1:])]
-            if words[0] == "*.ipynb" and set(words[1:]) <= set(ATTRIBUTES.split()[1:]):
-                continue
+            if words[0] == _OURS:
+                words = [words[0], *(_OLD_ATTRIBUTES.get(w, w) for w in words[1:])]
+                if set(words[1:]) <= set(ATTRIBUTES.split()[1:]):
+                    continue
+            else:
+                words = [w for w in words if w not in _OLD_ATTRIBUTES]
+                if len(words) == 1:
+                    continue
             line = " ".join(words)
         lines.append(line)
     return "".join(f"{line}\n" for line in lines)

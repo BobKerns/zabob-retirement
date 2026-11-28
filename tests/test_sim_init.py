@@ -156,6 +156,20 @@ def test_init_sets_up_the_notebook_filter_without_the_builder(tmp_path: Path) ->
     assert data_git.problems(root) == []
 
 
+def test_init_without_a_commit_warns_when_the_filter_cant_be_set_up(tmp_path: Path) -> None:
+    """The data repo is ready all the same (#840)."""
+    from zabob.retirement.sim import data_git
+
+    root = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    hooks = data_git.hooks_dir(root)
+    hooks.mkdir(parents=True, exist_ok=True)
+    (hooks / data_git.PREAMBLE_NAME).write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
+    result = _init(str(root), *_ALICE, "--no-commit")
+    assert result.exit_code == 0, result.output
+    assert "notebook filter not set up" in result.output
+
+
 def test_init_stores_text_with_lf_line_endings_whatever_core_autocrlf(tmp_path: Path) -> None:
     """#687: a CSV saved with CRLF (Excel on Windows) is stored as git
     would store it from a Mac, so the scenario's tree id doesn't change."""
