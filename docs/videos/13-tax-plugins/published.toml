@@ -7,7 +7,7 @@
 [en]
 video = "STsm80knsfo"
 uploaded = 2026-11-27T08:28:35Z
-snippet = "32759756ce17f6b0"
+snippet = "9c52c37cead6160c"
 scenes = [
   ["title", 13.22],
   ["contents", 14.47],
@@ -34,7 +34,6 @@ scenes = [
 video = "DGS1PKurLDw"
 uploaded = 2026-11-27T08:28:51Z
 snippet = "5852c054b5364bd7"
-pending = ["captions", "playlist"]
 scenes = [
   ["title", 14.95],
   ["contents", 16.76],
