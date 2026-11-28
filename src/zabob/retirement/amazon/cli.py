@@ -12,6 +12,7 @@ from zabob.retirement.oscompat import utf8_stdio
 from zabob.retirement.amazon.categorizer import categorize_amazon_csv
 from zabob.retirement.log import configure_logging
 from zabob.retirement.storage import JsonStateStore, normalize_category_name
+from zabob.retirement.version_cli import add_version
 
 log = logging.getLogger(__name__)
 
@@ -368,6 +369,7 @@ def amazon_group_command() -> None:
 
 amazon_group_command.add_command(amazon_categorize_command)
 amazon_group_command.add_command(amazon_items_command)
+add_version(amazon_group_command)
 
 
 @click.group(name="category")

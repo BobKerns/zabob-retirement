@@ -6,6 +6,7 @@ from zabob.retirement.oscompat import utf8_stdio
 from zabob.retirement.amazon.cli import amazon_group_command
 from zabob.retirement.historical.cli import historical_charts_command
 from zabob.retirement.sim.cli import sim_group_command
+from zabob.retirement.version_cli import add_version
 from zabob.retirement.videos.cli import video_group_command
 
 
@@ -20,6 +21,7 @@ main.add_command(amazon_group_command)
 main.add_command(sim_group_command)
 main.add_command(historical_charts_command)
 main.add_command(video_group_command)
+add_version(main)
 
 
 if __name__ == "__main__":
