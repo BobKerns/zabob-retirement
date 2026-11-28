@@ -42,7 +42,7 @@ and `sim jupyter stop` stops JupyterLab.
 - [User guide](https://github.com/BobKerns/zabob-retirement/blob/main/docs/user-guide.md)
 - [Setup](https://github.com/BobKerns/zabob-retirement/blob/main/docs/SETUP.md),
   including working from a clone of the code
-- Videos: the *Retirement Simulator Guide* on
+- Videos: the *Zabob Retirement Simulator Guide* on
   [YouTube](https://www.youtube.com/channel/UCQnUgmsanqEqAj1I-0i7vOA/), in
   English and Japanese
 - [Source and issues](https://github.com/BobKerns/zabob-retirement)
