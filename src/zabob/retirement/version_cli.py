@@ -44,23 +44,39 @@ class VersionInfo:
         }
 
 
+STAMPED = ("src", "templates", "notebooks", "prototype_data", "plugins", "pyproject.toml",
+           "hatch_build.py")
+"""The paths whose changes make a checkout dirty: the same as
+``hatch_build.STAMPED``, so a checkout and a wheel built from it agree
+(``tests/test_version_cli.py`` holds the two together). A scratch file
+elsewhere doesn't change the code running."""
+
+
 def version_info() -> VersionInfo:
+    from git import GitError
+
     from zabob.retirement.sim import provenance
 
     installed, dirty = provenance.installed_version()
     repo = provenance.code_repo()
     if repo is None:
         return VersionInfo(version=installed, dirty=dirty, checkout=None)
+    base = installed.split("+", 1)[0]
+    top = None if repo.working_tree_dir is None else str(repo.working_tree_dir)
     # The checkout's commit, not the one stamped at its last editable
     # install: the code running is the working tree's. Closed, so its git
     # helper processes don't outlive the command.
     with repo:
-        dirty = repo.is_dirty(untracked_files=True)
-        commit = repo.head.commit.hexsha
-        top = repo.working_tree_dir
-    base = installed.split("+", 1)[0]
+        try:
+            commit = repo.head.commit.hexsha
+            dirty = bool(repo.git.status("--porcelain", "--", *STAMPED).strip())
+        except (ValueError, GitError, OSError):
+            # No commit yet, a checkout git won't vouch for (another user's,
+            # "dubious ownership"), no git at all: a version command is what
+            # people run when something is wrong, so it still answers.
+            return VersionInfo(version=base + "+unknown", dirty=False, checkout=top)
     label = f"+g{commit[:12]}" + (".dirty" if dirty else "")
-    return VersionInfo(version=base + label, dirty=dirty, checkout=None if top is None else str(top))
+    return VersionInfo(version=base + label, dirty=dirty, checkout=top)
 
 
 def _echo(short: bool, as_json: bool) -> None:
