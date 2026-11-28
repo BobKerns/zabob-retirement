@@ -23,6 +23,11 @@ ran out (#695). With "video", the snippet (if given) is updated and the
 "finish" steps done: the status (privacy above all) is left as it is in
 Studio.
 
+On the way it prints a line for each step as it happens, so the id is
+recorded even if this process dies before its answer (#828):
+{"uploaded": id, "pending": [...]} the moment the upload is in, and
+{"done": step} after each step that follows.
+
 The first run opens a browser to sign in to the channel's Google account
 (or prints the URL to open); the token is kept in token.json beside the
 client file.
@@ -31,6 +36,8 @@ client file.
 import contextlib
 import json
 import sys
+import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 from google.auth.exceptions import RefreshError
@@ -121,21 +128,32 @@ def quota_exceeded(e: HttpError) -> bool:
 def main() -> None:
     request = json.load(sys.stdin)
     answer: dict = {"video": request.get("video")}
-    # Only the answer goes to stdout: the sign-in flow and the libraries
-    # print there too (the sign-in URL above all), so send that to stderr.
+    out = sys.stdout
+
+    def emit(event: dict) -> None:
+        print(json.dumps(event), file=out, flush=True)
+
+    # Only the answer and the events go to stdout: the sign-in flow and the
+    # libraries print there too (the sign-in URL above all), so send that
+    # to stderr.
     with contextlib.redirect_stdout(sys.stderr):
         try:
-            run(request, answer)
+            run(request, answer, emit)
         except (HttpError, SystemExit) as e:
             # The video may be up already: say so, so its id is kept.
             answer["error"] = f"{e.resp.status}: {e.reason}" if isinstance(e, HttpError) else str(e)
             if isinstance(e, HttpError) and quota_exceeded(e):
                 answer["quota"] = True
-    print(json.dumps(answer))
+        except (Exception, KeyboardInterrupt) as e:
+            # A dropped connection, a timeout, a sign-in that won't refresh,
+            # Ctrl-C: the answer still goes out, with the id if it's up (#828).
+            traceback.print_exc()
+            answer["error"] = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+    emit(answer)
     sys.exit(1 if answer.get("error") else 0)
 
 
-def run(request: dict, answer: dict) -> None:
+def run(request: dict, answer: dict, emit: Callable[[dict], None]) -> None:
     yt = build("youtube", "v3", credentials=credentials(Path(request["secrets"])), cache_discovery=False)
     if request.get("upload"):
         steps = [step for step in STEPS if step != "playlist" or request.get("playlist")]
@@ -143,6 +161,7 @@ def run(request: dict, answer: dict) -> None:
         # between them leaves the rest for the next publish.
         answer["pending"] = steps
         answer["video"] = upload(yt, request)
+        emit({"uploaded": answer["video"], "pending": steps})
     else:
         if request.get("snippet"):
             yt.videos().update(part="snippet", body={"id": answer["video"], "snippet": request["snippet"]}).execute()
@@ -158,8 +177,10 @@ def run(request: dict, answer: dict) -> None:
         elif step == "playlist" and request.get("playlist"):
             add_to_playlist(yt, video, request["playlist"])
         answer["pending"] = [s for s in answer["pending"] if s != step]
+        emit({"done": step})
     if not answer["pending"]:
         del answer["pending"]
+
 
 if __name__ == "__main__":
     main()

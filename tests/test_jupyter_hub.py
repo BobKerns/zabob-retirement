@@ -269,3 +269,230 @@ def test_the_hub_starts_and_stops(hub_logins: dict[str, Path], free_port: int) -
         stopped = _sim("hub", "stop")
     assert stopped.output == "Stopped the hub.\n"
     assert hub.hub_pid() is None
+
+
+# ---------- spawning as root with many groups (#834) ----------
+
+def test_the_data_repos_groups_come_before_the_cut() -> None:
+    # 20 is the primary, 70 the repo's; 99 owns a folder above it the login isn't in.
+    member_of = [20, *range(100, 120), 70]
+    keep, dropped = hub_config.spawn_groups(member_of, 20, [70, 99, 20], 16)
+    assert keep[:2] == [20, 70] and len(keep) == 16
+    assert 99 not in keep and 70 not in dropped
+    assert sorted(keep + dropped) == sorted(member_of)
+    assert hub_config.spawn_groups([20, 70], 20, [70], 16) == ([20, 70], [])
+
+
+def test_the_hub_spawns_with_the_household_spawner(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
+    c = Config()
+    hub_config.configure(c, hub.hub_dir())
+    assert c.JupyterHub.spawner_class is hub_config.HouseholdSpawner
+
+
+def _me() -> tuple[str, int]:
+    import pwd
+
+    me = pwd.getpwuid(os.getuid())
+    return me.pw_name, me.pw_gid
+
+
+def test_a_login_in_too_many_groups_keeps_its_data_repos(
+    hub_logins: dict[str, Path], data_repo_sim: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    name, primary = _me()
+    repo = data_repo_sim.parent
+    repo_gid = 4321
+    hub_config.configure(Config(), hub.hub_dir())
+    hub.write_user(hub.HubUser(name, hub.SHARED, repo))
+    monkeypatch.setattr(hub_config, "_path_groups", lambda paths: [repo_gid] if repo in paths else [])
+    monkeypatch.setattr(os, "getgrouplist", lambda _name, _gid: [primary, *range(5000, 5020), repo_gid])
+    monkeypatch.setattr(hub_config, "_group_limit", lambda: 16)
+    seen: dict[str, list[int]] = {}
+
+    def setuid(_uid: int, _gid: int, groups: list[int], _home: str, _fallback: object) -> object:
+        seen["groups"] = groups
+        return lambda: None
+
+    monkeypatch.setattr(hub_config, "_setuid", setuid)
+    hub_config.HouseholdSpawner().make_preexec_fn(name)
+    assert len(seen["groups"]) == 16 and seen["groups"][:2] == [primary, repo_gid]
+
+
+def test_a_login_whose_groups_fit_gets_jupyterhub_s_own_switch(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    name, primary = _me()
+    monkeypatch.setattr(os, "getgrouplist", lambda _name, _gid: [primary])
+    monkeypatch.setattr(hub_config, "_setuid", lambda *_: pytest.fail("not needed when the groups fit"))
+
+    def jupyterhub_s(_name: str) -> object:
+        return jupyterhub_s
+
+    monkeypatch.setattr(hub_config, "set_user_setuid", jupyterhub_s)
+    assert hub_config.HouseholdSpawner().make_preexec_fn(name) is jupyterhub_s
+
+
+def test_refused_groups_fall_back_to_jupyterhub_s_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def refuse(_groups: list[int]) -> None:
+        raise OSError(22, "Invalid argument")
+
+    monkeypatch.setattr(os, "setgid", lambda _gid: calls.append("setgid"))
+    monkeypatch.setattr(os, "setgroups", refuse)
+    monkeypatch.setattr(os, "setuid", lambda _uid: calls.append("setuid"))
+    hub_config._setuid(1000, 20, [20, 70], "/nowhere", lambda: calls.append("fallback"))()
+    assert calls == ["setgid", "fallback"]
+
+
+def test_a_shared_repo_it_cant_get_to_stops_the_server_at_once(
+    hub_logins: dict[str, Path], data_repo_sim: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - their homes
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = data_repo_sim.parent
+    env = {"ZABOB_HUB_LOGIN": "alice", "ZABOB_HUB_REPO": str(repo / "gone"), "ZABOB_HUB_DATA": hub.SHARED}
+    with pytest.raises(singleuser.Unreachable, match="isn't there"):
+        singleuser.prepare(env)
+
+    # As if the folder holding the repo kept them out (root's access is never refused).
+    blocked = repo.parent
+    real_access = os.access
+    monkeypatch.setattr(os, "access", lambda path, mode: (
+        not (Path(path) == blocked and mode & os.X_OK) and real_access(path, mode)))
+    monkeypatch.setattr(os, "environ", {**env, "ZABOB_HUB_REPO": str(repo)})
+    monkeypatch.setattr(os, "execv", lambda *_: pytest.fail("JupyterLab must not start"))
+    with pytest.raises(SystemExit) as stopped:
+        singleuser.main()
+    assert stopped.value.code == 1
+    expected = f"zabob: alice: can't open the data repo {repo}: {blocked} doesn't let this login in"
+    assert expected in capsys.readouterr().err
+
+
+def test_an_own_repo_not_cloned_yet_is_no_failure(hub_logins: dict[str, Path]) -> None:
+    own = hub_logins["bill"] / "zabob-retirement"
+    singleuser.prepare({"ZABOB_HUB_LOGIN": "bill", "ZABOB_HUB_REPO": str(own), "ZABOB_HUB_DATA": hub.OWN})
+    assert not own.exists()
+
+
+# ---------- sim jupyter hub log (#834) ----------
+
+def test_the_log_shows_the_last_lines_of_the_newest_log(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
+    result = _sim("hub", "log")
+    assert result.exit_code != 0 and "hasn't written a log" in result.output
+    run = hub.run_dir()
+    run.mkdir(parents=True)
+    (run / "jupyterhub.log").write_text("old\n", encoding="utf-8")
+    service = run / "service.log"
+    service.write_text("".join(f"line {n}\n" for n in range(1, 6)), encoding="utf-8")
+    os.utime(run / "jupyterhub.log", (1, 1))
+    assert hub.log_file() == service
+    result = _sim("hub", "log", "-n", "2")
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "line 4\nline 5\n"
+    assert str(service) in result.stderr
+    assert _sim("hub", "log", "-n", "0").stdout.count("line") == 5
+
+
+def test_the_log_follows_until_interrupted(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    run = hub.run_dir()
+    run.mkdir(parents=True)
+    log = run / "jupyterhub.log"
+    log.write_text("first\n", encoding="utf-8")
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        if sleeps:
+            raise KeyboardInterrupt
+        sleeps.append(seconds)
+        with log.open("a", encoding="utf-8") as out:
+            out.write("second\n")
+
+    monkeypatch.setattr("time.sleep", sleep)
+    result = _sim("hub", "log", "--follow")
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "first\nsecond\n"
+
+
+def test_the_linux_service_logs_beside_the_hub(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
+    assert f"StandardOutput=append:{hub.run_dir() / 'service.log'}" in hub.systemd_unit()
+
+
+def test_a_hub_root_runs_is_stopped_with_sudo(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    def refuse(_pid: int, _signal: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(hub, "hub_pid", lambda _folder=None: 4242)
+    monkeypatch.setattr(os, "kill", refuse)
+    result = _sim("hub", "stop")
+    assert result.exit_code != 0
+    assert "isn't yours to stop; `sudo \"$(command -v sim)\" jupyter hub stop` stops it" in result.output
+
+
+# ---------- start goes through an installed service (#834) ----------
+
+@pytest.fixture
+def service_installed(hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """The service file is there, the hub comes up as process 4242, and
+    the service manager's commands are recorded (returned) instead of run."""
+    monkeypatch.setattr(hub, "service_installed", lambda: True)
+    monkeypatch.setattr(hub, "_wait_until_up", lambda *_args: 4242)
+    monkeypatch.setattr(hub, "proxy_command", lambda: None)  # under sudo's PATH: the service has its own
+    commands: list[list[str]] = []
+    monkeypatch.setattr(hub.subprocess, "run", lambda argv, **_: (
+        commands.append(argv) or subprocess.CompletedProcess(argv, 1 if argv[1] == "kickstart" else 0, "", "")))
+    return commands
+
+
+def test_start_with_the_service_installed_starts_the_service(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(sys, "platform", "linux")
+    result = _sim("hub", "start")
+    assert result.exit_code == 0, result.output
+    assert service_installed == [["systemctl", "start", hub.SERVICE_NAME]]
+    assert "The hub is running (process 4242)" in result.output
+
+
+def test_on_macos_a_booted_out_service_is_bootstrapped(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    result = _sim("hub", "start")
+    assert result.exit_code == 0, result.output
+    # kickstart fails (as for a job booted out), so it is loaded again.
+    assert [argv[:2] for argv in service_installed] == [["launchctl", "kickstart"], ["launchctl", "bootstrap"]]
+
+
+def test_start_with_the_service_installed_needs_root(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "getuid", lambda: 1000)
+    result = _sim("hub", "start", "--port", "8123")
+    assert result.exit_code != 0
+    assert "`sudo \"$(command -v sim)\" jupyter hub start` starts it" in result.output
+    assert not service_installed
+    assert hub.read_settings().port == hub.DEFAULT_PORT  # nothing remembered from a refused start
+
+
+def test_the_service_itself_starts_in_the_foreground(
+    service_installed: list[list[str]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Exec(Exception):
+        pass
+
+    def execv(_path: str, argv: list[str]) -> None:
+        raise Exec(argv)
+
+    monkeypatch.setattr(os, "getuid", lambda: 0)
+    monkeypatch.setattr(os, "execv", execv)
+    monkeypatch.setattr(os, "chdir", lambda _path: None)  # into run/, as the service does
+    monkeypatch.setattr(hub, "proxy_command", lambda: "/usr/bin/configurable-http-proxy")
+    result = _sim("hub", "start", "--foreground")
+    assert isinstance(result.exception, Exec)
+    assert not service_installed

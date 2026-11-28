@@ -40,8 +40,10 @@ from zabob.retirement.user_config import config_path
 
 __all__ = [
     "DEFAULT_IP", "DEFAULT_PORT", "HUB_DIR_ENV", "OWN_REPO_NAME", "SERVICE_NAME", "HubError", "HubUser",
-    "Settings", "config_file", "delete_user", "home_of", "hub_dir", "hub_pid", "launchd_plist", "logins",
-    "own_repo", "read_settings", "read_users", "run_dir", "service_path", "start", "stop", "systemd_unit",
+    "Settings", "config_file", "delete_user", "home_of", "hub_dir", "hub_pid", "launchd_plist", "log_file",
+    "logins",
+    "own_repo", "read_settings", "read_users", "run_dir", "service_installed", "service_path", "start",
+    "start_service", "stop", "systemd_unit",
     "write_settings", "write_user",
 ]
 
@@ -134,6 +136,14 @@ def prepare_for_service(folder: Path | None = None) -> None:
     for path in (folder, run):
         with contextlib.suppress(OSError, ValueError):
             os.chown(path, int(uid), int(gid))
+
+
+def log_file(folder: Path | None = None) -> Path | None:
+    """The hub's log written last: ``run/service.log`` when the service ran
+    it, ``run/jupyterhub.log`` when `sim jupyter hub start` did; None when
+    it hasn't run yet. Each user's JupyterLab writes there too."""
+    found = [path for name in ("jupyterhub.log", "service.log") if (path := run_dir(folder) / name).is_file()]
+    return max(found, key=lambda path: path.stat().st_mtime, default=None)
 
 
 def config_file(folder: Path | None = None) -> Path:
@@ -313,6 +323,38 @@ def _answers(url: str) -> bool:
         return False
 
 
+def _wait_until_up(settings: Settings, folder: Path | None, timeout: float, gone: str) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _answers(settings.url) and (pid := hub_pid(folder)) is not None:
+            return pid
+        time.sleep(0.5)
+    raise HubError(f"JupyterHub didn't answer at {settings.url} within {timeout:.0f}s; {gone}")
+
+
+def start_service(folder: Path | None = None, *, timeout: float = 60) -> int:
+    """Start the hub through the installed service (needs root), so it runs
+    the same way whether started at boot or by hand: supervised, logging
+    to ``run/service.log``. Returns its process id once it answers."""
+    _require_posix()
+    if sys.platform == "darwin":
+        job = f"system/{_LAUNCHD_LABEL}"
+        # A stopped job is still loaded: kickstart runs it. One that was
+        # booted out isn't: bootstrap loads it, and RunAtLoad starts it.
+        attempts = [["launchctl", "kickstart", job], ["launchctl", "bootstrap", "system", str(service_path())]]
+    else:
+        attempts = [["systemctl", "start", SERVICE_NAME]]
+    failure = ""
+    for argv in attempts:
+        done = subprocess.run(argv, capture_output=True, text=True, check=False)  # noqa: S603 - fixed commands
+        if done.returncode == 0:
+            break
+        failure = f"`{' '.join(argv)}` failed: {(done.stderr or done.stdout).strip()}"
+    else:
+        raise HubError(failure)
+    return _wait_until_up(read_settings(folder), folder, timeout, "`sim jupyter hub log` may say why")
+
+
 def start(folder: Path | None = None, *, timeout: float = 60) -> int:
     """Start the hub in the background; returns its process id once it
     answers. Its output goes to ``run/jupyterhub.log``."""
@@ -351,9 +393,11 @@ def stop(folder: Path | None = None, *, timeout: float = 30) -> bool:
     except ProcessLookupError:
         return True
     except PermissionError as exc:
-        how = (f"sudo launchctl bootout system {service_path()}" if sys.platform == "darwin"
-               else f"sudo systemctl stop {SERVICE_NAME}")
-        raise HubError(f"the hub (process {pid}) isn't yours to stop; if the service runs it: {how}") from exc
+        # The same stop as the service manager's: the hub exits cleanly, so
+        # neither launchd (KeepAlive on failure) nor systemd (Restart=on-failure)
+        # restarts it, and it starts again at the next boot either way.
+        raise HubError(f"the hub (process {pid}) isn't yours to stop; "
+                       "`sudo \"$(command -v sim)\" jupyter hub stop` stops it") from exc
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline and pid_alive(pid):
         # One this process started (a test's) lingers as a zombie until reaped.
@@ -393,6 +437,9 @@ def systemd_unit(folder: Path | None = None) -> str:
         f"Environment={HUB_DIR_ENV}={folder}\n"
         f"Environment=PATH={_service_path_env()}\n"
         f"ExecStart={_sim()} jupyter hub start --foreground\n"
+        # Beside launchd's, rather than in the journal, for `sim jupyter hub log`.
+        f"StandardOutput=append:{run_dir(folder) / 'service.log'}\n"
+        "StandardError=inherit\n"
         "Restart=on-failure\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
@@ -424,6 +471,11 @@ def launchd_plist(folder: Path | None = None) -> str:
         f"  <key>StandardErrorPath</key>{string(run_dir(folder) / 'service.log')}\n"
         "</dict>\n</plist>\n"
     )
+
+
+def service_installed() -> bool:
+    """Whether `sim jupyter hub service --install` wrote the service file."""
+    return not WINDOWS and service_path().is_file()
 
 
 def service_path() -> Path:

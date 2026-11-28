@@ -35,6 +35,14 @@ on what you make and change. `sim switch` shows both, and your current
 scenario; `sim switch --data DIR` switches to another data repo, as does
 running a `sim` command inside one.
 
+`sim version` (or `sim --version`) says which build is running, as in
+`zabob-retirement 1.0.0rc1+g0123456789ab`: the release, and the commit it was
+built from. Run from a source checkout, it names the checkout's own commit
+and folder, with `.dirty` after uncommitted changes to the code (the files a
+wheel's stamp counts, not docs or tests), and `+unknown` when git can't say.
+`--short` prints the version alone and `--json` adds the Python running it;
+`analysis` and `amazon` take the same command.
+
 To have TAB complete `sim`'s commands, options and the names your scenarios
 define (accounts, chains, scenarios...), set it up once for your shell:
 
@@ -136,8 +144,8 @@ For the one-line install below, the shared
 [Jupyter hub](guides/jupyterhub.md#on-windows-inside-wsl), or to work from a
 clone of the code, use WSL, the Windows Subsystem for Linux, which runs
 Ubuntu inside Windows 11, or Windows 10 version 2004 or later. The video
-[WSL for Windows](https://youtu.be/JumkG40iA20) walks through this
-([日本語](https://youtu.be/mF9CMkimH80)).
+[WSL for Windows](https://youtu.be/YJiwuHzIq1w) walks through this
+([日本語](https://youtu.be/7Qku6qGmjBM)).
 
 1. Right-click Start and choose **Terminal (Admin)** (on Windows 10,
    **Windows PowerShell (Admin)**), then run `wsl --install`. Restart when
@@ -442,9 +450,11 @@ Terminal takes (and foot, xterm and others that say they do). Sixel images
 have at most 256 colors, which a chart barely notices. In any other terminal,
 including macOS Terminal and inside tmux, it writes the chart to a PNG file,
 prints its path, and opens it in your image viewer, unless you're connected
-over SSH. If it guesses your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to
-`kitty`, `iterm` or `sixel`; to `file` to only write the PNG, or `open` to
-open it even over SSH.
+over SSH. A JupyterLab terminal shows no images either; there the chart goes
+into `notebooks/sim-charts/` (which keeps the newest 20), where JupyterLab's
+file browser opens it, on whatever device the browser is on. If it guesses
+your terminal wrong, set `ZABOB_IMAGE_PROTOCOL` to `kitty`, `iterm` or
+`sixel`; to `file` to only write the PNG, or `open` to open it even over SSH.
 
 ## Jupyter and filesystem MCP servers
 

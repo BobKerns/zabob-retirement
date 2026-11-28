@@ -106,6 +106,9 @@ _AMBIENT_ENV_VARS = (
     "ZABOB_DATA_DIR",
     "ZABOB_SCENARIO",
     "ZABOB_HUB_DIR",  # the hub's folder (#766): under the test's user config instead
+    "ZABOB_HUB_REPO",  # set in a hub user's JupyterLab (#766)
+    "JUPYTER_SERVER_ROOT",  # a JupyterLab terminal's: charts go into its files (#837)
+    "JUPYTER_SERVER_URL",
 )
 
 
