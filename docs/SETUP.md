@@ -65,7 +65,10 @@ data repo and you to the prompt; it's optional.
 install the command-line developer tools (which include git), let it finish,
 then run `sim init` again. `sim init DIR` puts it elsewhere. `sim init --example DIR` makes one of the
 prototype household, Alice and Bill, asking nothing: somewhere to try
-commands before entering your own. Either way the data repo gets the
+commands before entering your own. It also sets up git to commit
+notebooks without their outputs; in a clone of the data repo made
+elsewhere, `sim notebooks filter` does the same, and `sim check` says when
+it's needed. Either way the data repo gets the
 notebooks, in its `notebooks/`; `sim jupyter start` opens them. To give
 everyone in the household their own JupyterLab, see [Share with your
 household](guides/jupyterhub.md).

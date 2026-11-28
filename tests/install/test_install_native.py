@@ -66,7 +66,24 @@ def data_dir(session: dict[str, str]) -> Path:
 
 
 def test_init_stores_text_with_lf_line_endings(data_dir: Path) -> None:
-    assert (data_dir.parent / ".gitattributes").read_text(encoding="utf-8") == "* text=auto\n"
+    assert (data_dir.parent / ".gitattributes").read_text(encoding="utf-8").startswith("* text=auto\n")
+
+
+def test_init_sets_up_the_notebook_filter(session: dict[str, str], data_dir: Path) -> None:
+    """#840: through the installed program sim/.analysis names, a notebook
+    is committed without its outputs."""
+    root = data_dir.parent
+    notebook = root / "mine.ipynb"
+    notebook.write_text('{"cells": [{"cell_type": "code", "execution_count": 1, "id": "a", "metadata": {}, '
+                        '"outputs": [{"output_type": "stream", "name": "stdout", "text": ["1\\n"]}], '
+                        '"source": []}], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}', encoding="utf-8")
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "add", "mine.ipynb"], env=session, check=True, capture_output=True)
+    staged = subprocess.run([*git, "show", ":mine.ipynb"], env=session, check=True, capture_output=True,
+                            text=True).stdout
+    assert '"outputs": []' in staged
+    subprocess.run([*git, "rm", "-q", "--cached", "mine.ipynb"], env=session, check=True)
+    notebook.unlink()
 
 
 def test_a_new_user_is_asked_to_log_in(session: dict[str, str], data_dir: Path) -> None:

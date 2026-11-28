@@ -18,7 +18,7 @@ from pathlib import Path
 
 from zabob.retirement.research_plugin import write_default_config
 from zabob.retirement.resources import CHECKOUT_DIR, NOTEBOOKS_DIR, PROTOTYPE_DIR, program_home
-from zabob.retirement.sim import registries
+from zabob.retirement.sim import data_git, registries
 from zabob.retirement.sim.data_commit import CommitError, ensure_identity
 from zabob.retirement.sim.lineage import TEMPLATE_PREFIX, TEMPLATE_SCENARIOS_DIR
 from zabob.retirement.sim.loader import write_current_scenario
@@ -183,6 +183,10 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # otherwise commit CRLF, which changes the scenario's tree id and makes
     # every line a change. Kept in the repository, so every clone has it.
     _ignore(root / ".gitattributes", "* text=auto")
+    # Notebooks are committed without their outputs (#840), through the
+    # filter `sim init` then sets up in the repository's config, once the
+    # repository exists (cli._report_created).
+    _ignore(root / ".gitattributes", data_git.ATTRIBUTES)
     (root / ".cspell").mkdir(exist_ok=True)
     (root / ".cspell" / "data-words.txt").touch()
     if notebooks:
