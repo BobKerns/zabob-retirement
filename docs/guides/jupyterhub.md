@@ -109,7 +109,8 @@ The hub itself speaks plain HTTP and stays listening only on this machine;
 certificate, at `https://<machine>.<tailnet>.ts.net/`.
 
 1. Install Tailscale on the machine running the hub and on each device
-   people use to open it, signed in to the same account.
+   people use to open it, signed in to the same account. That's how this
+   is meant to be used: every device on your tailnet, nothing outside it.
 2. Once, in the Tailscale admin console (its DNS page), turn on MagicDNS and
    HTTPS certificates.
 3. On the hub's machine (the port is the hub's, 8000 unless you chose
@@ -118,6 +119,10 @@ certificate, at `https://<machine>.<tailnet>.ts.net/`.
    ```sh
    sudo tailscale serve --bg 8000
    ```
+
+If Tailscale offers to turn on **Funnel**, say no: you don't need it.
+Funnel puts the hub on the public internet, where anyone can reach its login
+page and try your household's passwords.
 
 It stays on across restarts. `tailscale serve status` shows the address,
 and `sudo tailscale serve --https=443 off` stops it.
