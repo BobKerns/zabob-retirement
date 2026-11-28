@@ -42,7 +42,7 @@ tags = ["retirement planning", "retirement simulator", "financial planning", "Mo
 [en]
 title = "Zabob Retirement: {number}—{title}"
 extra_title = "Zabob Retirement: {title}"
-playlist = "Retirement Simulator Guide"
+playlist = "Zabob Retirement Simulator Guide"
 version_label = "English version"
 in_this_video = "In this video:"
 chapters = "Chapters:"
@@ -55,7 +55,7 @@ next = "Next: {episode}, {title}"
 # The English prefix stays, so both languages sort together on the channel.
 title = "Zabob Retirement: {number}—{title}"
 extra_title = "Zabob Retirement: {title}"
-playlist = "Retirement Simulator (日本語)"
+playlist = "Zabob Retirement Simulator (日本語)"
 version_label = "日本語版"
 in_this_video = "この回の内容:"
 chapters = "チャプター:"
