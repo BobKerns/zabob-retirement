@@ -211,8 +211,8 @@ def hub_group() -> None:
 
 
 @hub_group.command("start")
-@click.option("--ip", help=f"Listen on this address (default {hub.DEFAULT_IP}, this machine only; "
-              "0.0.0.0 for every network, or a Tailscale address). Remembered.")
+@click.option("--ip", help=f"Listen on this address (default {hub.DEFAULT_IP}: this machine only; "
+              "`tailscale serve` reaches it from your other devices, as the hub guide shows). Remembered.")
 @click.option("--port", type=click.IntRange(1, 65535), help=f"Listen on this port (default {hub.DEFAULT_PORT}). "
               "Remembered.")
 @click.option("--foreground", is_flag=True, help="Run in this terminal until Ctrl+C (as the service does).")

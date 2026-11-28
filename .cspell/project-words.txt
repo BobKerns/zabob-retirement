@@ -160,7 +160,6 @@ ffprobe
 fignums
 figsize
 financials
-firewalld
 FITID
 flatnonzero
 fontsize
@@ -260,7 +259,6 @@ LEDGERBAL
 liab
 libc
 libedit
-libexec
 libx
 lifetable
 linalg
@@ -463,7 +461,6 @@ Sixel
 Smirnov
 SNSXX
 Sobol
-socketfilterfw
 SONRS
 Sortino
 sourceable
@@ -538,7 +535,6 @@ ttyd
 twinx
 txns
 UEFI
-unblockapp
 unclipped
 underflows
 unestimable

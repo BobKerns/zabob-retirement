@@ -69,19 +69,15 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    one (it asks, or takes `--shared`/`--own`), and
    `sim jupyter user delete bill` removes one. A change takes effect at that
    person's next login, with no restart.
-4. **Choose where it listens.** By default the hub listens only on this
-   machine, at `http://127.0.0.1:8000/`. To reach it from your other devices,
-   [use Tailscale](#reaching-it-from-other-devices): either
-   `tailscale serve`, which leaves this as it is, or the machine's Tailscale
-   address (`tailscale ip -4`) here. `0.0.0.0` listens on every network the
-   machine is on:
+4. **Start it.** The hub listens only on this machine, at
+   `http://127.0.0.1:8000/` (`--port` picks another port, and is
+   remembered). Your other devices reach it
+   [through Tailscale](#reaching-it-from-other-devices).
 
    ```sh
-   sim jupyter hub start --ip 100.101.102.103 --port 8000
+   sim jupyter hub start
    sim jupyter hub stop
    ```
-
-   The address and port are remembered.
 5. **Run it as a service.** Logging people in with their own passwords and
    starting their JupyterLab as them needs root, so for more than your own
    login the hub runs as a system service. `sim jupyter hub service` prints
@@ -102,62 +98,29 @@ commands use the same data repo. Whatever they change there after, with
 
 ## Reaching it from other devices
 
-Use [Tailscale](https://tailscale.com). It gives you full security with
-none of the usual work: every connection between your devices is encrypted
-and authenticated, only devices you've added to your tailnet can reach the
-hub, and there are no certificates, domain names, router ports or proxies to
-set up. Install it on the machine running the hub and on each device people
-use to open it, signed in to the same account.
+Use [Tailscale](https://tailscale.com) with `tailscale serve`. It gives you
+full security with none of the usual work: every connection between your
+devices is encrypted and authenticated, only devices you've added to your
+tailnet can reach the hub, and there are no certificates, domain names,
+router ports, firewall rules or proxies to set up.
 
-The hub itself speaks plain HTTP, which is why this matters: on an open
-network, each person's login password would cross it unencrypted. Inside
-Tailscale, that traffic is already sealed.
+The hub itself speaks plain HTTP and stays listening only on this machine;
+`tailscale serve` hands it to your tailnet over HTTPS, with a real
+certificate, at `https://<machine>.<tailnet>.ts.net/`.
 
-There are two ways to put the hub on your tailnet:
+1. Install Tailscale on the machine running the hub and on each device
+   people use to open it, signed in to the same account.
+2. Once, in the Tailscale admin console (its DNS page), turn on MagicDNS and
+   HTTPS certificates.
+3. On the hub's machine (the port is the hub's, 8000 unless you chose
+   another):
 
-- **`tailscale serve`** (simplest). The hub keeps listening only on
-  `127.0.0.1`, and Tailscale serves it to your tailnet over HTTPS with a
-  real certificate, at `https://<machine>.<tailnet>.ts.net/`. Nothing else on
-  the machine listens, so there's no firewall to change. Turn on MagicDNS and
-  HTTPS certificates once in the Tailscale admin console (DNS page), then:
+   ```sh
+   sudo tailscale serve --bg 8000
+   ```
 
-  ```sh
-  sudo tailscale serve --bg 8000
-  ```
-
-  `tailscale serve status` shows it, and `sudo tailscale serve --https=443 off`
-  stops it.
-- **The machine's Tailscale address.** `sim jupyter hub start --ip "$(tailscale ip -4)"`
-  makes the hub listen there, at `http://100.x.y.z:8000/`, still encrypted by
-  Tailscale. The machine's firewall must then let it in (below).
-
-A device that can't run Tailscale, such as an older computer, can only reach
-the hub with `--ip 0.0.0.0`, which listens on every network the machine is
-on. Do that only on a home network you trust, since there the passwords
-aren't encrypted.
-
-### The firewall, when the hub listens on an address
-
-With `--ip`, what listens is `configurable-http-proxy`, which is node, not
-Python. `tailscale serve` needs none of this.
-
-- On macOS, with the firewall on (System Settings, Network, Firewall), a
-  service never gets the "allow incoming connections?" question, so
-  connections from other devices are simply refused until node is allowed:
-
-  ```sh
-  node="$(realpath "$(command -v node)")"  # the program itself, not a link to it
-  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$node"
-  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$node"
-  ```
-
-- On Linux, with `ufw` or `firewalld` on, open the hub's port, on the
-  Tailscale interface only where you can:
-
-  ```sh
-  sudo ufw allow in on tailscale0 to any port 8000 proto tcp
-  # or, with firewalld: sudo firewall-cmd --permanent --add-port=8000/tcp && sudo firewall-cmd --reload
-  ```
+It stays on across restarts. `tailscale serve status` shows the address,
+and `sudo tailscale serve --https=443 off` stops it.
 
 ## A shared data repo needs shared permissions
 
