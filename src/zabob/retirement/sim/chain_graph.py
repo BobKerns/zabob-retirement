@@ -29,7 +29,7 @@ from typing import Any, Literal
 
 __all__ = [
     "MERMAID_SCRIPT", "SIXEL_CELL", "GraphError", "fit_columns", "iterm_sequence",
-    "kitty_sequence", "open_fallback", "render", "sixel_sequence", "terminal_protocol",
+    "jupyter_chart_dir", "kitty_sequence", "open_fallback", "render", "sixel_sequence", "terminal_protocol",
 ]
 
 MERMAID_VERSION = "11.17.2"
@@ -357,6 +357,33 @@ def swallow_replies(timeout: float = 0.2) -> None:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 
 
+CHART_FOLDER = "sim-charts"
+"""Where, in a JupyterLab's files, a chart its terminal can't show goes."""
+
+
+def jupyter_root() -> Path | None:
+    """The folder a JupyterLab serves, when this runs in its terminal
+    (``jupyter_server_terminals`` sets ``$JUPYTER_SERVER_ROOT`` there), whose
+    browser may be on another device: a hub user's iPad, say (#837)."""
+    root = os.environ.get("JUPYTER_SERVER_ROOT")
+    return Path(root) if root and Path(root).is_dir() else None
+
+
+def jupyter_chart_dir() -> Path | None:
+    """In a JupyterLab terminal, the folder to put a chart in so its file
+    browser shows it: ``sim-charts/`` in the notebooks it opens on (the
+    data repo's ``notebooks/``, which the data repo leaves out of git), else
+    at the top of what it serves. None outside a JupyterLab terminal."""
+    root = jupyter_root()
+    if root is None:
+        return None
+    repo = os.environ.get("ZABOB_HUB_REPO")  # a hub user's data repo (#766)
+    for notebooks in (root / "notebooks", *([Path(repo) / "notebooks"] if repo else [])):
+        if notebooks.is_dir() and notebooks.resolve().is_relative_to(root.resolve()):
+            return notebooks / CHART_FOLDER
+    return root / CHART_FOLDER
+
+
 def terminal_protocol() -> Protocol | None:
     """The image protocol this terminal takes, or ``None`` when it takes
     none, the output isn't a terminal, or it's inside tmux (which needs
@@ -372,13 +399,17 @@ def terminal_protocol() -> Protocol | None:
     terminal to say so: ``$WT_SESSION`` names Windows Terminal but not its
     version (one before 1.22 draws no Sixel), and it passes on to any
     window started from one (a ``start cmd`` console, say), so it decides
-    nothing (#777)."""
+    nothing (#777). A JupyterLab terminal takes none (#837)."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return None  # escapes would only garble a pipe or a file
     forced = os.environ.get("ZABOB_IMAGE_PROTOCOL", "").lower()
     if forced in ("kitty", "iterm", "sixel"):
         return forced  # even in tmux: whoever set it may have passthrough on
     if forced in ("none", "file", "open") or os.environ.get("TMUX"):
+        return None
+    if jupyter_root() is not None:
+        # JupyterLab's terminal is xterm.js without its image add-on: it
+        # draws no protocol, and asking only waits for an answer (#837).
         return None
     if os.environ.get("TERM_PROGRAM") == "iTerm.app":
         # iTerm2 accepts a kitty image but showed nothing (issue #142), so it
@@ -401,7 +432,7 @@ def terminal_protocol() -> Protocol | None:
 def open_fallback() -> bool:
     """Whether a chart the terminal can't show should open in the image
     viewer: when someone is at this machine to see it (a terminal on the
-    output, not over SSH, a desktop on Linux), unless
+    output, not over SSH or in a JupyterLab, a desktop on Linux), unless
     ``$ZABOB_IMAGE_PROTOCOL`` says ``file`` (or ``none``), or ``open``
     to open it regardless."""
     forced = os.environ.get("ZABOB_IMAGE_PROTOCOL", "").lower()
@@ -411,6 +442,8 @@ def open_fallback() -> bool:
         return True
     if not sys.stdout.isatty() or os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY"):
         return False
+    if jupyter_root() is not None:
+        return False  # its browser may be anywhere; this machine's screen may be no one's (#837)
     if sys.platform in ("win32", "darwin"):
         return True
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))

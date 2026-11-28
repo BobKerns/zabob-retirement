@@ -35,7 +35,9 @@ Each person's JupyterLab works on one data repo, set per person:
 
 The notebooks can't change the data, so a person you only want to show
 results to sees them without being able to alter anything through them.
-They can still open a terminal in JupyterLab and run `sim` commands.
+They can still open a terminal in JupyterLab and run `sim` commands. A chart
+there (`--graph`) can't show in the terminal, so it goes into
+`notebooks/sim-charts/`, where the file browser opens it.
 
 ## Setting it up
 
@@ -98,34 +100,54 @@ commands use the same data repo. Whatever they change there after, with
 
 ## Reaching it from other devices
 
-Use [Tailscale](https://tailscale.com) with `tailscale serve`. It gives you
-full security with none of the usual work: every connection between your
-devices is encrypted and authenticated, only devices you've added to your
-tailnet can reach the hub, and there are no certificates, domain names,
-router ports, firewall rules or proxies to set up.
+Use [Tailscale](https://tailscale.com/docs/how-to/quickstart) with
+`tailscale serve`. It gives you full security with none of the usual work:
+every connection between your devices is encrypted and authenticated, only
+devices you've added to your tailnet can reach the hub, and there are no
+certificates, domain names, router ports, firewall rules or proxies to set
+up.
 
 The hub itself speaks plain HTTP and stays listening only on this machine;
-`tailscale serve` hands it to your tailnet over HTTPS, with a real
-certificate, at `https://<machine>.<tailnet>.ts.net/`.
+[`tailscale serve`](https://tailscale.com/docs/features/tailscale-serve)
+hands it to your tailnet over HTTPS, with a real certificate, at
+`https://<machine>.<tailnet>.ts.net/`.
 
-1. Install Tailscale on the machine running the hub and on each device
-   people use to open it, signed in to the same account. That's how this
-   is meant to be used: every device on your tailnet, nothing outside it.
-2. Once, in the Tailscale admin console (its DNS page), turn on MagicDNS and
-   HTTPS certificates.
-3. On the hub's machine (the port is the hub's, 8000 unless you chose
-   another):
+1. **Install Tailscale** on the machine running the hub and on each device
+   people use to open it (Mac, Windows, iPhone and iPad apps, or Linux's
+   package), signed in to the same account: the
+   [quickstart](https://tailscale.com/docs/how-to/quickstart) walks through
+   it. That's how this is meant to be used: every device on your tailnet,
+   nothing outside it.
+2. **Find its command line.** On Linux `tailscale` is on your `PATH`. On a
+   Mac the app carries it inside, but not on your `PATH`; give it a name:
 
    ```sh
-   sudo tailscale serve --bg 8000
+   alias tailscale=/Applications/Tailscale.app/Contents/MacOS/Tailscale
    ```
 
-If Tailscale offers to turn on **Funnel**, say no: you don't need it.
-Funnel puts the hub on the public internet, where anyone can reach its login
-page and try your household's passwords.
+   (put that line in `~/.zshrc` to keep it). The
+   [CLI reference](https://tailscale.com/docs/reference/tailscale-cli) has
+   every command.
+3. **Turn on HTTPS, once.** In the admin console's
+   [DNS page](https://console.tailscale.com/admin/dns), turn on MagicDNS if
+   it's off, then **Enable HTTPS** under HTTPS Certificates
+   ([how](https://tailscale.com/docs/how-to/set-up-https-certificates)).
+   Certificates are public records, so your machines' names and your
+   tailnet's name become public: name the machines something that gives
+   nothing away, not a person's full name.
+4. **Serve the hub.** On the hub's machine (the port is the hub's, 8000
+   unless you chose another; on Linux, run it with `sudo`):
+
+   ```sh
+   tailscale serve --bg 8000
+   ```
+
+   It prints the address to open. If it offers to turn on **Funnel**, say
+   no: you don't need it. Funnel puts the hub on the public internet, where
+   anyone can reach its login page and try your household's passwords.
 
 It stays on across restarts. `tailscale serve status` shows the address,
-and `sudo tailscale serve --https=443 off` stops it.
+and `tailscale serve reset` stops it.
 
 ## A shared data repo needs shared permissions
 
