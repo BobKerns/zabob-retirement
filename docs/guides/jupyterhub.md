@@ -71,8 +71,10 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    person's next login, with no restart.
 4. **Choose where it listens.** By default the hub listens only on this
    machine, at `http://127.0.0.1:8000/`. To reach it from your other devices,
-   give it the machine's Tailscale address (`tailscale ip -4`), or `0.0.0.0`
-   for every network the machine is on:
+   [use Tailscale](#reaching-it-from-other-devices): either
+   `tailscale serve`, which leaves this as it is, or the machine's Tailscale
+   address (`tailscale ip -4`) here. `0.0.0.0` listens on every network the
+   machine is on:
 
    ```sh
    sim jupyter hub start --ip 100.101.102.103 --port 8000
@@ -100,16 +102,44 @@ commands use the same data repo. Whatever they change there after, with
 
 ## Reaching it from other devices
 
-Listening only on `127.0.0.1`, the hub needs nothing more. Given another
-address, two things matter.
+Use [Tailscale](https://tailscale.com). It gives you full security with
+none of the usual work: every connection between your devices is encrypted
+and authenticated, only devices you've added to your tailnet can reach the
+hub, and there are no certificates, domain names, router ports or proxies to
+set up. Install it on the machine running the hub and on each device people
+use to open it, signed in to the same account.
 
-**Prefer Tailscale to `0.0.0.0`.** The hub speaks plain HTTP, so each
-person's login password crosses the network as it is. Tailscale encrypts the
-link between your devices; a home network or café Wi-Fi doesn't. Listen on
-`0.0.0.0` only on a network you trust.
+The hub itself speaks plain HTTP, which is why this matters: on an open
+network, each person's login password would cross it unencrypted. Inside
+Tailscale, that traffic is already sealed.
 
-**The firewall must let it in.** What listens is `configurable-http-proxy`,
-which is node, not Python.
+There are two ways to put the hub on your tailnet:
+
+- **`tailscale serve`** (simplest). The hub keeps listening only on
+  `127.0.0.1`, and Tailscale serves it to your tailnet over HTTPS with a
+  real certificate, at `https://<machine>.<tailnet>.ts.net/`. Nothing else on
+  the machine listens, so there's no firewall to change. Turn on MagicDNS and
+  HTTPS certificates once in the Tailscale admin console (DNS page), then:
+
+  ```sh
+  sudo tailscale serve --bg 8000
+  ```
+
+  `tailscale serve status` shows it, and `sudo tailscale serve --https=443 off`
+  stops it.
+- **The machine's Tailscale address.** `sim jupyter hub start --ip "$(tailscale ip -4)"`
+  makes the hub listen there, at `http://100.x.y.z:8000/`, still encrypted by
+  Tailscale. The machine's firewall must then let it in (below).
+
+A device that can't run Tailscale, such as an older computer, can only reach
+the hub with `--ip 0.0.0.0`, which listens on every network the machine is
+on. Do that only on a home network you trust, since there the passwords
+aren't encrypted.
+
+### The firewall, when the hub listens on an address
+
+With `--ip`, what listens is `configurable-http-proxy`, which is node, not
+Python. `tailscale serve` needs none of this.
 
 - On macOS, with the firewall on (System Settings, Network, Firewall), a
   service never gets the "allow incoming connections?" question, so
