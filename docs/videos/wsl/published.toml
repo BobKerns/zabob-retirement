@@ -7,8 +7,7 @@
 [en]
 video = "YJiwuHzIq1w"
 uploaded = 2026-11-27T08:34:35Z
-snippet = "7f9f2799ca9967c9"
-pending = ["captions"]
+snippet = "e2c5165fb76e7f33"
 scenes = [
   ["title", 15.88],
   ["skip", 43.62],
@@ -29,7 +28,6 @@ scenes = [
 video = "7Qku6qGmjBM"
 uploaded = 2026-11-27T09:14:04Z
 snippet = "733ce1137f9cf470"
-pending = ["captions"]
 scenes = [
   ["title", 20.17],
   ["skip", 48.06],
