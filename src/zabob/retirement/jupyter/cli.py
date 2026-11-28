@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -289,6 +290,38 @@ def hub_status_command() -> None:
         click.echo(f"  {user.describe()}")
     if not users:
         click.echo("  no users yet; `sim jupyter user add LOGIN` adds one")
+
+
+@hub_group.command("log")
+@click.option("-n", "--lines", type=click.IntRange(0), default=50, show_default=True,
+              help="How many of the last lines to show; 0 for the whole log.")
+@click.option("-f", "--follow", is_flag=True, help="Keep showing lines as they're written, until Ctrl+C.")
+def hub_log_command(lines: int, follow: bool) -> None:
+    """The hub's log: logins, spawns, and each user's JupyterLab, which is
+    where a server that won't start says why."""
+    path = hub.log_file()
+    if path is None:
+        raise click.ClickException(f"the hub hasn't written a log in {hub.run_dir()} yet")
+    click.echo(f"==> {path} <==", err=True)
+    try:
+        with path.open("rb") as log:
+            text = log.read()
+            shown = text.splitlines(keepends=True)[-lines:] if lines else [text]
+            click.echo(b"".join(shown).decode(errors="replace"), nl=False)
+            while follow:
+                if (more := log.read()):
+                    click.echo(more.decode(errors="replace"), nl=False)
+                elif path.stat().st_size < log.tell():
+                    log.seek(0)  # cut short, or replaced: start again
+                else:
+                    time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    except PermissionError as exc:
+        raise click.ClickException(f"can't read {path}; if the service (root) wrote it, "
+                                   f"`sudo \"$(command -v sim)\" jupyter hub log` can") from exc
+    except OSError as exc:
+        raise click.ClickException(f"can't read {path}: {exc.strerror}") from exc
 
 
 @hub_group.command("service")

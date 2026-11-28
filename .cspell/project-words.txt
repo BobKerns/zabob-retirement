@@ -127,6 +127,7 @@ dietz
 DODGX
 doraise
 drilldown
+dseditgroup
 DTASOF
 DTEND
 DTPOSTED
@@ -175,6 +176,8 @@ GAAP
 getbasetemp
 geteuid
 getgid
+getgrgid
+getgrouplist
 gethostname
 getpalette
 getpid
@@ -311,6 +314,7 @@ networth
 Neue
 NEWFILEUID
 nextstrain
+NGROUPS
 NOCASE
 noconfirm
 nohup
@@ -362,6 +366,7 @@ POSMF
 POSTYPE
 PRCC
 PRCCᵢ
+preexec
 preflighted
 preflights
 preroll
@@ -436,6 +441,8 @@ SECNAME
 semideviation
 serverapp
 servname
+setgid
+setgroups
 setopt
 setp
 setpts

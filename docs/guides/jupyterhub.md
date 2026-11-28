@@ -108,6 +108,25 @@ sudo chgrp -R household . && chmod -R g+rwX . && find . -type d -exec chmod g+s 
 git config core.sharedRepository group
 ```
 
+On macOS, make the group and add the people with `dseditgroup` instead
+(the `chgrp`, `chmod` and `git config` lines are the same):
+
+```sh
+sudo dseditgroup -o create household
+sudo dseditgroup -o edit -a alice -t user household && sudo dseditgroup -o edit -a bill -t user household
+```
+
+Every folder above the repo must let the group in too. A home folder
+seldom does, so a shared repo is best outside anyone's home, such as
+`/Users/Shared/zabob-retirement` on macOS or `/srv/zabob-retirement` on
+Linux.
+
+A login can be in more groups than a process may have (16 on macOS). The
+hub then keeps the shared repo's group and the groups of the folders above
+it, and its log names the groups it left out. If someone's JupyterLab
+still can't open the repo, it stops at once, and `sim jupyter hub log`
+says which folder kept them out.
+
 Git refuses to work in a repository someone else owns unless told it's
 safe; the hub adds the shared repo to each person's `safe.directory` for
 them.
@@ -117,8 +136,13 @@ them.
 The hub keeps its settings in `hub/` beside your `config.toml`
 (`~/.config/zabob-retirement/hub/`), or in `$ZABOB_HUB_DIR`: `users.toml`
 (who logs in, and to which data repo), `hub.toml` (where it listens), and
-`run/`, with its log (`run/jupyterhub.log`), database and cookie secret.
+`run/`, with its log, database and cookie secret.
 `sim jupyter hub status` shows whether it's running, where, and its users.
+`sim jupyter hub log` shows the end of its log (`-n 200` for more, `-f` to
+watch it), which has each person's JupyterLab too: when a server won't
+start, it says why. The log is `run/service.log` when the service runs
+the hub and `run/jupyterhub.log` when `sim jupyter hub start` does; the
+command shows the one written last.
 
 ## On Windows: inside WSL
 

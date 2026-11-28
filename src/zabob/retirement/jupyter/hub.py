@@ -40,7 +40,8 @@ from zabob.retirement.user_config import config_path
 
 __all__ = [
     "DEFAULT_IP", "DEFAULT_PORT", "HUB_DIR_ENV", "OWN_REPO_NAME", "SERVICE_NAME", "HubError", "HubUser",
-    "Settings", "config_file", "delete_user", "home_of", "hub_dir", "hub_pid", "launchd_plist", "logins",
+    "Settings", "config_file", "delete_user", "home_of", "hub_dir", "hub_pid", "launchd_plist", "log_file",
+    "logins",
     "own_repo", "read_settings", "read_users", "run_dir", "service_path", "start", "stop", "systemd_unit",
     "write_settings", "write_user",
 ]
@@ -134,6 +135,14 @@ def prepare_for_service(folder: Path | None = None) -> None:
     for path in (folder, run):
         with contextlib.suppress(OSError, ValueError):
             os.chown(path, int(uid), int(gid))
+
+
+def log_file(folder: Path | None = None) -> Path | None:
+    """The hub's log written last: ``run/service.log`` when the service ran
+    it, ``run/jupyterhub.log`` when `sim jupyter hub start` did; None when
+    it hasn't run yet. Each user's JupyterLab writes there too."""
+    found = [path for name in ("jupyterhub.log", "service.log") if (path := run_dir(folder) / name).is_file()]
+    return max(found, key=lambda path: path.stat().st_mtime, default=None)
 
 
 def config_file(folder: Path | None = None) -> Path:
@@ -393,6 +402,9 @@ def systemd_unit(folder: Path | None = None) -> str:
         f"Environment={HUB_DIR_ENV}={folder}\n"
         f"Environment=PATH={_service_path_env()}\n"
         f"ExecStart={_sim()} jupyter hub start --foreground\n"
+        # Beside launchd's, rather than in the journal, for `sim jupyter hub log`.
+        f"StandardOutput=append:{run_dir(folder) / 'service.log'}\n"
+        "StandardError=inherit\n"
         "Restart=on-failure\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
