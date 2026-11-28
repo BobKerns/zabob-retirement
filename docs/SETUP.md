@@ -41,21 +41,22 @@ built from. Run from a source checkout, it names the checkout's own commit
 and folder, with `.dirty` after uncommitted changes to the code (the files a
 wheel's stamp counts, not docs or tests), and `+unknown` when git can't say.
 `--short` prints the version alone and `--json` adds the Python running it;
-`analysis` and `amazon` take the same command.
+`analysis` takes the same command.
 
 To have TAB complete `sim`'s commands, options and the names your scenarios
-define (accounts, chains, scenarios...), set it up once for your shell:
+define (accounts, chains, scenarios...), set it up once for your shell (this
+sets up `analysis` too, and `analysis completion install` does the same):
 
 ```sh
 sim completion install       # your shell; or name it: bash, zsh, fish, powershell
 ```
 
-It writes the completion script under your settings folder (fish's own
-`~/.config/fish/completions/` for fish) and adds a line that reads it to
-`~/.bashrc`, `~/.zshrc` or PowerShell's `$PROFILE`; open a new terminal to
-use it. Running it again changes nothing but the script, so run it again
-after an upgrade if TAB stops completing. To put the script somewhere of
-your own, `sim completion show zsh` prints it. Bash needs version 4.4 or
+It writes a completion script for each program under your settings folder
+(fish's own `~/.config/fish/completions/` for fish) and adds a line that
+reads each to `~/.bashrc`, `~/.zshrc` or PowerShell's `$PROFILE`; open a new
+terminal to use it. Running it again changes nothing but the scripts, so run
+it again after an upgrade if TAB stops completing. To put the scripts
+somewhere of your own, `sim completion show zsh` prints them. Bash needs version 4.4 or
 later: macOS's own `/bin/bash` is older, so on a Mac use zsh, its default.
 In bash or zsh, `source ~/zabob-retirement/sim/activate-retirement` adds the
 data repo and you to the prompt; it's optional.

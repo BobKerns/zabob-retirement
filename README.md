@@ -197,17 +197,16 @@ See [docs/SETUP.md](./docs/SETUP.md) for what it does and the manual steps.
 - Videos: the guide videos linked above are made from
   [docs/videos/README.md](./docs/videos/README.md) (Docker needed).
 
-Three CLI entry points are installed:
+Two CLI entry points are installed:
 
 | Script | Equivalent | Purpose |
 | -------- | ------------ | --------- |
-| `analysis` | — | Top-level; all subcommands |
-| `amazon` | `analysis amazon` | Amazon expense categoriser |
+| `analysis` | — | Top-level; all subcommands, including `analysis amazon` (the Amazon expense categoriser) |
 | `sim` | `analysis sim` | Scenario simulator |
 
 Editing a scenario? See [docs/user-guide.md](./docs/user-guide.md) for a task-based walkthrough (adding accounts and lots, changing expenses, modeling a sale, chains, lifespans, calendar events).
 
-All examples below use the short scripts (`amazon ...`, `sim ...`). You can also use `analysis amazon ...` / `analysis sim ...`, or `uv run amazon ...` if the venv is not on your `PATH`.
+The examples below use `sim ...` and `analysis amazon ...`. You can also use `analysis sim ...`, or put `uv run` before either if the venv is not on your `PATH`.
 
 Notebook helper API (same logic as CLI):
 
@@ -220,28 +219,18 @@ categories, mapping = load_categorization_state("state")
 
 ### Shell Autocomplete (Click)
 
-For `sim`, set it up once (bash, zsh, fish or PowerShell; with no shell named,
-yours):
+Set it up once, for both `sim` and `analysis` (bash, zsh, fish or
+PowerShell; with no shell named, yours):
 
 ```sh
 sim completion install
 ```
 
-It saves the completion script and adds a line reading it to your shell's
-startup file; `sim completion show SHELL` prints the script instead. See
-[SETUP.md](docs/SETUP.md#install-the-program).
-
-`analysis` and `amazon`, the developer's tools, use Click's own lines, for
-the current shell or in `~/.zshrc` (`bash_source` for bash, `fish_source`
-for fish):
-
-```sh
-eval "$(_ANALYSIS_COMPLETE=zsh_source analysis)"
-eval "$(_AMAZON_COMPLETE=zsh_source amazon)"
-```
-
-With the scripts not on your `PATH`, put `uv run` before `analysis` or
-`amazon`. Sourcing the data repo's `activate-retirement` turns on all three.
+It saves a completion script for each program and adds a line reading it to
+your shell's startup file; `sim completion show SHELL` prints the scripts
+instead. `analysis completion` is the same command. See
+[SETUP.md](docs/SETUP.md#install-the-program). Sourcing the data repo's
+`activate-retirement` also turns completion on, for that shell.
 
 In `sim`, TAB also completes the names a scenario defines: scenarios,
 ensembles, accounts, lots, chains, scheduled rules, calendar rows, persons,
@@ -264,13 +253,13 @@ the same way; in a script or pipe the command fails with its usual error.
 Run the interactive categorizer on one or more Amazon CSVs covering any date range:
 
 ```sh
-amazon categorize data/amazon_2026_01.csv
+analysis amazon categorize data/amazon_2026_01.csv
 ```
 
 Multiple files in one run:
 
 ```sh
-amazon categorize data/Amazon-2026-03.csv data/Amazon-2026-04.csv
+analysis amazon categorize data/Amazon-2026-03.csv data/Amazon-2026-04.csv
 ```
 
 During interactive category prompts, press `Tab` to complete from known categories.
@@ -278,19 +267,19 @@ During interactive category prompts, press `Tab` to complete from known categori
 Non-interactive mode assigns unknown items to `UNCATEGORIZED`:
 
 ```sh
-amazon categorize data/amazon_2026_01.csv --no-interactive
+analysis amazon categorize data/amazon_2026_01.csv --no-interactive
 ```
 
 Review and re-categorize existing mapped items for a category:
 
 ```sh
-amazon category review
+analysis amazon category review
 ```
 
 Delete a category and remove mappings assigned to it:
 
 ```sh
-amazon category delete
+analysis amazon category delete
 ```
 
 Both commands prompt you to select a category (with Tab completion).
@@ -311,7 +300,7 @@ Monthly files use a billing cutoff on day 3:
 Use `--cutoff-day` to override the boundary (1-28):
 
 ```sh
-amazon categorize data/amazon_2026_01.csv --cutoff-day 3
+analysis amazon categorize data/amazon_2026_01.csv --cutoff-day 3
 ```
 
 If a generated billing month is still in progress for today, the monthly filenames include `_pending`:

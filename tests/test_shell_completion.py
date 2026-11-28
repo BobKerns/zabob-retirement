@@ -1,4 +1,4 @@
-"""`sim completion install|show` and PowerShell completion (#792).
+"""`sim completion install|show`, `analysis completion` and PowerShell completion (#792, #844).
 
 Runs on the Windows workflow too, where PowerShell is at hand and the
 installed `sim.exe` is on PATH, so the PowerShell script is tried for real
@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from zabob.retirement.cli import main as analysis_command
 from zabob.retirement.sim import shell_completion
 from zabob.retirement.sim.cli import sim_group_command
 
@@ -35,19 +36,58 @@ def _sim(*args: str, env: dict[str, str] | None = None) -> str:
 
 
 @pytest.mark.parametrize(("shell", "rc"), [("bash", ".bashrc"), ("zsh", ".zshrc")])
-def test_install_writes_the_script_and_one_startup_line(home: Path, shell: str, rc: str) -> None:
+def test_install_writes_a_script_and_one_startup_line_per_program(home: Path, shell: str, rc: str) -> None:
     (home / rc).write_text("export EDITOR=vi", encoding="utf-8")  # no final newline
 
     first = _sim("completion", "install", shell)
     again = _sim("completion", "install", shell)
 
-    script = shell_completion.install(shell)[0].script
-    assert script.read_text(encoding="utf-8") == shell_completion.source(shell)
+    scripts = [done.script for done in shell_completion.install(shell)]
+    assert [script.name for script in scripts] == [f"sim.{shell}", f"analysis.{shell}"]
     lines = (home / rc).read_text(encoding="utf-8").splitlines()
     assert lines[0] == "export EDITOR=vi"
-    assert len([line for line in lines if str(script) in line]) == 1
-    assert rc in first
+    for script, prog_name in zip(scripts, shell_completion.PROGRAMS, strict=True):
+        assert script.read_text(encoding="utf-8") == shell_completion.source(shell, prog_name)
+        assert len([line for line in lines if str(script) in line]) == 1
+    assert first.count(rc) == 2
     assert rc not in again
+
+
+def test_install_keeps_the_sim_line_an_earlier_install_wrote(home: Path) -> None:
+    script = shell_completion.install("zsh")[0].script
+    quoted = f"'{script}'"
+    # What `sim completion install` wrote before #844: only sim's line.
+    (home / ".zshrc").write_text(
+        f"[ -f {quoted} ] && . {quoted}  # TAB completion for sim (sim completion install)\n", encoding="utf-8")
+
+    sim_done, analysis_done = shell_completion.install("zsh")
+
+    assert sim_done.startup_file is None
+    assert analysis_done.startup_file == home / ".zshrc"
+
+
+def test_analysis_completion_is_the_same_command(home: Path) -> None:
+    result = CliRunner().invoke(analysis_command, ["completion", "install", "bash"], prog_name="analysis")
+    assert result.exit_code == 0, result.output
+    assert "sim.bash" in result.output
+    assert "analysis.bash" in result.output
+
+
+def test_analysis_script_completes_analysis() -> None:
+    script = shell_completion.source("bash", "analysis")
+    assert "_ANALYSIS_COMPLETE" in script
+    assert "_SIM_COMPLETE" not in script
+    env = {"_ANALYSIS_COMPLETE": "powershell_complete", "COMP_WORDS": "", "COMP_INCOMPLETE": "ama"}
+    result = CliRunner().invoke(analysis_command, [], prog_name="analysis", env=env)
+    assert result.output.splitlines()[0].split("\t")[:2] == ["plain", "amazon"]
+
+
+def test_no_amazon_script_is_installed() -> None:
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    scripts = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["scripts"]
+    assert set(scripts) == set(shell_completion.PROGRAMS)
 
 
 def test_zsh_script_loads_compinit_when_the_zshrc_has_not() -> None:
@@ -59,11 +99,13 @@ def test_zsh_script_loads_compinit_when_the_zshrc_has_not() -> None:
 def test_fish_needs_no_startup_line(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
 
-    [done] = shell_completion.install("fish")
+    installed = shell_completion.install("fish")
 
-    assert done.script == home / ".config" / "fish" / "completions" / "sim.fish"
-    assert done.startup_file is None
-    assert "complete" in done.script.read_text(encoding="utf-8")
+    folder = home / ".config" / "fish" / "completions"
+    assert [done.script for done in installed] == [folder / "sim.fish", folder / "analysis.fish"]
+    for done in installed:
+        assert done.startup_file is None
+        assert "complete" in done.script.read_text(encoding="utf-8")
 
 
 def test_powershell_install_without_powershell_says_what_to_add(
@@ -71,11 +113,12 @@ def test_powershell_install_without_powershell_says_what_to_add(
 ) -> None:
     monkeypatch.setattr(shell_completion.shutil, "which", lambda _name: None)
 
-    [done] = shell_completion.install("powershell")
+    installed = shell_completion.install("powershell")
 
-    assert done.script.name == "sim.ps1"
-    assert done.startup_file is None
-    assert done.note is not None and str(done.script) in done.note
+    assert [done.script.name for done in installed] == ["sim.ps1", "analysis.ps1"]
+    for done in installed:
+        assert done.startup_file is None
+        assert done.note is not None and str(done.script) in done.note
 
 
 def test_powershell_install_adds_a_line_to_each_profile(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -87,10 +130,12 @@ def test_powershell_install_adds_a_line_to_each_profile(home: Path, monkeypatch:
     first = shell_completion.install("powershell")
     again = shell_completion.install("powershell")
 
-    assert [done.startup_file for done in first] == list(profiles.values())
-    assert [done.startup_file for done in again] == [None, None]
+    assert [done.startup_file for done in first] == list(profiles.values()) * 2
+    assert [done.startup_file for done in again] == [None] * 4
     for profile in profiles.values():
-        assert profile.read_text(encoding="utf-8").count("sim.ps1") == 2  # Test-Path and the dot-source
+        text = profile.read_text(encoding="utf-8")
+        assert text.count("sim.ps1") == 2  # Test-Path and the dot-source
+        assert text.count("analysis.ps1") == 2
 
 
 def test_powershell_install_says_how_to_allow_a_restricted_profile(
@@ -100,9 +145,10 @@ def test_powershell_install_says_how_to_allow_a_restricted_profile(
     monkeypatch.setattr(shell_completion, "_powershell", lambda _exe, command: (
         str(home / "profile.ps1") if command.startswith("$PROFILE") else "Restricted"))
 
-    [done] = shell_completion.install("powershell")
+    sim_done, analysis_done = shell_completion.install("powershell")
 
-    assert done.note is not None and "Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" in done.note
+    assert sim_done.note is not None and "Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" in sim_done.note
+    assert analysis_done.note is None  # said once
 
 
 def test_powershell_protocol_completes_from_the_words_given() -> None:
@@ -114,9 +160,18 @@ def test_powershell_protocol_completes_from_the_words_given() -> None:
     assert values == list(shell_completion.SHELLS)
 
 
-def test_show_prints_the_script() -> None:
-    assert _sim("completion", "show", "powershell") == shell_completion.source("powershell")
-    assert "Register-ArgumentCompleter -Native -CommandName sim" in shell_completion.source("powershell")
+def test_show_prints_both_scripts() -> None:
+    shown = _sim("completion", "show", "powershell")
+    assert shown == shell_completion.sources("powershell")
+    assert "Register-ArgumentCompleter -Native -CommandName sim " in shown
+    assert "Register-ArgumentCompleter -Native -CommandName analysis " in shown
+
+
+def test_zsh_show_loads_compinit_once() -> None:
+    shown = shell_completion.sources("zsh")
+    assert shown.count("autoload -Uz compinit") == 1
+    assert shown.splitlines()[0].startswith("(( $+functions[compdef] ))")
+    assert "_SIM_COMPLETE" in shown and "_ANALYSIS_COMPLETE" in shown
 
 
 def test_detect_shell_reads_the_login_shell(monkeypatch: pytest.MonkeyPatch) -> None:

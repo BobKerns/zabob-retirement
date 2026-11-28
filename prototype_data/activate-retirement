@@ -32,7 +32,6 @@ _retirement_enable_completion() {
     # Click completion env var differs by command name.
     _retirement_shell_mode="$1"
     eval "$(_ANALYSIS_COMPLETE=${_retirement_shell_mode} analysis)" 2>/dev/null || true
-    eval "$(_AMAZON_COMPLETE=${_retirement_shell_mode} amazon)" 2>/dev/null || true
     eval "$(_SIM_COMPLETE=${_retirement_shell_mode} sim)" 2>/dev/null || true
     unset _retirement_shell_mode
 }

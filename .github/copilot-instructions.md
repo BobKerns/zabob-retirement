@@ -105,15 +105,14 @@ Invariants that are easy to break:
 
 ## CLI entry points
 
-Three scripts are installed via `pyproject.toml` `[project.scripts]`:
+Two scripts are installed via `pyproject.toml` `[project.scripts]`:
 
 | Script | Equivalent | Purpose |
 | --- | --- | --- |
-| `analysis` | — | Top-level; all subcommands |
-| `amazon` | `analysis amazon` | Amazon expense categorizer |
+| `analysis` | — | Top-level; all subcommands, including `analysis amazon` (the Amazon expense categorizer) |
 | `sim` | `analysis sim` | Scenario simulator |
 
-Use `.venv/bin/analysis` / `.venv/bin/amazon` / `.venv/bin/sim`, or `uv run ...`,
+Use `.venv/bin/analysis` / `.venv/bin/sim`, or `uv run ...`,
 if the venv isn't on `PATH`.
 
 ## Verifying a change
