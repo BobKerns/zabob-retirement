@@ -360,9 +360,11 @@ def stop(folder: Path | None = None, *, timeout: float = 30) -> bool:
     except ProcessLookupError:
         return True
     except PermissionError as exc:
-        how = (f"sudo launchctl bootout system {service_path()}" if sys.platform == "darwin"
-               else f"sudo systemctl stop {SERVICE_NAME}")
-        raise HubError(f"the hub (process {pid}) isn't yours to stop; if the service runs it: {how}") from exc
+        # The same stop as the service manager's: the hub exits cleanly, so
+        # neither launchd (KeepAlive on failure) nor systemd (Restart=on-failure)
+        # restarts it, and it starts again at the next boot either way.
+        raise HubError(f"the hub (process {pid}) isn't yours to stop; "
+                       "`sudo \"$(command -v sim)\" jupyter hub stop` stops it") from exc
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline and pid_alive(pid):
         # One this process started (a test's) lingers as a zombie until reaped.

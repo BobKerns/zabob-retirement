@@ -417,3 +417,16 @@ def test_the_log_follows_until_interrupted(
 
 def test_the_linux_service_logs_beside_the_hub(hub_logins: dict[str, Path]) -> None:  # noqa: ARG001 - its folder
     assert f"StandardOutput=append:{hub.run_dir() / 'service.log'}" in hub.systemd_unit()
+
+
+def test_a_hub_root_runs_is_stopped_with_sudo(
+    hub_logins: dict[str, Path], monkeypatch: pytest.MonkeyPatch,  # noqa: ARG001 - its folder
+) -> None:
+    def refuse(_pid: int, _signal: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(hub, "hub_pid", lambda _folder=None: 4242)
+    monkeypatch.setattr(os, "kill", refuse)
+    result = _sim("hub", "stop")
+    assert result.exit_code != 0
+    assert "isn't yours to stop; `sudo \"$(command -v sim)\" jupyter hub stop` stops it" in result.output
