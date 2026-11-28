@@ -18,10 +18,12 @@ neighboring videos, and a link to each other language's version from its
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tomllib
@@ -162,7 +164,15 @@ class Published:
             out.append("scenes = [")
             out += [f'  ["{sid}", {float(s):.2f}],' for sid, s in entry["scenes"]]
             out.append("]")
-        self.path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        # Written beside it and renamed over it, so a run that dies mid-write
+        # leaves the last whole file, not half of one (#828).
+        temp = self.path.with_name(self.path.name + ".tmp")
+        try:
+            temp.write_text("\n".join(out) + "\n", encoding="utf-8")
+            temp.replace(self.path)
+        except BaseException:
+            temp.unlink(missing_ok=True)  # not left in docs/videos for a `git add` to pick up
+            raise
 
 
 def load_published(folder: Path) -> Published:
@@ -457,25 +467,71 @@ def secrets_dir() -> Path:
     return base / "analysis-videos"
 
 
-def run_worker(request: dict[str, Any], repo: Path) -> dict[str, Any]:
-    """Send one request to the YouTube worker (its own ``uv run --script`` environment)."""
+Event = Callable[[dict[str, Any]], None]
+Worker = Callable[[dict[str, Any], Path, Event], dict[str, Any]]
+
+
+def _event(line: str) -> dict[str, Any] | None:
+    """A step the worker reports as it happens: ``{"uploaded": id, "pending": [...]}`` or ``{"done": step}``."""
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return event if isinstance(event, dict) and ("uploaded" in event or "done" in event) else None
+
+
+def _stop(proc: subprocess.Popen[str]) -> None:
+    if sys.platform == "win32":
+        proc.kill()
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_worker(request: dict[str, Any], repo: Path, on_event: Event = lambda _: None) -> dict[str, Any]:
+    """Send one request to the YouTube worker (its own ``uv run --script`` environment).
+
+    Each step it reports goes to ``on_event`` as it comes, so an upload is
+    recorded even if the worker or this process dies before its answer (#828).
+    """
     worker = repo / "scripts" / "videos" / "youtube_api.py"
     # stderr passes through as it comes: the sign-in URL on first use, and
     # the upload's progress.
-    result = subprocess.run(["uv", "run", "--quiet", "--script", str(worker)], input=json.dumps(request),
-                            stdout=subprocess.PIPE, text=True, check=False)
-    return worker_answer(result.stdout, result.returncode)
+    lines: list[str] = []
+    # Its own process group, so stopping it stops the Python that `uv run`
+    # starts too, not just uv (on Windows, uv's job object takes it along).
+    with subprocess.Popen(["uv", "run", "--quiet", "--script", str(worker)], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                          start_new_session=sys.platform != "win32") as proc:
+        assert proc.stdin is not None and proc.stdout is not None
+        try:
+            # A worker that exits before reading (uv can't install its
+            # dependencies, say) is reported from its answer, not as a broken pipe.
+            with contextlib.suppress(BrokenPipeError):
+                proc.stdin.write(json.dumps(request))
+                proc.stdin.close()
+            for line in proc.stdout:
+                lines.append(line)
+                if (event := _event(line)) is not None:
+                    on_event(event)
+        except BaseException:
+            # As subprocess.run does: Popen's exit leaves the worker running
+            # after a Ctrl-C (or a failed save), and it could then finish an
+            # upload whose id no one reads.
+            _stop(proc)
+            raise
+    return worker_answer("".join(lines), proc.returncode)
 
 
 def worker_answer(stdout: str, returncode: int) -> dict[str, Any]:
-    """The worker's answer: the last line it printed, which is JSON."""
-    lines = [line for line in stdout.splitlines() if line.strip()]
+    """The worker's answer: the last line it printed, which is JSON (the step events before it aside)."""
+    lines = [line for line in stdout.splitlines() if line.strip() and _event(line) is None]
     try:
         answer = json.loads(lines[-1]) if lines else {}
     except json.JSONDecodeError:
         answer = {}
     if not isinstance(answer, dict) or "video" not in answer:
-        answer = {"video": None, "error": stdout.strip() or "the YouTube worker failed (see above)"}
+        answer = {"video": None, "error": "\n".join(lines).strip() or "the YouTube worker failed (see above)"}
     if returncode and not answer.get("error"):
         answer["error"] = "the YouTube worker failed (see above)"
     return answer
@@ -548,7 +604,7 @@ def publish(
     new_upload: bool = False,
     refresh_only: bool = False,
     force: bool = False,
-    worker: Callable[[dict[str, Any], Path], dict[str, Any]] = run_worker,
+    worker: Worker = run_worker,
     log: Callable[[str], None] = print,
 ) -> None:
     """Upload what isn't on YouTube yet, then bring every affected description up to date.
@@ -578,6 +634,21 @@ def publish(
         return {"thumbnail": str(b.thumbnail), "captions": {"file": str(b.captions), "language": lang},
                 "playlist": meta.playlist}
 
+    def recorder(published: Published, lang: str, lengths: Sequence[tuple[str, float]],
+                 snippet: str | None) -> tuple[Event, list[str]]:
+        """What records the worker's steps as they happen (#828), and the id it uploaded, once it has."""
+        uploaded: list[str] = []
+
+        def on_event(event: dict[str, Any]) -> None:
+            if event.get("uploaded"):
+                uploaded.append(event["uploaded"])
+                published.record(lang, event["uploaded"], lengths, datetime.now(UTC), snippet=snippet,
+                                 pending=event.get("pending", ()))
+            elif event.get("done") and lang in published.langs:
+                published.update(lang, pending=[s for s in published.pending(lang) if s != event["done"]])
+
+        return on_event, uploaded
+
     # Each (folder, language) whose description to bring up to date, in order.
     refresh: dict[tuple[Path, str], None] = {}
     for folder in folders:
@@ -601,9 +672,12 @@ def publish(
                     log(f"{folder.name} [{lang}]: would finish {video}: {', '.join(pending)}")
                     continue
                 log(f"{folder.name} [{lang}]: finishing {video_url(video)}: {', '.join(pending)}...")
+                on_event, _ = recorder(published, lang, b.lengths, None)
                 answer = worker({"secrets": secrets, "video": video, "finish": pending, **media(b, lang, meta)},
-                                repo)
-                published.update(lang, pending=answer.get("pending", pending) if answer.get("error") else [])
+                                repo, on_event)
+                # With no answer, what the steps reported is what's left.
+                published.update(lang, pending=answer.get("pending", published.pending(lang))
+                                 if answer.get("error") else [])
                 if answer.get("error"):
                     raise _youtube_error(f"{folder.name} [{lang}]", answer)
             if refresh_only or (video and not new_upload):
@@ -629,14 +703,17 @@ def publish(
                 "snippet": meta.snippet(),
                 **media(b, lang, meta),
             }
-            answer = worker(request, repo)
+            on_event, uploaded = recorder(published, lang, b.lengths, snippet_hash(meta.snippet()))
+            answer = worker(request, repo, on_event)
             video = answer.get("video")
             if video:  # even after a later step failed: it's up, so a retry mustn't upload it again
                 published.record(lang, video, b.lengths, datetime.now(UTC), snippet=snippet_hash(meta.snippet()),
                                  pending=answer.get("pending", ()) if answer.get("error") else ())
+            elif uploaded:  # the worker died before its answer, but the upload was recorded as it came
+                video = uploaded[0]
             if answer.get("error") or not video:
-                if video and answer.get("pending"):
-                    hint = f" ({video_url(video)} is up; publish again to add its {', '.join(answer['pending'])})"
+                if video and published.pending(lang):
+                    hint = f" ({video_url(video)} is up; publish again to add its {', '.join(published.pending(lang))})"
                 else:
                     hint = f" ({video_url(video)} is up; fix it in Studio)" if video else ""
                 raise _youtube_error(f"{folder.name} [{lang}]", answer, hint)
@@ -660,7 +737,7 @@ def publish(
             log(f"{folder.name} [{lang}]: would set the title and description of {video}:")
             log("    " + preview(meta).rstrip().replace("\n", "\n    "))
             continue
-        answer = worker({"secrets": secrets, "video": video, "snippet": meta.snippet()}, repo)
+        answer = worker({"secrets": secrets, "video": video, "snippet": meta.snippet()}, repo, lambda _: None)
         if answer.get("error"):
             hint = ""
             if str(answer["error"]).startswith("404"):

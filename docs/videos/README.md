@@ -509,9 +509,11 @@ picture doesn't reach YouTube. Each language is its own video. An upload:
   language's captions;
 - adds it to the language's playlist (`playlist` in `youtube.toml`, by
   title; the playlist must exist);
-- records its id in `published.toml` beside the script. Commit that file:
-  ids are public, and they're how a later `publish` updates the video
-  instead of uploading it again, and how descriptions link to it.
+- records its id in `published.toml` beside the script the moment the
+  upload is in, ahead of its thumbnail, captions and playlist, so an error
+  or a Ctrl-C after it can't lose the id (#828). Commit that file: ids
+  are public, and they're how a later `publish` updates the video instead
+  of uploading it again, and how descriptions link to it.
 
 A video already up only has its title, description and tags updated, and
 the same goes for the videos before and after it, whose descriptions link
@@ -536,9 +538,9 @@ changed; `--force` sends them anyway (after an edit in Studio, say).
 
 When the quota runs out, `publish` stops and says when it resets. Run the
 same command again after that: videos already up aren't uploaded again,
-and if the quota ran out between an upload and its thumbnail, captions or
-playlist, `published.toml` lists those steps under `pending` and the next
-`publish` finishes them first.
+and if the quota (or the connection, or anything else) gave out between an
+upload and its thumbnail, captions or playlist, `published.toml` lists
+those steps under `pending` and the next `publish` finishes them first.
 
 ### Titles and descriptions
 

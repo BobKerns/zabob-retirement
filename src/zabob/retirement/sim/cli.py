@@ -201,6 +201,7 @@ from zabob.retirement.frames import clip_years, index_years, named_rows, row_yea
 from zabob.retirement.sim.types import INVESTMENT_ASSET_SUBKINDS, Death, DollarMode, InvestmentAssetSubkind, ItemType
 from zabob.retirement.sim.retention import RETENTION_FILENAME, RetentionError, prune_state
 from zabob.retirement.sim.schema import SCHEMA_VERSION, connect_sim_file
+from zabob.retirement.version_cli import add_version
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -345,7 +346,7 @@ def sim_group_command(ctx: click.Context) -> None:
     utf8_stdio()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
-    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion"):
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion", "version"):
         return
     args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
     _follow_working_folder(args)
@@ -5962,6 +5963,7 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
 
 
 sim_group_command.add_command(jupyter_group)
+add_version(sim_group_command)
 
 
 @sim_group_command.group(name="completion")
