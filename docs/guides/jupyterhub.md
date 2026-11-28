@@ -35,7 +35,9 @@ Each person's JupyterLab works on one data repo, set per person:
 
 The notebooks can't change the data, so a person you only want to show
 results to sees them without being able to alter anything through them.
-They can still open a terminal in JupyterLab and run `sim` commands.
+They can still open a terminal in JupyterLab and run `sim` commands. A chart
+there (`--graph`) can't show in the terminal, so it goes into
+`notebooks/sim-charts/`, where the file browser opens it.
 
 ## Setting it up
 
@@ -69,24 +71,25 @@ They can still open a terminal in JupyterLab and run `sim` commands.
    one (it asks, or takes `--shared`/`--own`), and
    `sim jupyter user delete bill` removes one. A change takes effect at that
    person's next login, with no restart.
-4. **Choose where it listens.** By default the hub listens only on this
-   machine, at `http://127.0.0.1:8000/`. To reach it from your other devices,
-   give it the machine's Tailscale address (`tailscale ip -4`), or `0.0.0.0`
-   for every network the machine is on:
+4. **Start it.** The hub listens only on this machine, at
+   `http://127.0.0.1:8000/` (`--port` picks another port, and is
+   remembered). Your other devices reach it
+   [through Tailscale](#reaching-it-from-other-devices).
 
    ```sh
-   sim jupyter hub start --ip 100.101.102.103 --port 8000
+   sim jupyter hub start
    sim jupyter hub stop
    ```
-
-   The address and port are remembered.
 5. **Run it as a service.** Logging people in with their own passwords and
    starting their JupyterLab as them needs root, so for more than your own
    login the hub runs as a system service. `sim jupyter hub service` prints
    it (a systemd unit on Linux, a launchd daemon on macOS);
    `sudo "$(command -v sim)" jupyter hub service --install` writes it, and
    prints the command that enables and starts it. (A plain `sudo sim` usually
-   isn't found: sudo's `PATH` leaves out the folder `sim` is in.)
+   isn't found: sudo's `PATH` leaves out the folder `sim` is in.) After that,
+   `sim jupyter hub stop` and `sim jupyter hub start`, run with sudo, stop
+   the service and start it again, so the hub runs the same way, and logs
+   to the same place, whether it started at boot or by hand.
 
 Each person then opens the hub's address, logs in with their own account on
 the machine, and lands in their data repo's notebooks. The first time, the
@@ -94,6 +97,57 @@ hub records their login name and data repo in their own settings, as
 `sim login` and `sim switch --data` would, so a JupyterLab terminal's `sim`
 commands use the same data repo. Whatever they change there after, with
 `sim login NAME` or `sim switch --data DIR`, the hub leaves alone.
+
+## Reaching it from other devices
+
+Use [Tailscale](https://tailscale.com/docs/how-to/quickstart) with
+`tailscale serve`. It gives you full security with none of the usual work:
+every connection between your devices is encrypted and authenticated, only
+devices you've added to your tailnet can reach the hub, and there are no
+certificates, domain names, router ports, firewall rules or proxies to set
+up.
+
+The hub itself speaks plain HTTP and stays listening only on this machine;
+[`tailscale serve`](https://tailscale.com/docs/features/tailscale-serve)
+hands it to your tailnet over HTTPS, with a real certificate, at
+`https://<machine>.<tailnet>.ts.net/`.
+
+1. **Install Tailscale** on the machine running the hub and on each device
+   people use to open it (Mac, Windows, iPhone and iPad apps, or Linux's
+   package), signed in to the same account: the
+   [quickstart](https://tailscale.com/docs/how-to/quickstart) walks through
+   it. That's how this is meant to be used: every device on your tailnet,
+   nothing outside it.
+2. **Find its command line.** On Linux `tailscale` is on your `PATH`. On a
+   Mac the app carries it inside, but not on your `PATH`; give it a name:
+
+   ```sh
+   alias tailscale=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+   ```
+
+   (put that line in `~/.zshrc` to keep it). The
+   [CLI reference](https://tailscale.com/docs/reference/tailscale-cli) has
+   every command.
+3. **Turn on HTTPS, once.** In the admin console's
+   [DNS page](https://console.tailscale.com/admin/dns), turn on MagicDNS if
+   it's off, then **Enable HTTPS** under HTTPS Certificates
+   ([how](https://tailscale.com/docs/how-to/set-up-https-certificates)).
+   Certificates are public records, so your machines' names and your
+   tailnet's name become public: name the machines something that gives
+   nothing away, not a person's full name.
+4. **Serve the hub.** On the hub's machine (the port is the hub's, 8000
+   unless you chose another; on Linux, run it with `sudo`):
+
+   ```sh
+   tailscale serve --bg 8000
+   ```
+
+   It prints the address to open. If it offers to turn on **Funnel**, say
+   no: you don't need it. Funnel puts the hub on the public internet, where
+   anyone can reach its login page and try your household's passwords.
+
+It stays on across restarts. `tailscale serve status` shows the address,
+and `tailscale serve reset` stops it.
 
 ## A shared data repo needs shared permissions
 
@@ -108,6 +162,25 @@ sudo chgrp -R household . && chmod -R g+rwX . && find . -type d -exec chmod g+s 
 git config core.sharedRepository group
 ```
 
+On macOS, make the group and add the people with `dseditgroup` instead
+(the `chgrp`, `chmod` and `git config` lines are the same):
+
+```sh
+sudo dseditgroup -o create household
+sudo dseditgroup -o edit -a alice -t user household && sudo dseditgroup -o edit -a bill -t user household
+```
+
+Every folder above the repo must let the group in too. A home folder
+seldom does, so a shared repo is best outside anyone's home, such as
+`/Users/Shared/zabob-retirement` on macOS or `/srv/zabob-retirement` on
+Linux.
+
+A login can be in more groups than a process may have (16 on macOS). The
+hub then keeps the shared repo's group and the groups of the folders above
+it, and its log names the groups it left out. If someone's JupyterLab
+still can't open the repo, it stops at once, and `sim jupyter hub log`
+says which folder kept them out.
+
 Git refuses to work in a repository someone else owns unless told it's
 safe; the hub adds the shared repo to each person's `safe.directory` for
 them.
@@ -117,8 +190,13 @@ them.
 The hub keeps its settings in `hub/` beside your `config.toml`
 (`~/.config/zabob-retirement/hub/`), or in `$ZABOB_HUB_DIR`: `users.toml`
 (who logs in, and to which data repo), `hub.toml` (where it listens), and
-`run/`, with its log (`run/jupyterhub.log`), database and cookie secret.
+`run/`, with its log, database and cookie secret.
 `sim jupyter hub status` shows whether it's running, where, and its users.
+`sim jupyter hub log` shows the end of its log (`-n 200` for more, `-f` to
+watch it), which has each person's JupyterLab too: when a server won't
+start, it says why. The log is `run/service.log` when the service runs
+the hub and `run/jupyterhub.log` when `sim jupyter hub start` does; the
+command shows the one written last.
 
 ## On Windows: inside WSL
 

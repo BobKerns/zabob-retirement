@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -210,8 +211,8 @@ def hub_group() -> None:
 
 
 @hub_group.command("start")
-@click.option("--ip", help=f"Listen on this address (default {hub.DEFAULT_IP}, this machine only; "
-              "0.0.0.0 for every network, or a Tailscale address). Remembered.")
+@click.option("--ip", help=f"Listen on this address (default {hub.DEFAULT_IP}: this machine only; "
+              "`tailscale serve` reaches it from your other devices, as the hub guide shows). Remembered.")
 @click.option("--port", type=click.IntRange(1, 65535), help=f"Listen on this port (default {hub.DEFAULT_PORT}). "
               "Remembered.")
 @click.option("--foreground", is_flag=True, help="Run in this terminal until Ctrl+C (as the service does).")
@@ -220,12 +221,15 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
     try:
         if not hasattr(os, "getuid"):
             raise hub.HubError("the hub runs on Linux and macOS; on Windows, use `sim jupyter start`")
+        # With the service installed, it runs the hub, as at boot; --foreground
+        # is what the service itself runs, so that never hands off.
+        service = not foreground and hub.service_installed()
         import importlib.util
 
         if importlib.util.find_spec("jupyterhub") is None:
             raise hub.HubError("JupyterHub isn't installed: install the program with its hub extra, "
                                "zabob-retirement[hub] (in a checkout, `uv sync --extra hub`)")
-        if hub.proxy_command() is None:
+        if hub.proxy_command() is None and not service:  # the service has its own PATH
             raise hub.HubError("configurable-http-proxy isn't on PATH: "
                                "`npm install -g configurable-http-proxy` installs it")
         settings = hub.read_settings()
@@ -236,6 +240,9 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
             click.echo(f"The hub is already running (process {pid}) at {settings.url}"
                        + ("; stop it first to move it" if ip is not None or port is not None else ""))
             return
+        if service and os.getuid() != 0:
+            raise hub.HubError(f"the hub runs as the service ({hub.service_path()}); "
+                               "`sudo \"$(command -v sim)\" jupyter hub start` starts it")
         if ip is not None or port is not None:
             settings = hub.Settings(ip if ip is not None else settings.ip,
                                     port if port is not None else settings.port)
@@ -243,6 +250,12 @@ def hub_start_command(ip: str | None, port: int | None, foreground: bool) -> Non
         hub.write_config()
         if not hub.read_users():
             click.echo("WARN: the hub has no users yet; `sim jupyter user add LOGIN` adds one.", err=True)
+        if service:
+            click.echo(f"Starting the hub's service (log: {hub.run_dir() / 'service.log'})...")
+            pid = hub.start_service()
+            click.echo(f"The hub is running (process {pid}) at {settings.url}; "
+                       "`sim jupyter hub stop`, with sudo, stops it.")
+            return
         if os.getuid() != 0:
             click.echo("NOTE: not running as root, so only your own login can log in; "
                        "`sim jupyter hub service` runs it for everyone.", err=True)
@@ -289,6 +302,38 @@ def hub_status_command() -> None:
         click.echo(f"  {user.describe()}")
     if not users:
         click.echo("  no users yet; `sim jupyter user add LOGIN` adds one")
+
+
+@hub_group.command("log")
+@click.option("-n", "--lines", type=click.IntRange(0), default=50, show_default=True,
+              help="How many of the last lines to show; 0 for the whole log.")
+@click.option("-f", "--follow", is_flag=True, help="Keep showing lines as they're written, until Ctrl+C.")
+def hub_log_command(lines: int, follow: bool) -> None:
+    """The hub's log: logins, spawns, and each user's JupyterLab, which is
+    where a server that won't start says why."""
+    path = hub.log_file()
+    if path is None:
+        raise click.ClickException(f"the hub hasn't written a log in {hub.run_dir()} yet")
+    click.echo(f"==> {path} <==", err=True)
+    try:
+        with path.open("rb") as log:
+            text = log.read()
+            shown = text.splitlines(keepends=True)[-lines:] if lines else [text]
+            click.echo(b"".join(shown).decode(errors="replace"), nl=False)
+            while follow:
+                if (more := log.read()):
+                    click.echo(more.decode(errors="replace"), nl=False)
+                elif path.stat().st_size < log.tell():
+                    log.seek(0)  # cut short, or replaced: start again
+                else:
+                    time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    except PermissionError as exc:
+        raise click.ClickException(f"can't read {path}; if the service (root) wrote it, "
+                                   f"`sudo \"$(command -v sim)\" jupyter hub log` can") from exc
+    except OSError as exc:
+        raise click.ClickException(f"can't read {path}: {exc.strerror}") from exc
 
 
 @hub_group.command("service")
