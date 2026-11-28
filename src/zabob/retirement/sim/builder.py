@@ -66,8 +66,8 @@ from pathlib import Path
 from typing import Any
 
 from zabob.retirement.oscompat import WINDOWS, kill_tree, pid_alive, program, release_tree, start_detached, start_tree
-from zabob.retirement.resources import CHECKOUT_DIR, INSTALLED, home_checkout, program_home, program_sim, same_home
-from zabob.retirement.sim import builder_log, flock
+from zabob.retirement.resources import CHECKOUT_DIR, home_checkout, program_home, program_sim, same_home
+from zabob.retirement.sim import builder_log, data_git, flock
 from zabob.retirement.sim.lineage import is_pool
 from zabob.retirement.sim.loader import (
     DEFAULT_INTENT_DIR,
@@ -109,7 +109,7 @@ TICK_SECONDS = 0.5
 # How long `uninstall` waits on Windows for a stopped daemon to be gone (#748).
 STOP_WAIT_SECONDS = 60.0
 # Hook stubs this module writes into the data repo carry this line.
-HOOK_MARKER = "# analysis sim builder hook (#300)"
+HOOK_MARKER = data_git.HOOK_MARKER
 HOOK_NAMES = ("post-commit", "post-checkout", "post-merge", "post-rewrite")
 # A job's steps, in the order the builder does them (#454).
 STEPS = ("run", "series", "sensitivity")
@@ -1558,48 +1558,26 @@ def _progress(paths: BuilderPaths, job: str, status: dict[str, Any]) -> str:
 # -- install ---------------------------------------------------------------------
 
 
-def _data_hooks_dir(data_repo: Path) -> Path:
-    """Where the data repo's git looks for hooks."""
-    out = subprocess.run(
-        ["git", "-C", str(data_repo), "rev-parse", "--git-path", "hooks"],
-        check=True, capture_output=True, text=True,
-    ).stdout.strip()
-    path = Path(out)
-    return path if path.is_absolute() else (data_repo / path).resolve()
-
+_data_hooks_dir = data_git.hooks_dir
+_ours = data_git.ours
 
 CHAINED_SUFFIX = ".before-builder"
 DATA_HOOK = f"""#!/bin/sh
 {HOOK_MARKER}
 # Runs the hook this one displaced ($0{CHAINED_SUFFIX}), if any, with its
-# arguments and input, and exits with its status. Then tells this data
-# worktree's paired code worktree, or installed program (#662), named in
-# sim/.analysis, to look for scenarios to rebuild, without blocking or
-# failing the git command.
+# arguments and input, and exits with its status. Then tells the sim that
+# {data_git.PREAMBLE_NAME} beside it finds (sim/.analysis's, else PATH's, #840)
+# to look for scenarios to rebuild, without blocking or failing the git command.
 status=0
 if [ -x "$0{CHAINED_SUFFIX}" ]; then "$0{CHAINED_SUFFIX}" "$@"; status=$?; fi
-top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit $status
-[ -f "$top/state/builder/config.json" ] || exit $status
-# tr: sim init on Windows wrote it with CRLF before #748.
-code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" || exit $status
-case "$code" in
-    {INSTALLED}*) dir="${{code#{INSTALLED}}}" ;;
-    *) dir="$code/.venv/bin" ;;
-esac
-# Git for Windows's sh: the Windows path sim/.analysis holds, as its own,
-# and a venv's programs in Scripts, as .exe (#748).
-if command -v cygpath >/dev/null 2>&1; then dir="$(cygpath -u "$dir")"; fi
-[ -d "$dir" ] || dir="${{dir%/bin}}/Scripts"
-sim="$dir/sim"
-[ -x "$sim" ] || sim="$dir/sim.exe"
-[ -x "$sim" ] || exit $status
+here="$(dirname "$0")"
+[ -f "$here/{data_git.PREAMBLE_NAME}" ] || exit $status
+. "$here/{data_git.PREAMBLE_NAME}"
+[ -n "$top" ] && [ -f "$top/state/builder/config.json" ] || exit $status
+[ -n "$sim" ] || exit $status
 "$sim" builder notify --quiet --data-dir "$top/sim" >/dev/null 2>&1 &
 exit $status
 """
-
-
-def _ours(hook: Path) -> bool:
-    return hook.read_text(encoding="utf-8", errors="replace").split("\n")[1:2] == [HOOK_MARKER]
 
 
 def install(data_dir: Path, branch: str | None = None, prices: bool | None = None,
@@ -1633,6 +1611,9 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
             # leave one hook unwatched while the pair reads as installed.
             raise ValueError(f"{hook} and {chained.name} both exist and neither is the "
                              f"builder's; merge them into {name}, then install again")
+    # The hooks source its preamble, sim init's, set up again here for a data
+    # repo made before it (#840); a script in the way refuses, as above.
+    filter_done = data_git.install(data_dir.parent)
     paths = BuilderPaths.for_data(data_dir)
     before = read_config(paths) or {}
     branch = branch or config_branch(before)
@@ -1664,7 +1645,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
         done.append(f"runs Claude Code at {claude}" if claude else
                     "can't find claude (Claude Code): research will fail until it's installed "
                     "and `sim builder install` is run again")
-    hooks.mkdir(parents=True, exist_ok=True)
+    done.extend(filter_done)
     for name in HOOK_NAMES:
         hook = hooks / name
         if hook.exists() and not _ours(hook):
@@ -1675,8 +1656,7 @@ def install(data_dir: Path, branch: str | None = None, prices: bool | None = Non
             hook.rename(chained)
             done.append(f"moved {hook.name} to {chained.name}; the builder's hook runs it first")
         # LF even on Windows: Git for Windows's sh reads a CR as part of a word.
-        hook.write_text(DATA_HOOK, encoding="utf-8", newline="\n")  # ours, or none: (re)write it
-        hook.chmod(0o755)
+        data_git.write_script(hook, DATA_HOOK)  # ours, or none: (re)write it
         done.append(f"installed {hook}")
     return done
 

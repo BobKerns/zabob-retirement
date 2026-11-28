@@ -57,7 +57,7 @@ tests = [
     "tests/test_amazon_notebook.py", "tests/test_blocked_keywords.py",
     "tests/test_brand.py", "tests/test_installed.py", "tests/test_items.py",
     "tests/test_load_warnings.py", "tests/test_lot_drilldown.py",
-    "tests/test_notebook_ui_pickers.py", "tests/test_prices_widgets.py",
+    "tests/test_notebook_clean.py", "tests/test_notebook_ui_pickers.py", "tests/test_prices_widgets.py",
     "tests/test_sim_compare.py", "tests/test_videos*.py", "tests/test_wheel.py",
 ]
 

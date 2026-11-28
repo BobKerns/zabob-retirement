@@ -55,7 +55,7 @@ hub = [
 [project.scripts]
 analysis = "zabob.retirement.cli:main"
 amazon = "zabob.retirement.amazon.cli:amazon_group_command"
-sim = "zabob.retirement.sim.cli:sim_group_command"
+sim = "zabob.retirement.sim.launcher:main"
 
 [project.urls]
 Homepage = "https://github.com/BobKerns/zabob-retirement"

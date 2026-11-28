@@ -15,7 +15,7 @@ from typing import Any
 import git
 import pytest
 
-from zabob.retirement.sim import builder, flock, freshness, locks, price_schedule, provenance
+from zabob.retirement.sim import builder, data_git, flock, freshness, locks, price_schedule, provenance
 from zabob.retirement.sim.builder import BuilderPaths
 from zabob.retirement.sim.loader import write_current_scenario
 
@@ -247,9 +247,12 @@ def test_the_data_hook_is_written_with_lf_and_reads_analysis_without_its_cr(
     and `sim init` on Windows used to write sim/.analysis with CRLF."""
     _code, data_dir = pair
     builder.install(data_dir)
-    hook = builder._data_hooks_dir(data_dir.parent) / "post-commit"
-    assert b"\r" not in hook.read_bytes()
-    assert "tr -d '\\r' 2>/dev/null < \"$top/sim/.analysis\"" in hook.read_text(encoding="utf-8")
+    hooks = builder._data_hooks_dir(data_dir.parent)
+    assert b"\r" not in (hooks / "post-commit").read_bytes()
+    # The lookup is the preamble's, which every hook sources (#840).
+    assert b"\r" not in (hooks / data_git.PREAMBLE_NAME).read_bytes()
+    assert "tr -d '\\r' 2>/dev/null < \"$top/sim/.analysis\"" in \
+        (hooks / data_git.PREAMBLE_NAME).read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(builder.WINDOWS, reason="POSIX reaping")
