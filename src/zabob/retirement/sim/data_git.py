@@ -56,13 +56,11 @@ PREAMBLE = f"""#!/bin/sh
 {HOOK_MARKER}
 # Sourced by the data repo's hooks and its notebook clean filter (#840),
 # which find it beside themselves. Sets top, this worktree's top folder
-# (empty outside one); sim_paired, the program sim/.analysis names (a code
-# worktree or an installed program, #662), else empty; and sim, that one,
-# else the sim on PATH (a data repo carried to another machine), else empty.
-# The builder's hooks use only sim_paired: another program would build with
-# code other than the pair's.
+# (empty outside one), and sim: the program sim/.analysis names, a code
+# worktree or an installed program (#662), else the sim on PATH (a data
+# repo carried to another machine), else empty.
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=
-sim_paired=
+sim=
 # tr: sim init on Windows wrote .analysis with CRLF before #748.
 if [ -n "$top" ] && code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" && [ -n "$code" ]; then
     case "$code" in
@@ -73,11 +71,10 @@ if [ -n "$top" ] && code="$(tr -d '\\r' 2>/dev/null < "$top/sim/.analysis")" && 
     # and a venv's programs in Scripts, as .exe (#748).
     if command -v cygpath >/dev/null 2>&1; then dir="$(cygpath -u "$dir")"; fi
     [ -d "$dir" ] || dir="${{dir%/bin}}/Scripts"
-    sim_paired="$dir/sim"
-    [ -x "$sim_paired" ] || sim_paired="$dir/sim.exe"
-    [ -x "$sim_paired" ] || sim_paired=
+    sim="$dir/sim"
+    [ -x "$sim" ] || sim="$dir/sim.exe"
+    [ -x "$sim" ] || sim=
 fi
-sim="$sim_paired"
 [ -n "$sim" ] || sim="$(command -v sim 2>/dev/null)" || sim=
 """
 
@@ -91,14 +88,7 @@ if [ -z "$sim" ]; then
     echo "notebook filter: can't find sim (sim/.analysis names none here, and none is on PATH)" >&2
     exit 1
 fi
-"$sim" _clean-notebook "$@"
-status=$?
-# 2 is click's usage error: a sim from before the filter has no such command.
-if [ $status -eq 2 ]; then
-    echo "notebook filter: $sim may predate the notebook filter;" \\
-        "update it, or run 'sim notebooks filter' with a newer sim" >&2
-fi
-exit $status
+exec "$sim" _clean-notebook "$@"
 """
 
 SCRIPTS = {PREAMBLE_NAME: PREAMBLE, CLEAN_FILTER_NAME: CLEAN_FILTER}

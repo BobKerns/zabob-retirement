@@ -5,9 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -110,12 +108,9 @@ def test_install_refuses_a_script_not_its_own(data_repo_sim: Path) -> None:
     assert data_git.problems(root)[0].endswith("isn't ours")
 
 
-def test_a_folder_inside_another_repository_is_left_alone(tmp_path: Path) -> None:
+def test_a_folder_inside_another_repository_is_left_alone(empty_git_repo: Path) -> None:
     """A checkout's ignored data/private, say: that config isn't the data repo's."""
-    if shutil.which("git") is None:
-        pytest.skip("no git")
-    _git(tmp_path, "init", "-q")
-    inner = tmp_path / "data" / "private"
+    inner = empty_git_repo / "data" / "private"
     inner.mkdir(parents=True)
     assert not data_git.is_repo(inner) and data_git.problems(inner) == []
     with pytest.raises(data_git.SetupError):
@@ -136,42 +131,6 @@ def test_a_checkout_that_writes_a_notebook_works(data_repo_sim: Path, repo_root:
     assert _git(root, "commit", "-qam", "changed").returncode == 0
     switched = _git(root, "checkout", "-q", "main")
     assert switched.returncode == 0, switched.stderr
-
-
-@pytest.mark.skipif(WINDOWS, reason="POSIX shims")
-def test_the_builders_hooks_run_only_the_paired_sim(data_repo_sim: Path, tmp_path: Path) -> None:
-    """Another sim's daemon would build with code other than the pair's;
-    the clean filter alone falls back to the sim on PATH."""
-    from zabob.retirement.sim import builder
-
-    root = data_repo_sim.parent
-    (data_repo_sim / ".analysis").write_text(f"{tmp_path / 'gone'}\n", encoding="utf-8")
-    data_git.install(root)
-    hooks = data_git.hooks_dir(root)
-    data_git.write_script(hooks / "post-commit", builder.DATA_HOOK)
-    (root / "state" / "builder").mkdir(parents=True)
-    (root / "state" / "builder" / "config.json").write_text("{}", encoding="utf-8")
-    on_path = tmp_path / "bin"
-    on_path.mkdir()
-    ran = tmp_path / "ran"
-    data_git.write_script(on_path / "sim", f"#!/bin/sh\necho \"$@\" >> {ran}\n")
-    env = {**os.environ, "PATH": f"{on_path}{os.pathsep}{os.environ['PATH']}"}
-    assert _git(root, "commit", "-q", "--allow-empty", "-m", "poke", env=env).returncode == 0
-    time.sleep(0.5)  # the hook's notify runs in the background
-    assert not ran.exists()
-
-
-@pytest.mark.skipif(WINDOWS, reason="POSIX shims")
-def test_a_sim_from_before_the_filter_is_named_as_the_cause(data_repo_sim: Path, tmp_path: Path) -> None:
-    root = data_repo_sim.parent
-    old = tmp_path / "old" / ".venv" / "bin"
-    old.mkdir(parents=True)
-    data_git.write_script(old / "sim", "#!/bin/sh\necho \"Error: No such command '$1'.\" >&2\nexit 2\n")
-    (data_repo_sim / ".analysis").write_text(f"{tmp_path / 'old'}\n", encoding="utf-8")
-    data_git.install(root)
-    (root / "a.ipynb").write_text(RUN_NOTEBOOK, encoding="utf-8")
-    failed = _git(root, "add", "a.ipynb")
-    assert failed.returncode != 0 and "may predate the notebook filter" in failed.stderr
 
 
 def test_sim_check_warns_when_it_cannot_look(
