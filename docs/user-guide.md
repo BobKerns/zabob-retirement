@@ -13,7 +13,7 @@ have a data repo. If you don't, start one with `sim init` in the code checkout
 are and builds it from the code repository's templates ([templates/README.md](../templates/README.md)).
 The one-line installer ([SETUP.md](SETUP.md)) does that for you.
 
-**Videos.** The *Retirement Simulator Guide* walks through the same ground
+**Videos.** The *Zabob Retirement Simulator Guide* walks through the same ground
 with Alice and Bill, starting from what the simulator does and how to install
 it, on YouTube in [English](https://www.youtube.com/playlist?list=PLMCxY-aRDiI4) and in [Japanese (日本語)](https://www.youtube.com/playlist?list=PLQhWLzBzvwNM).
 Video 1, *What it does, and how it works*, is the place to start:

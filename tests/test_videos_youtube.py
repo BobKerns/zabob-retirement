@@ -60,7 +60,7 @@ def test_description_has_summary_list_chapters_footer_and_neighbors(videos_root:
         "Previous: Video 1, First\nNext: Video 3, Third"
     )
     assert meta.tags[-1] == "extra" and meta.privacy == "private" and meta.category_id == "27"
-    assert meta.playlist == "Retirement Simulator Guide"
+    assert meta.playlist == "Zabob Retirement Simulator Guide"
 
 
 def test_chapters_follow_youtube_rules(videos_root: Path) -> None:
@@ -177,7 +177,7 @@ def test_publish_uploads_then_links_the_languages(videos_root: Path, tmp_path: P
     assert status["privacyStatus"] == "private" and status["license"] == "creativeCommon"
     assert status["containsSyntheticMedia"] is False and uploads[0]["upload"]["notify"] is True
     assert uploads[0]["upload"]["recording_date"].endswith("T00:00:00Z")
-    assert uploads[1]["playlist"] == "Retirement Simulator (日本語)"
+    assert uploads[1]["playlist"] == "Zabob Retirement Simulator (日本語)"
     updates = {r["video"]: r["snippet"]["description"] for r in api.requests if not r.get("upload")}
     assert "日本語版: https://youtu.be/id2" in updates["id1"]
     # ja went up after en, so its upload already carried the link: no update for it (#695).
