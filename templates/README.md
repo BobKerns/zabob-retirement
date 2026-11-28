@@ -117,7 +117,7 @@ When sourced, `activate-retirement` will:
 - Create `.venv` with `uv sync --group dev` if needed, then activate it.
 - Show the data repo, who you are (`sim login`) and your current scenario in
   the prompt.
-- Enable shell completion for `analysis`, `amazon`, and `sim`.
+- Enable shell completion for `analysis` and `sim`.
 
 ## Editing rows
 

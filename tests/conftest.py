@@ -1145,6 +1145,16 @@ def commit_files() -> CommitFiles:
 
 
 @pytest.fixture(scope="function")
+def empty_git_repo(tmp_path: Path) -> Path:
+    """A new git repository with nothing in it: somewhere for ``sim init``
+    to make a data repo in an existing repository, or for a folder inside
+    one (a checkout's ignored ``data/private``). Returns its top folder."""
+    root = tmp_path / "empty-repo"
+    git.Repo.init(root, b="main").close()
+    return root
+
+
+@pytest.fixture(scope="function")
 def data_repo_sim(tmp_path: Path, test_data_dir: Path) -> Path:
     """The private data copy as a real data repo's ``sim/`` subtree: a git
     repo on main, everything committed, ``state/`` and ``sim/.analysis``

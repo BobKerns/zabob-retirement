@@ -346,7 +346,8 @@ def sim_group_command(ctx: click.Context) -> None:
     utf8_stdio()
     # setattr: ty won't assign a function to a module attribute declared as a def.
     setattr(warnings, "formatwarning", _format_warning)  # noqa: B010
-    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion", "version"):
+    if ctx.resilient_parsing or ctx.invoked_subcommand in (None, "init", "completion", "version",
+                                                           "_clean-notebook"):
         return
     args = ctx.meta.get(_SUBCOMMAND_ARGS, [])
     _follow_working_folder(args)
@@ -572,10 +573,14 @@ def check(
     mix-in scenarios define many on purpose for the scenarios built on them.
     --verbose also names the shared tables/ files that only copy templates/tables/
     (#317), which can be deleted.
+
+    It also warns when the data repo's notebook filter isn't set up (#840),
+    as in a clone made since `sim init`: `sim notebooks filter` sets it up.
     """
     if check_all and scenario_name is not None:
         raise click.UsageError("give a scenario name or --all, not both")
     resolved = _resolve_data_dir(data_dir)
+    _warn_git_setup(resolved)
     if verbose:
         for name in template_aux_copies(resolved):
             click.echo(
@@ -605,6 +610,23 @@ def check(
             f"{len(failed)} of {len(names)} scenario(s) failed: {', '.join(failed)}"
         )
     click.echo(f"all {len(names)} scenario(s) ok")
+
+
+def _warn_git_setup(data_dir: Path) -> None:
+    """Warn when the data repo's notebook filter isn't set up as `sim init`
+    sets it (#840): a clone made elsewhere has its .gitattributes but not
+    its config, and would commit notebook outputs."""
+    from zabob.retirement.sim import data_git
+
+    try:
+        found = data_git.problems(data_dir.parent)
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as exc:
+        click.echo(f"WARN: notebook filter: couldn't check it: {exc}", err=True)
+        return
+    if found:
+        for problem in found:
+            click.echo(f"WARN: notebook filter: {problem}", err=True)
+        click.echo("WARN: `sim notebooks filter` sets it up", err=True)
 
 
 def _check_scenario(data_dir: Path, name: str, *, unused: bool) -> None:
@@ -5921,6 +5943,20 @@ def _create_data_repo(
     return _report_created(root, failed, no_commit=no_commit, what="a data repo"), failed
 
 
+def _init_notebook_filter(root: Path) -> None:
+    """Set up the new data repo's notebook filter (#840), builder or not,
+    once it is a git repository: a failure is a warning, since the data repo
+    itself is ready, and `sim notebooks filter` can try again."""
+    from zabob.retirement.sim import data_git
+
+    try:
+        if data_git.is_repo(root):
+            data_git.install(root)
+    except (data_git.SetupError, OSError, subprocess.CalledProcessError) as exc:
+        click.echo(f"  warning: notebook filter not set up: {exc}; `sim notebooks filter` tries again",
+                   err=True)
+
+
 def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: str) -> Path:
     from zabob.retirement.sim import data_repo
 
@@ -5930,6 +5966,7 @@ def _report_created(root: Path, failed: str | None, *, no_commit: bool, what: st
         click.echo(f"  warning: not committed: {failed}", err=True)
     elif not no_commit:
         click.echo("  committed the new files")
+    _init_notebook_filter(root)
     click.echo(f"checking {data_repo.START_SCENARIO}: ", nl=False)
     _check_scenario(sim, data_repo.START_SCENARIO, unused=False)
     return sim
@@ -5962,16 +5999,46 @@ def notebooks_copy_command(directory: Path | None, replace: bool, data_dir: Path
         click.echo(f"kept {len(kept)} already there (--replace to replace them)")
 
 
+@notebooks_group.command("filter")
+@click.option("--data-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
+def notebooks_filter_command(data_dir: Path | None) -> None:
+    """Set up the data repo's notebook clean filter (#840), as `sim init`
+    does: its notebooks are committed without their outputs, which would
+    churn the repo and show numbers that go stale. Replaces an nbstripout
+    filter set up there by hand. Safe to run again; `sim check` says when
+    it's needed."""
+    from zabob.retirement.sim import data_git
+
+    root = _resolve_data_dir(data_dir).parent
+    try:
+        done = data_git.install(root)
+    except (OSError, subprocess.CalledProcessError, data_git.SetupError) as exc:
+        raise click.ClickException(f"couldn't set up the notebook filter: {exc}") from None
+    for line in done:
+        click.echo(line)
+
+
+@sim_group_command.command("_clean-notebook", hidden=True, context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def clean_notebook_command(args: tuple[str, ...]) -> None:
+    """The data repo's notebook clean filter (#840). The launcher runs it
+    before the CLI loads; this is for a sim installed before that."""
+    from zabob.retirement.notebook_clean import main as clean
+
+    raise SystemExit(clean(args))
+
+
 sim_group_command.add_command(jupyter_group)
 add_version(sim_group_command)
 
 
 @sim_group_command.group(name="completion")
 def completion_group() -> None:
-    """TAB completion for sim in your shell: install, show (#792).
+    """TAB completion for sim and analysis in your shell: install, show (#792).
 
-    bash, zsh, fish and PowerShell. `sim completion install` sets it up once;
-    no need to source the data repo's activate-retirement.
+    bash, zsh, fish and PowerShell. `sim completion install` (or `analysis
+    completion install`) sets it up once for both; no need to source the data
+    repo's activate-retirement.
     """
 
 
@@ -5987,11 +6054,12 @@ _SHELL_ARGUMENT = click.argument("shell", type=click.Choice(shell_completion.SHE
 @completion_group.command(name="install")
 @_SHELL_ARGUMENT
 def completion_install(shell: str | None) -> None:
-    """Set up TAB completion for sim in SHELL (default: yours).
+    """Set up TAB completion for sim and analysis in SHELL (default: yours).
 
-    Writes the completion script and adds a line to the shell's startup file
-    (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that reads it; fish needs
-    no line. Running it again rewrites the script and adds nothing twice.
+    Writes a completion script for each and adds a line per script to the
+    shell's startup file (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that
+    reads it; fish needs no line. Running it again rewrites the scripts and
+    adds nothing twice.
     """
     shell = _completion_shell(shell)
     for done in shell_completion.install(shell):
@@ -6006,9 +6074,9 @@ def completion_install(shell: str | None) -> None:
 @completion_group.command(name="show")
 @_SHELL_ARGUMENT
 def completion_show(shell: str | None) -> None:
-    """Print the TAB completion script for sim in SHELL (default: yours),
-    to put somewhere of your own choosing."""
-    click.echo(shell_completion.source(_completion_shell(shell)), nl=False)
+    """Print the TAB completion scripts for sim and analysis in SHELL
+    (default: yours), to put somewhere of your own choosing."""
+    click.echo(shell_completion.sources(_completion_shell(shell)), nl=False)
 
 
 # Set for the `sim init` that one run from another checkout's venv starts,

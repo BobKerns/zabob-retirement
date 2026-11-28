@@ -68,6 +68,7 @@ calevt
 capex
 capitalizable
 capsys
+capsysbinary
 carryforward
 carryforwards
 categoriser

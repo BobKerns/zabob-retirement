@@ -1,5 +1,5 @@
 """Which build of the program is running (#825): a ``version`` command and a
-``--version`` flag, the same on ``sim``, ``analysis`` and ``amazon``.
+``--version`` flag, the same on ``sim`` and ``analysis``.
 
 An installed build reports its distribution version with the commit it was
 built from (``provenance.installed_version``); a source checkout reports the
