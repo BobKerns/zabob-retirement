@@ -6034,10 +6034,11 @@ add_version(sim_group_command)
 
 @sim_group_command.group(name="completion")
 def completion_group() -> None:
-    """TAB completion for sim in your shell: install, show (#792).
+    """TAB completion for sim and analysis in your shell: install, show (#792).
 
-    bash, zsh, fish and PowerShell. `sim completion install` sets it up once;
-    no need to source the data repo's activate-retirement.
+    bash, zsh, fish and PowerShell. `sim completion install` (or `analysis
+    completion install`) sets it up once for both; no need to source the data
+    repo's activate-retirement.
     """
 
 
@@ -6053,11 +6054,12 @@ _SHELL_ARGUMENT = click.argument("shell", type=click.Choice(shell_completion.SHE
 @completion_group.command(name="install")
 @_SHELL_ARGUMENT
 def completion_install(shell: str | None) -> None:
-    """Set up TAB completion for sim in SHELL (default: yours).
+    """Set up TAB completion for sim and analysis in SHELL (default: yours).
 
-    Writes the completion script and adds a line to the shell's startup file
-    (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that reads it; fish needs
-    no line. Running it again rewrites the script and adds nothing twice.
+    Writes a completion script for each and adds a line per script to the
+    shell's startup file (~/.zshrc, ~/.bashrc, or PowerShell's $PROFILE) that
+    reads it; fish needs no line. Running it again rewrites the scripts and
+    adds nothing twice.
     """
     shell = _completion_shell(shell)
     for done in shell_completion.install(shell):
@@ -6072,9 +6074,9 @@ def completion_install(shell: str | None) -> None:
 @completion_group.command(name="show")
 @_SHELL_ARGUMENT
 def completion_show(shell: str | None) -> None:
-    """Print the TAB completion script for sim in SHELL (default: yours),
-    to put somewhere of your own choosing."""
-    click.echo(shell_completion.source(_completion_shell(shell)), nl=False)
+    """Print the TAB completion scripts for sim and analysis in SHELL
+    (default: yours), to put somewhere of your own choosing."""
+    click.echo(shell_completion.sources(_completion_shell(shell)), nl=False)
 
 
 # Set for the `sim init` that one run from another checkout's venv starts,

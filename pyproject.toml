@@ -54,7 +54,6 @@ hub = [
 
 [project.scripts]
 analysis = "zabob.retirement.cli:main"
-amazon = "zabob.retirement.amazon.cli:amazon_group_command"
 sim = "zabob.retirement.sim.launcher:main"
 
 [project.urls]

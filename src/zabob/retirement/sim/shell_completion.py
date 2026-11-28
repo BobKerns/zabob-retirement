@@ -1,10 +1,12 @@
-"""TAB completion for ``sim`` in bash, zsh, fish and PowerShell (#792).
+"""TAB completion for ``sim`` and ``analysis`` in bash, zsh, fish and
+PowerShell (#792, #844).
 
-``sim completion install`` writes click's completion script for the shell
-to a file once, and has the shell read it at start, so completion works
-without sourcing the data repo's ``activate-retirement``. A saved script
-doesn't go stale: it only hands the words typed so far back to ``sim``,
-which answers with the names. Reading a file is also quicker than the
+``sim completion install`` (or ``analysis completion install``; either sets
+up both programs) writes click's completion script for each to a file once,
+and has the shell read it at start, so completion works without sourcing the
+data repo's ``activate-retirement``. A saved script doesn't go stale: it only
+hands the words typed so far back to the program, which answers with the
+names. Reading a file is also quicker than the
 usual ``eval "$(_SIM_COMPLETE=zsh_source sim)"``, which starts Python at
 every new shell.
 
@@ -19,14 +21,19 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import click
 from click.shell_completion import CompletionItem, ShellComplete, add_completion_class, get_completion_class
 
 from zabob.retirement import user_config
 from zabob.retirement.oscompat import WINDOWS
 
-__all__ = ["SHELLS", "Installed", "PowerShellComplete", "detect_shell", "install", "source"]
+__all__ = ["PROGRAMS", "SHELLS", "Installed", "PowerShellComplete", "detect_shell", "install", "source", "sources"]
 
 SHELLS = ("bash", "zsh", "fish", "powershell")
+
+# The installed commands, each with its own script: `sim` first, since it's
+# the one users have.
+PROGRAMS = ("sim", "analysis")
 
 # What PowerShell hands sim: the words before the one being completed, one
 # per line (PowerShell's own parse, so a quoted name or a Windows path
@@ -100,20 +107,41 @@ def detect_shell() -> str | None:
     return name if name in SHELLS else None
 
 
-def source(shell: str, prog_name: str = "sim") -> str:
-    """Click's completion script for ``prog_name`` in ``shell``."""
+def _command(prog_name: str) -> click.Command:
+    # Imported here: both CLIs import this module, for PowerShellComplete.
+    if prog_name == "analysis":
+        from zabob.retirement.cli import main
+
+        return main
     from zabob.retirement.sim.cli import sim_group_command
 
+    return sim_group_command
+
+
+# Click's zsh script calls compdef, which only exists once compinit has run;
+# a plain ~/.zshrc (no oh-my-zsh) never runs it.
+_ZSH_PREAMBLE = "(( $+functions[compdef] )) || { autoload -Uz compinit && compinit }\n"
+
+
+def _script(shell: str, prog_name: str) -> str:
     cls = get_completion_class(shell)
     if cls is None:  # SHELLS are all registered; a guard for a caller's typo
         raise ValueError(f"no completion for {shell!r}")
     complete_var = f"_{prog_name.replace('-', '_').upper()}_COMPLETE"
-    script = cls(sim_group_command, {}, prog_name, complete_var).source()
-    if shell == "zsh":
-        # Click's script calls compdef, which only exists once compinit has
-        # run; a plain ~/.zshrc (no oh-my-zsh) never runs it.
-        script = "(( $+functions[compdef] )) || { autoload -Uz compinit && compinit }\n" + script
-    return script
+    return cls(_command(prog_name), {}, prog_name, complete_var).source()
+
+
+def source(shell: str, prog_name: str = "sim") -> str:
+    """Click's completion script for ``prog_name`` (one of ``PROGRAMS``) in ``shell``."""
+    script = _script(shell, prog_name)
+    return _ZSH_PREAMBLE + script if shell == "zsh" else script
+
+
+def sources(shell: str) -> str:
+    """The completion scripts for all of ``PROGRAMS`` in ``shell``, one
+    after another, for ``completion show``."""
+    text = "\n".join(_script(shell, prog_name).rstrip("\n") + "\n" for prog_name in PROGRAMS)
+    return _ZSH_PREAMBLE + text if shell == "zsh" else text
 
 
 @dataclass(frozen=True)
@@ -127,13 +155,30 @@ class Installed:
     note: str | None = None
 
 
-_MARK = "# TAB completion for sim (sim completion install)"
+def _mark(prog_name: str) -> str:
+    # sim's mark, and so its line, is what installs before #844 wrote, so
+    # running install again finds that line and adds nothing for sim.
+    return f"# TAB completion for {prog_name} (sim completion install)"
 
 
-def install(shell: str, prog_name: str = "sim") -> list[Installed]:
-    """Write the completion script for ``shell`` and have the shell read it
-    at start. Running it again rewrites the script (taking a newer click's)
-    and adds nothing to a startup file that already reads it."""
+def install(shell: str) -> list[Installed]:
+    """Write the completion script for each of ``PROGRAMS`` in ``shell``
+    and have the shell read them at start. Running it again rewrites the
+    scripts (taking a newer click's) and adds nothing to a startup file that
+    already reads them."""
+    done = [each for prog_name in PROGRAMS for each in _install(shell, prog_name)]
+    # A note about the shell (an execution policy) is the same for each
+    # program; say it once.
+    said: set[str] = set()
+    for i, each in enumerate(done):
+        if each.note in said:
+            done[i] = Installed(each.script, each.startup_file)
+        elif each.note:
+            said.add(each.note)
+    return done
+
+
+def _install(shell: str, prog_name: str) -> list[Installed]:
     text = source(shell, prog_name)
     if shell == "fish":
         # fish loads completions/<command>.fish by itself when it's first needed.
@@ -147,12 +192,12 @@ def install(shell: str, prog_name: str = "sim") -> list[Installed]:
         profiles = _powershell_profiles()
         if not profiles:
             return [Installed(script, None, "no PowerShell found to find its profile; add this line to $PROFILE: "
-                              + _powershell_line(script))]
-        return [Installed(script, _add_line(profile, _powershell_line(script)), _execution_policy_note(exe))
-                for exe, profile in profiles]
+                              + _powershell_line(script, prog_name))]
+        line = _powershell_line(script, prog_name)
+        return [Installed(script, _add_line(profile, line), _execution_policy_note(exe)) for exe, profile in profiles]
     script = _write(folder / f"{prog_name}.{shell}", text)
     quoted = "'" + str(script).replace("'", "'\\''") + "'"
-    line = f"[ -f {quoted} ] && . {quoted}  {_MARK}"
+    line = f"[ -f {quoted} ] && . {quoted}  {_mark(prog_name)}"
     if shell == "zsh":
         zdotdir = os.environ.get("ZDOTDIR")
         rc = (Path(zdotdir) if zdotdir else Path.home()) / ".zshrc"
@@ -180,9 +225,9 @@ def _add_line(startup_file: Path, line: str) -> Path | None:
     return startup_file
 
 
-def _powershell_line(script: Path) -> str:
+def _powershell_line(script: Path, prog_name: str) -> str:
     quoted = "'" + str(script).replace("'", "''") + "'"
-    return f"if (Test-Path {quoted}) {{ . {quoted} }}  {_MARK}"
+    return f"if (Test-Path {quoted}) {{ . {quoted} }}  {_mark(prog_name)}"
 
 
 def _powershell(exe: str, command: str) -> str | None:
