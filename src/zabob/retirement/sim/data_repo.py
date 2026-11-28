@@ -18,7 +18,7 @@ from pathlib import Path
 
 from zabob.retirement.research_plugin import write_default_config
 from zabob.retirement.resources import CHECKOUT_DIR, NOTEBOOKS_DIR, PROTOTYPE_DIR, program_home
-from zabob.retirement.sim import registries
+from zabob.retirement.sim import data_git, registries
 from zabob.retirement.sim.data_commit import CommitError, ensure_identity
 from zabob.retirement.sim.lineage import TEMPLATE_PREFIX, TEMPLATE_SCENARIOS_DIR
 from zabob.retirement.sim.loader import write_current_scenario
@@ -183,6 +183,9 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
     # otherwise commit CRLF, which changes the scenario's tree id and makes
     # every line a change. Kept in the repository, so every clone has it.
     _ignore(root / ".gitattributes", "* text=auto")
+    # Notebooks are committed without their outputs (#840), through the
+    # filter data_git sets up in the repository's config once there is one.
+    _ignore(root / ".gitattributes", data_git.ATTRIBUTES)
     (root / ".cspell").mkdir(exist_ok=True)
     (root / ".cspell" / "data-words.txt").touch()
     if notebooks:
@@ -195,6 +198,8 @@ def _finish(root: Path, person: Mapping[str, str], *, commit: bool, notebooks: b
         _ignore(root / ".gitignore", "/.mcp.json")
     if commit:
         return _commit(root, person)
+    if data_git.is_repo(root):  # an existing repository, left uncommitted
+        data_git.install(root)
     return None
 
 
@@ -238,6 +243,10 @@ def _commit(root: Path, person: Mapping[str, str]) -> str | None:
         done = _git(root, "init", "-q")
         if done.returncode:
             return done.stderr.strip() or "git init failed"
+    try:
+        data_git.install(root)
+    except (data_git.SetupError, OSError, subprocess.CalledProcessError) as exc:
+        return f"couldn't set up the notebook filter: {exc}"
     paths = ("sim", ".gitignore", ".gitattributes", ".cspell")
     # A new user often has no git identity, and the commit would fail (#308).
     try:

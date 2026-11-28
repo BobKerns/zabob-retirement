@@ -146,12 +146,22 @@ def test_init_commits_everything_but_the_per_machine_files(tmp_path: Path) -> No
                           "sim/.retention.yaml"}
 
 
+def test_init_sets_up_the_notebook_filter_without_the_builder(tmp_path: Path) -> None:
+    """#840: notebooks are committed without their outputs, builder or not."""
+    from zabob.retirement.sim import data_git
+
+    root = tmp_path / "repo"
+    assert _init(str(root), *_ALICE).exit_code == 0
+    assert data_git.ATTRIBUTES in (root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    assert data_git.problems(root) == []
+
+
 def test_init_stores_text_with_lf_line_endings_whatever_core_autocrlf(tmp_path: Path) -> None:
     """#687: a CSV saved with CRLF (Excel on Windows) is stored as git
     would store it from a Mac, so the scenario's tree id doesn't change."""
     root = tmp_path / "repo"
     assert _init(str(root), *_ALICE).exit_code == 0
-    assert (root / ".gitattributes").read_text(encoding="utf-8") == "* text=auto\n"
+    assert (root / ".gitattributes").read_text(encoding="utf-8").startswith("* text=auto\n")
 
     def git(*args: str) -> str:
         return subprocess.run(["git", "-C", str(root), "-c", "core.autocrlf=false", *args],
